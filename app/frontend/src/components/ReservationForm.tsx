@@ -66,15 +66,33 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   const formatPreview = (text: string) => {
     if (!text) return '';
     
-    // Remplacer les marqueurs de formatage par du HTML
+    // D'abord, traiter les retours à la ligne et les listes
     let html = text
-      .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')
-      .replace(/_([^_]+)_/g, '<em>$1</em>')
-      .replace(/\[color=([^\]]+)\](.*?)\[\/color\]/g, '<span style="color: $1">$2</span>')
-      .replace(/\n-\s+/g, '<br/>• ');
+      .replace(/\n-\s+/g, '<br/>• ')
+      .replace(/\n/g, '<br/>');
     
-    // Ajouter des sauts de ligne pour les retours à la ligne simples
-    html = html.replace(/\n/g, '<br/>');
+    // Ensuite, traiter les balises de couleur (en gérant les cas imbriqués)
+    const colorTagRegex = /\[color=([^\]]+)\](.*?)\[\/color\]/gs;
+    let match;
+    
+    // Tant qu'il reste des balises de couleur non traitées
+    while ((match = colorTagRegex.exec(html)) !== null) {
+      const fullMatch = match[0];
+      const color = match[1];
+      const content = match[2];
+      
+      // Remplacer uniquement la balise la plus externe
+      html = html.replace(fullMatch, `<span style="color: ${color}">${content}</span>`);
+      
+      // Réinitialiser l'index de la regex pour éviter les boucles infinies
+      colorTagRegex.lastIndex = 0;
+    }
+    
+    // Enfin, traiter les autres formats (gras, italique, etc.)
+    html = html
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>') // **gras**
+      .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')       // *gras*
+      .replace(/_([^_]+)_/g, '<em>$1</em>');                // _italique_
     
     return html;
   };
