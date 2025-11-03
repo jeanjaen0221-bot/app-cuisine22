@@ -1,21 +1,258 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
+/* Styles de base */
 :root {
   --primary: #693381;
   --primary-light: #9361a6;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-500: #6b7280;
+  --gray-700: #374151;
+  --blue-50: #eff6ff;
+  --blue-600: #2563eb;
+  --white: #ffffff;
+  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
+/* Boutons */
 .btn {
-  @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white hover:bg-[#5a2d70] transition shadow-soft;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  background-color: var(--primary);
+  color: var(--white);
+  transition: background-color 0.2s;
+  box-shadow: var(--shadow-soft);
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
 }
+
+.btn:hover {
+  background-color: #5a2d70;
+}
+
+/* Cartes */
 .card {
-  @apply bg-white rounded-xl shadow-soft p-4;
+  background-color: var(--white);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-soft);
+  padding: 1rem;
 }
+
+/* Champs de formulaire */
 .input {
-  @apply border rounded-md px-3 py-2 w-full;
+  border: 1px solid var(--gray-300);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  width: 100%;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
 }
+
+.input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(105, 51, 129, 0.2);
+}
+
+/* Libellés */
 .label {
-  @apply text-sm font-medium text-gray-700;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--gray-700);
+  margin-bottom: 0.25rem;
+  display: block;
+}
+
+/* Styles pour les balises de formatage dans toute l'application */
+/* Ces styles s'appliqueront partout où les balises [color] et [size] sont utilisées */
+[style*="color:"],
+[class*="text-"] {
+  display: inline;
+  line-height: inherit;
+}
+
+/* Style pour les balises de couleur */
+[style*="color:"] {
+  color: inherit !important; /* La couleur sera écrasée par le style inline */
+}
+
+/* Styles pour les tailles de texte */
+.text-xs { 
+  font-size: 0.75rem !important; 
+  line-height: 1rem !important;
+}
+
+.text-sm { 
+  font-size: 0.875rem !important;
+  line-height: 1.25rem !important;
+}
+
+.text-base { 
+  font-size: 1rem !important;
+  line-height: 1.5rem !important;
+}
+
+.text-lg { 
+  font-size: 1.125rem !important;
+  line-height: 1.75rem !important;
+}
+
+.text-xl { 
+  font-size: 1.25rem !important;
+  line-height: 1.75rem !important;
+}
+
+.text-2xl { 
+  font-size: 1.5rem !important;
+  line-height: 2rem !important;
+}
+
+/* Style pour l'aperçu du texte formaté */
+.rich-text-preview {
+  color: var(--gray-700);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.rich-text-preview strong {
+  font-weight: 600;
+}
+
+.rich-text-preview em {
+  font-style: italic;
+}
+
+.rich-text-preview ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+  margin: 0.25rem 0;
+}
+
+.rich-text-preview ol {
+  list-style-type: decimal;
+  padding-left: 1.25rem;
+  margin: 0.25rem 0;
+}
+
+/* Style pour les listes dans le texte formaté */
+.rich-text-preview [style*="color:"] {
+  color: inherit; /* Hériter de la couleur du parent */
+}
+
+/* Styles pour les tailles de texte */
+.text-xs { 
+  font-size: 0.75rem; 
+  line-height: 1rem; 
+}
+
+.text-sm { 
+  font-size: 0.875rem; 
+  line-height: 1.25rem; 
+}
+
+.text-base { 
+  font-size: 1rem; 
+  line-height: 1.5rem; 
+}
+
+.text-lg { 
+  font-size: 1.125rem; 
+  line-height: 1.75rem; 
+}
+
+.text-xl { 
+  font-size: 1.25rem; 
+  line-height: 1.75rem; 
+}
+
+.text-2xl { 
+  font-size: 1.5rem; 
+  line-height: 2rem; 
+}
+
+/* Style pour l'aperçu du texte formaté */
+.rich-text-preview {
+  color: var(--gray-700);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.rich-text-preview strong {
+  font-weight: 600;
+}
+
+.rich-text-preview em {
+  font-style: italic;
+}
+
+.rich-text-preview ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+  margin: 0.25rem 0;
+}
+
+.rich-text-preview ol {
+  list-style-type: decimal;
+  padding-left: 1.25rem;
+  margin: 0.25rem 0;
+}
+
+/* Utilitaires */
+.flex {
+  display: flex;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.mt-6 {
+  margin-top: 1.5rem;
+}
+
+.mb-1 {
+  margin-bottom: 0.25rem;
+}
+
+.p-3 {
+  padding: 0.75rem;
+}
+
+.rounded {
+  border-radius: 0.25rem;
+}
+
+.border {
+  border: 1px solid var(--gray-200);
+}
+
+.bg-white {
+  background-color: var(--white);
+}
+
+.text-primary {
+  color: var(--primary);
+}
+
+.font-semibold {
+  font-weight: 600;
+}
+
+.text-lg {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
 }

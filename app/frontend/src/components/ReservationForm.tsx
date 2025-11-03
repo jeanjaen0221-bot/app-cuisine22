@@ -27,8 +27,26 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   const [errs, setErrs] = useState<{client?:string,date?:string,pax?:string,time?:string}>({})
   const [itemsError, setItemsError] = useState<string | null>(null)
 
+  // État pour la taille de police
+  const [fontSize, setFontSize] = useState('text-base');
+
+  // Options de taille de police
+  const fontSizes = [
+    { value: 'text-xs', label: 'Petit' },
+    { value: 'text-sm', label: 'Normal' },
+    { value: 'text-base', label: 'Moyen' },
+    { value: 'text-lg', label: 'Grand' },
+    { value: 'text-xl', label: 'Très grand' },
+    { value: 'text-2xl', label: 'Énorme' },
+  ];
+
+  // Fonction pour appliquer la taille de police
+  const applyFontSize = (size: string) => {
+    setFontSize(size);
+  };
+
   // Fonction pour formater le texte sélectionné
-  const formatText = (prefix: string, suffix: string, title: string, showColorPicker = false) => {
+  const formatText = (prefix: string, suffix: string, title: string, showColorPicker = false, sizeTag = '') => {
     return (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault();
       const textarea = document.querySelector('textarea[name="notes"]') as HTMLTextAreaElement;
@@ -45,18 +63,52 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
         colorPicker.type = 'color';
         colorPicker.onchange = (e) => {
           const color = (e.target as HTMLInputElement).value;
-          setNotes(`${before}[color=${color}]${selectedText}[/color]${after}`);
-          setTimeout(() => {
-            textarea.focus();
-            textarea.setSelectionRange(start, end + 15 + color.length);
-          }, 0);
+          // Si du texte est sélectionné, on l'entoure des balises de couleur
+          if (selectedText) {
+            setNotes(`${before}[color=${color}]${selectedText}[/color]${after}`);
+            setTimeout(() => {
+              textarea.focus();
+              textarea.setSelectionRange(start, end + 15 + color.length);
+            }, 0);
+          } else {
+            // Sinon, on insère juste les balises et on place le curseur entre elles
+            const newPosition = start + `[color=${color}][/color]`.length;
+            setNotes(`${before}[color=${color}][/color]${after}`);
+            setTimeout(() => {
+              textarea.focus();
+              textarea.setSelectionRange(newPosition - 8, newPosition - 8);
+            }, 0);
+          }
         };
         colorPicker.click();
+      } else if (sizeTag) {
+        // Gestion des tailles de police
+        if (selectedText) {
+          setNotes(`${before}[size=${sizeTag}]${selectedText}[/size]${after}`);
+          setTimeout(() => {
+            textarea.focus();
+            textarea.setSelectionRange(start, end + 13 + sizeTag.length);
+          }, 0);
+        } else {
+          const newPosition = start + `[size=${sizeTag}][/size]`.length;
+          setNotes(`${before}[size=${sizeTag}][/size]${after}`);
+          setTimeout(() => {
+            textarea.focus();
+            textarea.setSelectionRange(newPosition - 8, newPosition - 8);
+          }, 0);
+        }
       } else {
+        // Formatage standard (gras, italique, etc.)
         setNotes(`${before}${prefix}${selectedText}${suffix}${after}`);
         setTimeout(() => {
           textarea.focus();
-          textarea.setSelectionRange(start + prefix.length, end + prefix.length);
+          if (selectedText) {
+            // Si du texte était sélectionné, on sélectionne le texte + les balises
+            textarea.setSelectionRange(start, end + prefix.length + suffix.length);
+          } else {
+            // Si pas de sélection, on place le curseur entre les balises
+            textarea.setSelectionRange(start + prefix.length, start + prefix.length);
+          }
         }, 0);
       }
     };
@@ -76,34 +128,100 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   const formatPreview = (text: string) => {
     if (!text) return '';
     
-    // Échapper d'abord le HTML pour éviter les injections
-    let html = escapeHtml(text);
+    // Fonction pour échapper le HTML tout en préservant les balises de formatage
+    const escapeHtmlButKeepTags = (unsafe: string) => {
+      // D'abord, protéger nos balises personnalisées
+      const protectedText = unsafe
+        .replace(/\[color=([^\]]+)\]/g, 'color=$1')
+        .replace(/\[\/color\]/g, '/color')
+        .replace(/\[size=([^\]]+)\]/g, 'size=$1')
+        .replace(/\[\/size\]/g, '/size');
+      
+      // Puis échapper le HTML
+      const escaped = protectedText
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+      
+      // Enfin, restaurer nos balises personnalisées
+      return escaped
+        .replace(/\uE000color=(.+?)\uE001/g, '[color=$1]')
+        .replace(/\uE000\/color\uE001/g, '[/color]')
+        .replace(/\uE000size=(.+?)\uE001/g, '[size=$1]')
+        .replace(/\uE000\/size\uE001/g, '[/size]');
+    };
     
-    // Fonction pour traiter les balises de couleur de manière récursive
-    const processColorTags = (input: string): string => {
-      // D'abord, traiter les balises de couleur les plus internes
-      const colorRegex = /\[color=([^\]]+)\](.*?)\[\/color\]/g;
+    // Échapper le HTML tout en préservant nos balises
+    let html = escapeHtmlButKeepTags(text);
+    
+    // Fonction pour traiter les balises de manière récursive
+    const processTags = (input: string): string => {
+      // D'abord, traiter les balises les plus internes (couleur et taille)
+      const tagRegex = /\[(\/?(?:color|size)(?:=([^\]]+))?)\](.*?)(?=\[\/?(?:color|size)|$)/gs;
+      
+      let result = '';
+      let lastIndex = 0;
+      let match;
+      
+      while ((match = tagRegex.exec(input)) !== null) {
+        const [fullMatch, tag, value, content] = match;
+        const tagName = tag.startsWith('/') ? tag.substring(1) : tag.split('=')[0];
+        
+        // Ajouter le texte avant la balise
+        result += input.substring(lastIndex, match.index);
+        lastIndex = match.index + fullMatch.length;
+        
+        if (tag.startsWith('/')) {
+          // Balise de fermeture
+          result += `</span>`;
+        } else if (tagName === 'color' && value) {
+          // Balise d'ouverture de couleur
+          result += `<span style="color: ${value}">`;
+        } else if (tagName === 'size' && value) {
+          // Balise d'ouverture de taille
+          result += `<span class="${value}">`;
+        }
+        
+        // Traiter récursivement le contenu
+        if (content) {
+          result += processTags(content);
+        }
+      }
+      
+      // Ajouter le texte restant
+      result += input.substring(lastIndex);
+      
+      return result;
+    };
+    
+    // Fonction pour traiter les tailles de police
+    const processSizeTags = (input: string): string => {
+      const sizeRegex = /\[size=([^\]]+)\](.*?)\[\/size\]/g;
       let result = input;
       let match;
       
-      // Utiliser une boucle while avec lastIndex pour gérer correctement les correspondances
-      while ((match = colorRegex.exec(input)) !== null) {
+      while ((match = sizeRegex.exec(input)) !== null) {
         const fullMatch = match[0];
-        const color = match[1];
+        const size = match[1];
         const content = match[2];
         
-        // Remplacer uniquement la balise la plus externe
-        result = result.replace(fullMatch, `<span style="color: ${color}">${content}</span>`);
+        // Vérifier si la taille est valide
+        const validSizes = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl'];
+        const safeSize = validSizes.includes(size) ? size : 'text-base';
+        
+        result = result.replace(fullMatch, `<span class="${safeSize}">${content}</span>`);
         
         // Réinitialiser lastIndex pour éviter les boucles infinies
-        colorRegex.lastIndex = 0;
+        sizeRegex.lastIndex = 0;
       }
       
       return result;
     };
     
-    // Appliquer le traitement des couleurs
-    html = processColorTags(html);
+    // Appliquer le traitement des balises (couleurs et tailles)
+    html = processTags(html);
     
     // Traiter les autres formats
     html = html
@@ -278,6 +396,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                   </svg>
                 </button>
                 
+                {/* Bouton liste à puces */}
                 <button
                   type="button"
                   className="p-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
@@ -285,13 +404,27 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                     const textarea = document.querySelector('textarea[name="notes"]') as HTMLTextAreaElement;
                     if (!textarea) return;
                     const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const selectedText = notes.substring(start, end);
                     const before = notes.substring(0, start);
-                    const after = notes.substring(start);
-                    setNotes(`${before}- ${after}`);
-                    setTimeout(() => {
-                      textarea.setSelectionRange(start + 2, start + 2);
-                      textarea.focus();
-                    }, 0);
+                    const after = notes.substring(end);
+                    
+                    if (selectedText) {
+                      // Si du texte est sélectionné, ajouter des puces à chaque ligne
+                      const lines = selectedText.split('\n').map(line => `- ${line}`).join('\n');
+                      setNotes(`${before}${lines}${after}`);
+                      setTimeout(() => {
+                        textarea.setSelectionRange(start, start + lines.length);
+                        textarea.focus();
+                      }, 0);
+                    } else {
+                      // Si pas de sélection, ajouter une puce simple
+                      setNotes(`${before}- ${after}`);
+                      setTimeout(() => {
+                        textarea.setSelectionRange(start + 2, start + 2);
+                        textarea.focus();
+                      }, 0);
+                    }
                   }}
                   title="Liste à puces"
                 >
@@ -299,6 +432,37 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                   </svg>
                 </button>
+                
+                {/* Sélecteur de taille de police */}
+                <div className="relative group">
+                  <button
+                    type="button"
+                    className="p-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors flex items-center gap-1"
+                    title="Taille du texte"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6h18M3 12h18m-9 6h9" />
+                    </svg>
+                    <span className="text-xs">Taille</span>
+                  </button>
+                  <div className="absolute z-10 hidden group-hover:block bg-white rounded-md shadow-lg border border-gray-200 p-2 min-w-[120px]">
+                    <div className="text-xs text-gray-500 px-2 py-1">Taille du texte</div>
+                    {fontSizes.map((size) => (
+                      <button
+                        key={size.value}
+                        type="button"
+                        className={`w-full text-left px-2 py-1 text-sm hover:bg-gray-100 rounded ${fontSize === size.value ? 'bg-blue-50 text-blue-600' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          applyFontSize(size.value);
+                          formatText(`[size=${size.value}]`, '[/size]', `Taille ${size.label}`, false, size.value);
+                        }}
+                      >
+                        {size.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
               
               <div className="ml-auto flex items-center space-x-2">
@@ -324,13 +488,23 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                 }}
               />
               
-              {/* Aperçu du formatage en temps réel (optionnel) */}
+              {/* Aperçu du formatage en temps réel */}
               {notes && (
-                <div className="mt-2 p-3 text-sm text-gray-500 bg-gray-50 rounded border border-gray-200">
+                <div className="mt-2 p-3 text-sm bg-white rounded border border-gray-200">
                   <p className="font-medium text-gray-700 mb-1">Aperçu :</p>
-                  <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ 
-                    __html: formatPreview(notes) 
-                  }} />
+                  <div 
+                    className="rich-text-preview min-h-[60px] p-2 bg-white border rounded"
+                    style={{ 
+                      whiteSpace: 'pre-wrap',
+                      lineHeight: '1.5',
+                      fontSize: '0.9375rem',
+                      overflowY: 'auto',
+                      maxHeight: '200px'
+                    }}
+                    dangerouslySetInnerHTML={{ 
+                      __html: formatPreview(notes) 
+                    }} 
+                  />
                 </div>
               )}
             </div>
