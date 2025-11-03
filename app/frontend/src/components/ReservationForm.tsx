@@ -62,37 +62,63 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
     };
   };
   
+  // Fonction pour échapper les caractères HTML
+  const escapeHtml = (unsafe: string) => {
+    return unsafe
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  };
+
   // Fonction pour prévisualiser le formatage
   const formatPreview = (text: string) => {
     if (!text) return '';
     
-    // D'abord, traiter les retours à la ligne et les listes
-    let html = text
-      .replace(/\n-\s+/g, '<br/>• ')
-      .replace(/\n/g, '<br/>');
+    // Échapper d'abord le HTML pour éviter les injections
+    let html = escapeHtml(text);
     
-    // Ensuite, traiter les balises de couleur (en gérant les cas imbriqués)
-    const colorTagRegex = /\[color=([^\]]+)\](.*?)\[\/color\]/gs;
-    let match;
-    
-    // Tant qu'il reste des balises de couleur non traitées
-    while ((match = colorTagRegex.exec(html)) !== null) {
-      const fullMatch = match[0];
-      const color = match[1];
-      const content = match[2];
+    // Fonction pour traiter les balises de couleur de manière récursive
+    const processColorTags = (input: string): string => {
+      // D'abord, traiter les balises de couleur les plus internes
+      const colorRegex = /\[color=([^\]]+)\](.*?)\[\/color\]/g;
+      let result = input;
+      let match;
       
-      // Remplacer uniquement la balise la plus externe
-      html = html.replace(fullMatch, `<span style="color: ${color}">${content}</span>`);
+      // Utiliser une boucle while avec lastIndex pour gérer correctement les correspondances
+      while ((match = colorRegex.exec(input)) !== null) {
+        const fullMatch = match[0];
+        const color = match[1];
+        const content = match[2];
+        
+        // Remplacer uniquement la balise la plus externe
+        result = result.replace(fullMatch, `<span style="color: ${color}">${content}</span>`);
+        
+        // Réinitialiser lastIndex pour éviter les boucles infinies
+        colorRegex.lastIndex = 0;
+      }
       
-      // Réinitialiser l'index de la regex pour éviter les boucles infinies
-      colorTagRegex.lastIndex = 0;
-    }
+      return result;
+    };
     
-    // Enfin, traiter les autres formats (gras, italique, etc.)
+    // Appliquer le traitement des couleurs
+    html = processColorTags(html);
+    
+    // Traiter les autres formats
     html = html
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>') // **gras**
-      .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')       // *gras*
-      .replace(/_([^_]+)_/g, '<em>$1</em>');                // _italique_
+      // Gras avec **texte** ou *texte*
+      .replace(/\*\*([^*]+)\*\*|\*([^*]+)\*/g, (match, p1, p2) => {
+        return `<strong>${p1 || p2}</strong>`;
+      })
+      // Italique avec _texte_
+      .replace(/_([^_]+)_/g, '<em>$1</em>')
+      // Listes à puces
+      .replace(/\n-\s+/g, '<br/>• ')
+      // Retours à la ligne
+      .replace(/\n/g, '<br/>')
+      // Échapper à nouveau pour les caractères spéciaux qui auraient pu être ajoutés
+      .replace(/&amp;(?=#?\w+;)/g, '&');
     
     return html;
   };
