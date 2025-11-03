@@ -116,6 +116,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   
   // Fonction pour échapper les caractères HTML
   const escapeHtml = (unsafe: string) => {
+    if (!unsafe) return '';
     return unsafe
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -128,33 +129,22 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   const formatPreview = (text: string) => {
     if (!text) return '';
     
-    // Fonction pour échapper le HTML tout en préservant les balises de formatage
-    const escapeHtmlButKeepTags = (unsafe: string) => {
-      // D'abord, protéger nos balises personnalisées
-      const protectedText = unsafe
-        .replace(/\[color=([^\]]+)\]/g, 'color=$1')
-        .replace(/\[\/color\]/g, '/color')
-        .replace(/\[size=([^\]]+)\]/g, 'size=$1')
-        .replace(/\[\/size\]/g, '/size');
-      
-      // Puis échapper le HTML
-      const escaped = protectedText
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-      
-      // Enfin, restaurer nos balises personnalisées
-      return escaped
-        .replace(/\uE000color=(.+?)\uE001/g, '[color=$1]')
-        .replace(/\uE000\/color\uE001/g, '[/color]')
-        .replace(/\uE000size=(.+?)\uE001/g, '[size=$1]')
-        .replace(/\uE000\/size\uE001/g, '[/size]');
-    };
+    // Protéger les balises personnalisées avant l'échappement HTML
+    const protectedText = text
+      .replace(/\[color=([^\]]+)\]/g, '\uE000color=$1\uE001')
+      .replace(/\[\/color\]/g, '\uE000/color\uE001')
+      .replace(/\[size=([^\]]+)\]/g, '\uE000size=$1\uE001')
+      .replace(/\[\/size\]/g, '\uE000/size\uE001');
     
-    // Échapper le HTML tout en préservant nos balises
-    let html = escapeHtmlButKeepTags(text);
+    // Échapper le HTML
+    let html = escapeHtml(protectedText);
+    
+    // Restaurer les balises personnalisées après échappement
+    html = html
+      .replace(/\uE000color=(.+?)\uE001/g, '[color=$1]')
+      .replace(/\uE000\/color\uE001/g, '[/color]')
+      .replace(/\uE000size=(.+?)\uE001/g, '[size=$1]')
+      .replace(/\uE000\/size\uE001/g, '[/size]');
     
     // Fonction pour traiter les balises de manière récursive
     const processTags = (input: string): string => {
@@ -180,8 +170,10 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
           // Balise d'ouverture de couleur
           result += `<span style="color: ${value}">`;
         } else if (tagName === 'size' && value) {
-          // Balise d'ouverture de taille
-          result += `<span class="${value}">`;
+          // Vérifier si la taille est valide
+          const validSizes = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl'];
+          const safeSize = validSizes.includes(value) ? value : 'text-base';
+          result += `<span class="${safeSize}">`;
         }
         
         // Traiter récursivement le contenu
@@ -192,30 +184,6 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
       
       // Ajouter le texte restant
       result += input.substring(lastIndex);
-      
-      return result;
-    };
-    
-    // Fonction pour traiter les tailles de police
-    const processSizeTags = (input: string): string => {
-      const sizeRegex = /\[size=([^\]]+)\](.*?)\[\/size\]/g;
-      let result = input;
-      let match;
-      
-      while ((match = sizeRegex.exec(input)) !== null) {
-        const fullMatch = match[0];
-        const size = match[1];
-        const content = match[2];
-        
-        // Vérifier si la taille est valide
-        const validSizes = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl'];
-        const safeSize = validSizes.includes(size) ? size : 'text-base';
-        
-        result = result.replace(fullMatch, `<span class="${safeSize}">${content}</span>`);
-        
-        // Réinitialiser lastIndex pour éviter les boucles infinies
-        sizeRegex.lastIndex = 0;
-      }
       
       return result;
     };
@@ -265,11 +233,25 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   }, [])
 
   function updateItem(idx: number, patch: Partial<ReservationItem>) {
-    setItems(prev => prev.map((it, i) => i===idx ? { ...it, ...patch } : it))
+    setItems(prev => {
+      // Vérifier si la mise à jour est nécessaire
+      const item = prev[idx];
+      const hasChanges = Object.keys(patch).some(key => 
+        item[key as keyof ReservationItem] !== patch[key as keyof ReservationItem]
+      );
+      
+      if (!hasChanges) return prev;
+      
+      return prev.map((it, i) => i === idx ? { ...it, ...patch } : it);
+    });
   }
 
   function addItem() {
-    setItems(prev => [...prev, { type: 'plat', name: '', quantity: 1 }])
+    setItems(prev => [...prev, { 
+      type: 'plat', 
+      name: '', 
+      quantity: 1 
+    }]);
   }
 
   function validate(): boolean {
@@ -297,58 +279,138 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   }
 
   async function submit() {
-    if (submitting) return
-    if (!validate()) return
-    setSubmitting(true)
+    if (submitting) return;
+    if (!validate()) return;
+    setSubmitting(true);
     try {
-      const d = service_date || new Date().toISOString().slice(0,10)
-      let t = arrival_time && arrival_time.length >= 4 ? arrival_time : '00:00'
-      if (/^\d{2}:\d{2}$/.test(t)) t = `${t}:00`
-      const name = (client_name || '').trim() || 'Client'
+      const d = service_date || new Date().toISOString().slice(0, 10);
+      let t = arrival_time && arrival_time.length >= 4 ? arrival_time : '00:00';
+      if (/^\d{2}:\d{2}$/.test(t)) t = `${t}:00`;
+      const name = (client_name || '').trim() || 'Client';
       const validItems = (items || [])
-        .filter(it => (it.name || '').trim() && (it.quantity || 0) > 0)
-        .map(it => ({ type: it.type, name: it.name, quantity: it.quantity }))
-      await onSubmit({ client_name: name, service_date: d, arrival_time: t, pax: Number(pax) || 1, drink_formula, notes, status, items: validItems })
+        .filter((it) => (it.name || '').trim() && (it.quantity || 0) > 0)
+        .map((it) => ({
+          type: it.type,
+          name: it.name,
+          quantity: it.quantity,
+        }));
+      await onSubmit({
+        client_name: name,
+        service_date: d,
+        arrival_time: t,
+        pax: Number(pax) || 1,
+        drink_formula,
+        notes,
+        status,
+        items: validItems,
+      });
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
   }
 
   return (
-    <div className="card">
-      {itemsError && (
-        <div className="mb-3 p-3 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm">{itemsError}</div>
-      )}
+    <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="label flex items-center gap-2"><User className="h-4 w-4"/> Nom du client</label>
-          <input className={`input ${errs.client ? 'border-red-300' : ''}`} value={client_name} onChange={e=>{ setClient(e.target.value); if (errs.client) setErrs({...errs, client: undefined}) }} />
-          {errs.client && <div className="text-xs text-red-600 mt-1">{errs.client}</div>}
+          <label className="label flex items-center gap-2">
+            <User className="h-4 w-4" /> Client
+          </label>
+          <input
+            className="input"
+            value={client_name}
+            onChange={(e) => setClient(e.target.value)}
+            placeholder="Nom du client"
+          />
+          {errs.client && (
+            <div className="text-red-500 text-xs mt-1">{errs.client}</div>
+          )}
         </div>
         <div>
-          <label className="label flex items-center gap-2"><CalendarDays className="h-4 w-4"/> Date du service</label>
-          <input type="date" className={`input ${errs.date ? 'border-red-300' : ''}`} value={service_date} onChange={e=>{ setDate(e.target.value); if (errs.date) setErrs({...errs, date: undefined}) }} />
-          {errs.date && <div className="text-xs text-red-600 mt-1">{errs.date}</div>}
+          <label className="label flex items-center gap-2">
+            <CalendarDays className="h-4 w-4" /> Date
+          </label>
+          <input
+            type="date"
+            className="input"
+            value={service_date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+          {errs.date && (
+            <div className="text-red-500 text-xs mt-1">{errs.date}</div>
+          )}
         </div>
         <div>
-          <label className="label flex items-center gap-2"><Clock className="h-4 w-4"/> Heure d’arrivée</label>
-          <input type="time" className={`input ${errs.time ? 'border-red-300' : ''}`} value={arrival_time} onChange={e=>{ setTime(e.target.value); if (errs.time) setErrs({...errs, time: undefined}) }} />
-          {errs.time && <div className="text-xs text-red-600 mt-1">{errs.time}</div>}
+          <label className="label flex items-center gap-2">
+            <Clock className="h-4 w-4" /> Heure d'arrivée
+          </label>
+          <input
+            type="time"
+            className="input"
+            value={arrival_time}
+            onChange={(e) => setTime(e.target.value)}
+            placeholder="HH:MM"
+          />
+          {errs.time && (
+            <div className="text-red-500 text-xs mt-1">{errs.time}</div>
+          )}
         </div>
         <div>
-          <label className="label flex items-center gap-2"><Users className="h-4 w-4"/> Nombre de couverts</label>
-          <input type="number" min={1} className={`input ${errs.pax ? 'border-red-300' : ''}`} value={pax} onChange={e=>{ setPax(Number(e.target.value)); if (errs.pax) setErrs({...errs, pax: undefined}) }} />
-          {errs.pax && <div className="text-xs text-red-600 mt-1">{errs.pax}</div>}
+          <label className="label flex items-center gap-2">
+            <Users className="h-4 w-4" /> Nombre de couverts
+          </label>
+          <div className="flex">
+            <button
+              type="button"
+              className="px-3 bg-gray-100 text-gray-600 rounded-l border border-r-0"
+              onClick={() => setPax((p) => Math.max(1, (p || 1) - 1))}
+            >
+              -
+            </button>
+            <input
+              type="number"
+              min="1"
+              className="input rounded-none border-l-0 border-r-0 w-16 text-center"
+              value={pax}
+              onChange={(e) => setPax(Number(e.target.value))}
+            />
+            <button
+              type="button"
+              className="px-3 bg-gray-100 text-gray-600 rounded-r border border-l-0"
+              onClick={() => setPax((p) => (p || 1) + 1)}
+            >
+              +
+            </button>
+          </div>
+          {errs.pax && (
+            <div className="text-red-500 text-xs mt-1">{errs.pax}</div>
+          )}
         </div>
         <div>
-          <label className="label flex items-center gap-2"><Wine className="h-4 w-4"/> Formule boisson</label>
-          <select className="input" value={drink_formula} onChange={e=>setDrink(e.target.value)}>
-            {DRINKS.map(d => <option key={d} value={d}>{d}</option>)}
+          <label className="label flex items-center gap-2">
+            <Wine className="h-4 w-4" /> Formule boisson
+          </label>
+          <select
+            className="input"
+            value={drink_formula}
+            onChange={(e) => setDrink(e.target.value)}
+          >
+            {DRINKS.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
           </select>
         </div>
         <div>
           <label className="label">Statut</label>
-          <select className="input" value={status} onChange={e=>setStatus(e.target.value as Reservation['status'])}>
+          <select
+            className="input"
+            value={status}
+            onChange={(e) =>
+              setStatus(e.target.value as Reservation['status'])
+            }
+          >
             <option value="draft">Brouillon</option>
             <option value="confirmed">Confirmée</option>
             <option value="printed">Imprimée</option>
@@ -474,32 +536,27 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
             
             {/* Zone de texte */}
             <div className="relative">
-              <textarea
-                name="notes"
-                className="input min-h-[120px] w-full font-sans text-gray-800 border-t-0 rounded-t-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="Saisissez vos notes ici..."
-                style={{ 
-                  whiteSpace: 'pre-wrap',
-                  lineHeight: '1.5',
-                  padding: '1rem',
-                  fontSize: '0.9375rem'
-                }}
-              />
+              <div className="rich-text-editor-container border rounded-md overflow-hidden">
+                <textarea
+                  name="notes"
+                  className="rich-text-editor w-full p-4 font-sans text-gray-800 focus:outline-none"
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  placeholder="Saisissez vos notes ici..."
+                  rows={6}
+                />
+              </div>
               
               {/* Aperçu du formatage en temps réel */}
               {notes && (
-                <div className="mt-2 p-3 text-sm bg-white rounded border border-gray-200">
-                  <p className="font-medium text-gray-700 mb-1">Aperçu :</p>
+                <div className="mt-4">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Aperçu :</p>
                   <div 
-                    className="rich-text-preview min-h-[60px] p-2 bg-white border rounded"
+                    className="rich-text-preview p-4 bg-white border border-gray-200 rounded-md"
                     style={{ 
-                      whiteSpace: 'pre-wrap',
-                      lineHeight: '1.5',
-                      fontSize: '0.9375rem',
-                      overflowY: 'auto',
-                      maxHeight: '200px'
+                      minHeight: '80px',
+                      maxHeight: '200px',
+                      overflowY: 'auto'
                     }}
                     dangerouslySetInnerHTML={{ 
                       __html: formatPreview(notes) 
@@ -510,9 +567,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="mt-6">
+        
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-primary">Plats</h3>
           <button className="btn" onClick={addItem}>+ Ajouter un plat</button>
@@ -539,7 +594,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
         <button className="btn disabled:opacity-60" disabled={submitting} onClick={submit}>{submitting ? 'Sauvegarde…' : 'Sauvegarder'}</button>
       </div>
     </div>
-  )
+  );
 }
 
 function ItemRow({ item, onChange, open, onFocus, onClose }: { item: ReservationItem, onChange: (p: Partial<ReservationItem>)=>void, open: boolean, onFocus: ()=>void, onClose: ()=>void }) {
