@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #693381;
+  --primary-light: #9361a6;
+}
+
+.btn {
+  @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white hover:bg-[#5a2d70] transition shadow-soft;
+}
+.card {
+  @apply bg-white rounded-xl shadow-soft p-4;
+}
+.input {
+  @apply border rounded-md px-3 py-2 w-full;
+}
+.label {
+  @apply text-sm font-medium text-gray-700;
+}
