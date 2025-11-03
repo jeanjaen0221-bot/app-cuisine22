@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { api } from '../lib/api'
-import { Reservation, ReservationCreate, ReservationItem } from '../types'
-import { User, CalendarDays, Clock, Users, Wine, StickyNote } from 'lucide-react'
+import * as React from 'react';
+import { useState, useEffect } from 'react';
+import { api } from '../lib/api';
+import { Reservation, ReservationCreate, ReservationItem } from '../types';
+import { User, CalendarDays, Clock, Users, Wine, StickyNote, Utensils, Trash2, Plus, Minus, X } from 'lucide-react';
 
 const DRINKS = [
   'Sans alcool', 'Vin au verre', 'Accords mets & vins', 'Soft + Café', 'Eau + Café'
@@ -25,6 +26,58 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [errs, setErrs] = useState<{client?:string,date?:string,pax?:string,time?:string}>({})
   const [itemsError, setItemsError] = useState<string | null>(null)
+
+  // Fonction pour formater le texte sélectionné
+  const formatText = (prefix: string, suffix: string, title: string, showColorPicker = false) => {
+    return (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      const textarea = document.querySelector('textarea[name="notes"]') as HTMLTextAreaElement;
+      if (!textarea) return;
+      
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selectedText = notes.substring(start, end);
+      const before = notes.substring(0, start);
+      const after = notes.substring(end);
+      
+      if (showColorPicker) {
+        const colorPicker = document.createElement('input');
+        colorPicker.type = 'color';
+        colorPicker.onchange = (e) => {
+          const color = (e.target as HTMLInputElement).value;
+          setNotes(`${before}[color=${color}]${selectedText}[/color]${after}`);
+          setTimeout(() => {
+            textarea.focus();
+            textarea.setSelectionRange(start, end + 15 + color.length);
+          }, 0);
+        };
+        colorPicker.click();
+      } else {
+        setNotes(`${before}${prefix}${selectedText}${suffix}${after}`);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start + prefix.length, end + prefix.length);
+        }, 0);
+      }
+    };
+  };
+  
+  // Fonction pour prévisualiser le formatage
+  const formatPreview = (text: string) => {
+    if (!text) return '';
+    
+    // Remplacer les marqueurs de formatage par du HTML
+    let html = text
+      .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')
+      .replace(/_([^_]+)_/g, '<em>$1</em>')
+      .replace(/\[color=([^\]]+)\](.*?)\[\/color\]/g, '<span style="color: $1">$2</span>')
+      .replace(/\n-\s+/g, '<br/>• ');
+    
+    // Ajouter des sauts de ligne pour les retours à la ligne simples
+    html = html.replace(/\n/g, '<br/>');
+    
+    return html;
+  };
 
   // Sync when initial changes (e.g., when loading an existing reservation)
   useEffect(() => {
@@ -140,130 +193,103 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
           </select>
         </div>
         <div className="md:col-span-2">
-          <div>
-            <label className="label flex items-center gap-2"><StickyNote className="h-4 w-4"/> Notes cuisine</label>
-            <div className="flex gap-1 mb-1 flex-wrap">
-              <button 
-                type="button" 
-                className="px-2 py-1 text-sm border rounded hover:bg-gray-100"
-                onClick={() => {
-                  const textarea = document.querySelector('textarea[name="notes"]') as HTMLTextAreaElement;
-                  if (!textarea) return;
-                  const start = textarea.selectionStart;
-                  const end = textarea.selectionEnd;
-                  const selectedText = notes.substring(start, end);
-                  const before = notes.substring(0, start);
-                  const after = notes.substring(end);
-                  setNotes(`${before}*${selectedText}*${after}`);
-                  // Replace the selection with the formatted text
-                  setTimeout(() => {
-                    textarea.setSelectionRange(start, end + 2);
-                    textarea.focus();
-                  }, 0);
-                }}
-                title="Gras"
-              >
-                <strong>B</strong>
-              </button>
-              <button 
-                type="button" 
-                className="px-2 py-1 text-sm border rounded hover:bg-gray-100 italic"
-                onClick={() => {
-                  const textarea = document.querySelector('textarea[name="notes"]') as HTMLTextAreaElement;
-                  if (!textarea) return;
-                  const start = textarea.selectionStart;
-                  const end = textarea.selectionEnd;
-                  const selectedText = notes.substring(start, end);
-                  const before = notes.substring(0, start);
-                  const after = notes.substring(end);
-                  setNotes(`${before}_${selectedText}_${after}`);
-                  // Replace the selection with the formatted text
-                  setTimeout(() => {
-                    textarea.setSelectionRange(start, end + 2);
-                    textarea.focus();
-                  }, 0);
-                }}
-                title="Italique"
-              >
-                I
-              </button>
-              <div className="relative inline-block">
-                <button 
-                  type="button" 
-                  className="px-2 py-1 text-sm border rounded hover:bg-gray-100 flex items-center gap-1"
-                  title="Couleur du texte"
-                  onClick={(e) => {
-                    const colorPicker = document.getElementById('color-picker') as HTMLInputElement;
-                    if (colorPicker) colorPicker.click();
-                  }}
+          <div className="space-y-2">
+            <label className="label flex items-center gap-2">
+              <StickyNote className="h-4 w-4"/> Notes cuisine
+            </label>
+            
+            {/* Barre d'outils moderne */}
+            <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-t-lg border border-b-0 border-gray-200">
+              <div className="flex items-center divide-x divide-gray-200">
+                <button
+                  type="button"
+                  className="p-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                  onClick={formatText('*', '*', 'Gras')}
+                  title="Gras (Ctrl+B)"
                 >
-                  <span>A</span>
-                  <span className="text-xs">▼</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                  </svg>
                 </button>
-                <input 
-                  type="color" 
-                  id="color-picker" 
-                  className="absolute opacity-0 w-0 h-0" 
-                  onChange={(e) => {
-                    const color = e.target.value;
+                
+                <button
+                  type="button"
+                  className="p-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                  onClick={formatText('_', '_', 'Italique')}
+                  title="Italique (Ctrl+I)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  </svg>
+                </button>
+                
+                <button
+                  type="button"
+                  className="p-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                  onClick={formatText('[color=#000000]', '[/color]', 'Couleur du texte', true)}
+                  title="Couleur du texte"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.486M7 17h.01" />
+                  </svg>
+                </button>
+                
+                <button
+                  type="button"
+                  className="p-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                  onClick={() => {
                     const textarea = document.querySelector('textarea[name="notes"]') as HTMLTextAreaElement;
                     if (!textarea) return;
                     const start = textarea.selectionStart;
-                    const end = textarea.selectionEnd;
-                    const selectedText = notes.substring(start, end);
                     const before = notes.substring(0, start);
-                    const after = notes.substring(end);
-                    setNotes(`${before}[color=${color}]${selectedText}[/color]${after}`);
-                    // Replace the selection with the formatted text
+                    const after = notes.substring(start);
+                    setNotes(`${before}- ${after}`);
                     setTimeout(() => {
-                      textarea.setSelectionRange(start, end + 15 + color.length);
+                      textarea.setSelectionRange(start + 2, start + 2);
                       textarea.focus();
                     }, 0);
                   }}
-                />
+                  title="Liste à puces"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  </svg>
+                </button>
               </div>
-              <button 
-                type="button" 
-                className="px-2 py-1 text-sm border rounded hover:bg-gray-100"
-                onClick={() => {
-                  const textarea = document.querySelector('textarea[name="notes"]') as HTMLTextAreaElement;
-                  if (!textarea) return;
-                  const start = textarea.selectionStart;
-                  const end = textarea.selectionEnd;
-                  const selectedText = notes.substring(start, end);
-                  const before = notes.substring(0, start);
-                  const after = notes.substring(end);
-                  setNotes(`${before}- ${selectedText}\n${after}`);
-                  // Place cursor at the end of the new list item
-                  setTimeout(() => {
-                    const newPosition = start + 2 + selectedText.length;
-                    textarea.setSelectionRange(newPosition, newPosition);
-                    textarea.focus();
-                  }, 0);
-                }}
-                title="Liste à puces"
-              >
-                •
-              </button>
+              
+              <div className="ml-auto flex items-center space-x-2">
+                <span className="text-sm text-gray-500">
+                  {notes.length} caractères
+                </span>
+              </div>
             </div>
-            <textarea 
-              name="notes"
-              className="input min-h-[100px] w-full font-mono" 
-              value={notes} 
-              onChange={e => setNotes(e.target.value)} 
-              placeholder="Entrez vos notes ici..."
-            />
-            <style dangerouslySetInnerHTML={{
-              __html: `
-                textarea[name="notes"] {
-                  white-space: pre-wrap;
-                }
-                textarea[name="notes"]::placeholder {
-                  color: #9CA3AF;
-                  opacity: 1;
-                }
-              `
-            }} />
+            
+            {/* Zone de texte */}
+            <div className="relative">
+              <textarea
+                name="notes"
+                className="input min-h-[120px] w-full font-sans text-gray-800 border-t-0 rounded-t-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                placeholder="Saisissez vos notes ici..."
+                style={{ 
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: '1.5',
+                  padding: '1rem',
+                  fontSize: '0.9375rem'
+                }}
+              />
+              
+              {/* Aperçu du formatage en temps réel (optionnel) */}
+              {notes && (
+                <div className="mt-2 p-3 text-sm text-gray-500 bg-gray-50 rounded border border-gray-200">
+                  <p className="font-medium text-gray-700 mb-1">Aperçu :</p>
+                  <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ 
+                    __html: formatPreview(notes) 
+                  }} />
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
