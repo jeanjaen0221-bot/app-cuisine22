@@ -13,6 +13,7 @@ from .models import Reservation, ReservationItem
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_DIR = os.path.abspath(os.path.join(BASE_DIR, "../generated_pdfs"))
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 os.makedirs(PDF_DIR, exist_ok=True)
 
 
@@ -36,6 +37,27 @@ def _split_items(items: List[ReservationItem]):
 
 def _draw_final_stamp(c: canvas.Canvas, page_width: float):
     c.saveState()
+    # Try PNG first
+    try:
+        img_path = os.path.join(ASSETS_DIR, "final_stamp.png")
+        if os.path.isfile(img_path):
+            # Target width, keep aspect
+            target_w = 160
+            from PIL import Image as PILImage  # pillow is in requirements
+            with PILImage.open(img_path) as im:
+                w, h = im.size
+                ratio = target_w / float(w)
+                target_h = h * ratio
+            x = (page_width - target_w) / 2
+            y = 18  # bottom padding
+            c.drawImage(img_path, x, y, width=target_w, height=target_h, mask='auto', preserveAspectRatio=True, anchor='sw')
+            c.restoreState()
+            return
+    except Exception:
+        # Fallback to text below
+        pass
+
+    # Fallback: simple red text
     c.setStrokeColor(colors.HexColor('#EF4444'))
     c.setFillColor(colors.HexColor('#EF4444'))
     c.setFont("Helvetica-Bold", 12)
