@@ -138,84 +138,33 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   // Fonction pour prévisualiser le formatage
   const formatPreview = (text: string) => {
     if (!text) return '';
-    
-    // Protéger les balises personnalisées avant l'échappement HTML
-    const protectedText = text
-      .replace(/\[color=([^\]]+)\]/g, '\uE000color=$1\uE001')
-      .replace(/\[\/color\]/g, '\uE000/color\uE001')
-      .replace(/\[size=([^\]]+)\]/g, '\uE000size=$1\uE001')
-      .replace(/\[\/size\]/g, '\uE000/size\uE001');
-    
-    // Échapper le HTML
-    let html = escapeHtml(protectedText);
-    
-    // Restaurer les balises personnalisées après échappement
+    // Échapper HTML pour éviter les injections
+    let html = escapeHtml(text);
+    // Remplacements itératifs pour supporter l'imbrication simple
+    // Couleur
+    let prev: string;
+    do {
+      prev = html;
+      html = html.replace(/\[color=([^\]]+)\]([\s\S]*?)\[\/color\]/g, (_m, color, inner) => {
+        return `<span style="color:${color}">${inner}</span>`;
+      });
+    } while (html !== prev);
+    // Taille
+    const validSizes = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl'];
+    do {
+      prev = html;
+      html = html.replace(/\[size=([^\]]+)\]([\s\S]*?)\[\/size\]/g, (_m, size, inner) => {
+        const safe = validSizes.includes(size) ? size : 'text-base';
+        return `<span class="${safe}">${inner}</span>`;
+      });
+    } while (html !== prev);
+    // Autres formats
     html = html
-      .replace(/\uE000color=(.+?)\uE001/g, '[color=$1]')
-      .replace(/\uE000\/color\uE001/g, '[/color]')
-      .replace(/\uE000size=(.+?)\uE001/g, '[size=$1]')
-      .replace(/\uE000\/size\uE001/g, '[/size]');
-    
-    // Fonction pour traiter les balises de manière récursive
-    const processTags = (input: string): string => {
-      // D'abord, traiter les balises les plus internes (couleur et taille)
-      const tagRegex = /\[(\/?(?:color|size)(?:=([^\]]+))?)\](.*?)(?=\[\/?(?:color|size)|$)/gs;
-      
-      let result = '';
-      let lastIndex = 0;
-      let match;
-      
-      while ((match = tagRegex.exec(input)) !== null) {
-        const [fullMatch, tag, value, content] = match;
-        const tagName = tag.startsWith('/') ? tag.substring(1) : tag.split('=')[0];
-        
-        // Ajouter le texte avant la balise
-        result += input.substring(lastIndex, match.index);
-        lastIndex = match.index + fullMatch.length;
-        
-        if (tag.startsWith('/')) {
-          // Balise de fermeture
-          result += `</span>`;
-        } else if (tagName === 'color' && value) {
-          // Balise d'ouverture de couleur
-          result += `<span style="color: ${value}">`;
-        } else if (tagName === 'size' && value) {
-          // Vérifier si la taille est valide
-          const validSizes = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl'];
-          const safeSize = validSizes.includes(value) ? value : 'text-base';
-          result += `<span class="${safeSize}">`;
-        }
-        
-        // Traiter récursivement le contenu
-        if (content) {
-          result += processTags(content);
-        }
-      }
-      
-      // Ajouter le texte restant
-      result += input.substring(lastIndex);
-      
-      return result;
-    };
-    
-    // Appliquer le traitement des balises (couleurs et tailles)
-    html = processTags(html);
-    
-    // Traiter les autres formats
-    html = html
-      // Gras avec **texte** ou *texte*
-      .replace(/\*\*([^*]+)\*\*|\*([^*]+)\*/g, (match, p1, p2) => {
-        return `<strong>${p1 || p2}</strong>`;
-      })
-      // Italique avec _texte_
+      .replace(/\*\*([^*]+)\*\*|\*([^*]+)\*/g, (_m, p1, p2) => `<strong>${p1 || p2}</strong>`)
       .replace(/_([^_]+)_/g, '<em>$1</em>')
-      // Listes à puces
       .replace(/\n-\s+/g, '<br/>• ')
-      // Retours à la ligne
       .replace(/\n/g, '<br/>')
-      // Échapper à nouveau pour les caractères spéciaux qui auraient pu être ajoutés
       .replace(/&amp;(?=#?\w+;)/g, '&');
-    
     return html;
   };
 
