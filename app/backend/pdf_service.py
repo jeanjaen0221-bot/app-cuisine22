@@ -35,11 +35,30 @@ def _split_items(items: List[ReservationItem]):
     return entrees, plats, desserts
 
 
+def _find_stamp_path() -> str | None:
+    # 1) Explicit path via ENV
+    env_path = os.getenv("FINAL_STAMP_PATH")
+    if env_path and os.path.isfile(env_path):
+        return env_path
+    # 2) Default filename in assets/
+    candidate = os.path.join(ASSETS_DIR, "final_stamp.png")
+    if os.path.isfile(candidate):
+        return candidate
+    # 3) Any png in assets/ (first match)
+    try:
+        for name in os.listdir(ASSETS_DIR):
+            if name.lower().endswith(".png"):
+                return os.path.join(ASSETS_DIR, name)
+    except Exception:
+        pass
+    return None
+
+
 def _draw_final_stamp(c: canvas.Canvas, page_width: float):
     c.saveState()
     # Try PNG first
     try:
-        img_path = os.path.join(ASSETS_DIR, "final_stamp.png")
+        img_path = _find_stamp_path()
         if os.path.isfile(img_path):
             # Target width, keep aspect
             target_w = 160
@@ -53,9 +72,12 @@ def _draw_final_stamp(c: canvas.Canvas, page_width: float):
             c.drawImage(img_path, x, y, width=target_w, height=target_h, mask='auto', preserveAspectRatio=True, anchor='sw')
             c.restoreState()
             return
-    except Exception:
+    except Exception as e:
         # Fallback to text below
-        pass
+        try:
+            print(f"PDF: final stamp PNG not used ({e}). Falling back to text.")
+        except Exception:
+            pass
 
     # Fallback: simple red text
     c.setStrokeColor(colors.HexColor('#EF4444'))
