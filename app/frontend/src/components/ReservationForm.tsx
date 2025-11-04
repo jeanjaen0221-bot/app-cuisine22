@@ -411,6 +411,16 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                   <option value="confirmed">Confirmée</option>
                   <option value="printed">Imprimée</option>
                 </select>
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    id="finalVersionInline"
+                    type="checkbox"
+                    className="form-check-input"
+                    checked={finalVersion}
+                    onChange={e => setFinalVersion(e.target.checked)}
+                  />
+                  <label htmlFor="finalVersionInline" className="form-check-label text-sm">Tampon PDF: Version finale</label>
+                </div>
               </div>
               <div className="form-group">
                 <label className="label">Version finale</label>
