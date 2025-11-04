@@ -856,15 +856,9 @@ body {
 .tracking-widest { letter-spacing: 0.1em; }
 
 /* Styles pour les balises de formatage dans toute l'application */
-[style*="color:"],
 [class*="text-"] {
   display: inline;
   line-height: inherit;
-}
-
-/* Style pour les balises de couleur */
-[style*="color:"] {
-  color: inherit !important; /* La couleur sera écrasée par le style inline */
 }
 
 /* Style pour l'aperçu du texte formaté */
@@ -896,10 +890,7 @@ body {
   margin: 0.25rem 0;
 }
 
-/* Style pour les listes dans le texte formaté */
-.rich-text-preview [style*="color:"] {
-  color: inherit; /* Hériter de la couleur du parent */
-}
+/* (supprimé) ne pas écraser les couleurs inline dans l'aperçu */
 
 /* Styles pour les tailles de texte */
 .text-xs { 
