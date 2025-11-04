@@ -687,4 +687,4 @@ const ItemRow = React.memo(function ItemRow({
       />
     </div>
   );
-}
+});
