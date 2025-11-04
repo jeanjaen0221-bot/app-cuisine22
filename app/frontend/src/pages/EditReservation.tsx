@@ -28,6 +28,7 @@ export default function EditReservation() {
         drink_formula: 'Sans alcool',
         notes: '',
         status: 'draft',
+        final_version: false,
         created_at: '' as any,
         updated_at: '' as any,
         items: []
