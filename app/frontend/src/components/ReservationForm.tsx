@@ -323,7 +323,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="container py-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">
           {initial?.id ? 'Modifier la réservation' : 'Nouvelle réservation'}
@@ -340,7 +340,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-8">
         <div className="card">
           <div className="card-header">
             <h2 className="text-lg font-medium">Informations générales</h2>
@@ -472,7 +472,9 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
             <div className="form-group">
               <div className="flex justify-between items-center mb-2">
                 <label className="label">Notes</label>
-                <div className="flex items-center space-x-1">
+              </div>
+              <div className="rich-text-toolbar">
+                <div className="rich-text-toolbar-group">
                   <button 
                     type="button" 
                     className="btn btn-sm btn-outline"
@@ -500,18 +502,18 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                   >
                     <Palette className="w-4 h-4" />
                   </button>
-                  <select 
-                    className="input input-sm w-auto" 
-                    value={fontSize} 
-                    onChange={e => applyFontSize(e.target.value)}
-                    title="Taille de police"
-                    aria-label="Taille de police"
-                  >
-                    {fontSizes.map(size => (
-                      <option key={size.value} value={size.value}>{size.label}</option>
-                    ))}
-                  </select>
                 </div>
+                <select 
+                  className="input input-sm w-auto" 
+                  value={fontSize} 
+                  onChange={e => applyFontSize(e.target.value)}
+                  title="Taille de police"
+                  aria-label="Taille de police"
+                >
+                  {fontSizes.map(size => (
+                    <option key={size.value} value={size.value}>{size.label}</option>
+                  ))}
+                </select>
               </div>
               <div className="relative">
                 <div className="rich-text-editor-container border rounded-md overflow-hidden">
@@ -568,11 +570,12 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
             </div>
           ))}
         </div>
+        <div className="card-footer">
+          <button type="submit" className="btn btn-primary disabled:opacity-60" disabled={submitting}>
+            {submitting ? 'Sauvegarde…' : 'Sauvegarder'}
+          </button>
+        </div>
       </form>
-
-      <div className="mt-6 flex gap-2">
-        <button className="btn disabled:opacity-60" disabled={submitting} onClick={submit}>{submitting ? 'Sauvegarde…' : 'Sauvegarder'}</button>
-      </div>
     </div>
   );
 }
