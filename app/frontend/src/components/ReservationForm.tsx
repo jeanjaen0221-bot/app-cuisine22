@@ -1,33 +1,17 @@
 import * as React from 'react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { Reservation, ReservationCreate, ReservationItem } from '../types';
 import { 
   User, 
   CalendarDays, 
   Clock, 
-  Users, 
   Wine, 
-  StickyNote, 
-  Utensils, 
-  Trash2, 
   Plus, 
   Minus, 
-  X, 
   Bold, 
   Italic, 
-  Underline, 
-  AlignLeft, 
-  AlignCenter, 
-  AlignRight, 
-  List, 
-  ListOrdered, 
-  Type,
-  Palette,
-  Save,
-  ArrowLeft,
-  Check,
-  X as XIcon
+  Palette
 } from 'lucide-react';
 
 const DRINKS = [
@@ -267,8 +251,11 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   };
 
   const addItem = () => {
-    setItems(prev => [...prev, { name: '', type: 'plat', quantity: 1 }]);
-    setOpenRow(items.length);
+    setItems(prev => {
+      const next = [...prev, { name: '', type: 'plat', quantity: 1 }];
+      setOpenRow(next.length - 1);
+      return next;
+    });
   };
 
   function validate(): boolean {
@@ -466,7 +453,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                 <select 
                   className="input" 
                   value={status} 
-                  onChange={e => setStatus(e.target.value as any)}
+                  onChange={e => setStatus(e.target.value as Reservation['status'])}
                 >
                   <option value="draft">Brouillon</option>
                   <option value="confirmed">Confirmée</option>
@@ -560,7 +547,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
 
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-primary">Plats</h3>
-          <button className="btn" onClick={addItem}>+ Ajouter un plat</button>
+          <button type="button" className="btn" onClick={addItem}>+ Ajouter un plat</button>
         </div>
         {itemsError && (
           <div className="mt-2 text-xs text-red-600">{itemsError}</div>

@@ -26,6 +26,8 @@
   --bg-primary: #FFFFFF;
   --bg-secondary: #F8F9FA;
   --bg-tertiary: #E9ECEF;
+  /* Couleur blanche */
+  --white: #FFFFFF;
   
   /* Bordures */
   --border-color: #E9ECEF;
@@ -751,6 +753,7 @@ body {
 .font-normal { font-weight: 400; }
 .font-medium { font-weight: 500; }
 .font-semibold { font-weight: 600; }
+.font-medium { font-weight: 500; }
 .font-bold { font-weight: 700; }
 
 /* Alignement du texte */
@@ -761,9 +764,16 @@ body {
 
 /* Couleurs de texte */
 .text-primary { color: var(--primary); }
+.text-gray-900 { color: var(--gray-900); }
+.text-gray-800 { color: var(--gray-800); }
+.text-gray-700 { color: var(--gray-700); }
+.text-gray-600 { color: var(--gray-600); }
+.text-gray-500 { color: var(--gray-500); }
 .text-secondary { color: var(--gray-600); }
 .text-success { color: var(--success); }
 .text-danger { color: var(--danger); }
+.text-red-500 { color: #EF4444; }
+.text-red-600 { color: #DC2626; }
 .text-warning { color: var(--warning); }
 .text-info { color: var(--info); }
 .text-muted { color: var(--gray-500); }
@@ -949,4 +959,73 @@ body {
 .text-lg {
   font-size: 1.125rem;
   line-height: 1.75rem;
+}
+
+/* ===== Utilitaires supplémentaires pour ReservationForm ===== */
+/* Spacing */
+.space-y-6 > * + * { margin-top: 1.5rem; }
+.space-y-2 > * + * { margin-top: 0.5rem; }
+.mt-1 { margin-top: 0.25rem; }
+.mt-2 { margin-top: 0.5rem; }
+.mt-3 { margin-top: 0.75rem; }
+.px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+.py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+.p-4 { padding: 1rem; }
+.mt-4 { margin-top: 1rem; }
+.space-x-1 > * + * { margin-left: 0.25rem; }
+.space-x-2 > * + * { margin-left: 0.5rem; }
+
+/* Grid */
+.grid { display: grid; }
+.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+.grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.col-span-2 { grid-column: span 2 / span 2; }
+.col-span-8 { grid-column: span 8 / span 8; }
+.gap-6 { gap: 1.5rem; }
+
+/* Responsive (md:) */
+@media (min-width: 768px) {
+  .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Width/Height utilities */
+.w-full { width: 100%; }
+.w-auto { width: auto; }
+.w-4 { width: 1rem; }
+.h-4 { height: 1rem; }
+
+/* Positioning */
+.relative { position: relative; }
+.absolute { position: absolute; }
+.z-10 { z-index: 10; }
+.overflow-auto { overflow: auto; }
+.cursor-pointer { cursor: pointer; }
+.max-h-48 { max-height: 12rem; }
+
+/* Borders & radius */
+.rounded-none { border-radius: 0; }
+.rounded-l-none { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.rounded-r-none { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.rounded-full { border-radius: 9999px; }
+.rounded-md { border-radius: var(--border-radius); }
+.border-l-0 { border-left: 0; }
+.border-r-0 { border-right: 0; }
+
+/* Colors (badges-like used inline) */
+.bg-green-100 { background-color: #DCFCE7; }
+.text-green-800 { color: #065F46; }
+.bg-blue-100 { background-color: #DBEAFE; }
+.text-blue-800 { color: #1E40AF; }
+.bg-gray-100 { background-color: var(--gray-100); }
+.hover\:bg-gray-100:hover { background-color: var(--gray-100); }
+.text-gray-800 { color: var(--gray-800); }
+
+/* Disabled utility */
+.disabled\:opacity-60:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Inputs size variants */
+.input-sm {
+  padding: 0.375rem 0.625rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
 }
