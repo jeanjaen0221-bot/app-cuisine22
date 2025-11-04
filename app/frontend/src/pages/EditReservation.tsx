@@ -71,21 +71,26 @@ export default function EditReservation() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="container space-y-4">
       {error && (
         <div className="p-3 rounded-md bg-red-50 border border-red-200 text-red-700">{error}</div>
       )}
-      <div className="flex gap-2">
-        <button className="btn" onClick={()=>navigate(-1)}>Retour</button>
-        {id && id !== 'new' && (
-          <>
-            <button className="btn" onClick={duplicate}>Dupliquer fiche</button>
-            <button className="btn" onClick={()=>fileDownload(`/api/reservations/${id}/pdf`)}>Exporter en PDF</button>
-          </>
-        )}
+      <div className="card">
+        <div className="card-header">
+          <h2 className="text-lg font-medium">{id && id !== 'new' ? 'Modifier la réservation' : 'Nouvelle réservation'}</h2>
+          <div className="flex items-center gap-2">
+            <button className="btn" onClick={()=>navigate(-1)}>Retour</button>
+            {id && id !== 'new' && (
+              <>
+                <button className="btn" onClick={duplicate}>Dupliquer</button>
+                <button className="btn" onClick={()=>fileDownload(`/api/reservations/${id}/pdf`)}>PDF</button>
+              </>
+            )}
+          </div>
+        </div>
       </div>
       {(isExisting && (loading || !data)) ? (
-        <div className="text-gray-600">Chargement…</div>
+        <div className="card"><div className="card-body text-gray-600">Chargement…</div></div>
       ) : (
         <div key={(data && (data as any).id) || (!isExisting ? 'new' : id)}>
           <ReservationForm initial={data || undefined} onSubmit={save} />

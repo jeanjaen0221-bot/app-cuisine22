@@ -329,10 +329,10 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
           {initial?.id ? 'Modifier la réservation' : 'Nouvelle réservation'}
         </h1>
         <div className="flex items-center space-x-2">
-          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-            status === 'confirmed' ? 'bg-green-100 text-green-800' :
-            status === 'printed' ? 'bg-blue-100 text-blue-800' :
-            'bg-gray-100 text-gray-800'
+          <span className={`status-badge ${
+            status === 'confirmed' ? 'is-confirmed' :
+            status === 'printed' ? 'is-printed' :
+            'is-draft'
           }`}>
             {status === 'confirmed' ? 'Confirmée' : 
              status === 'printed' ? 'Imprimée' : 'Brouillon'}

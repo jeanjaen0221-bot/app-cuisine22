@@ -44,89 +44,70 @@ export default function ReservationList() {
   }, [q, date])
 
   return (
-    <div className="card">
-      <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
-        <div className="flex gap-2 items-center">
-          <div className="relative">
-            <Search className="h-4 w-4 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
-            <input className="input pl-8" placeholder="Rechercher un client" value={q} onChange={e=>setQ(e.target.value)} />
+    <div className="container space-y-6">
+      {/* Barre de filtres */}
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <input className="input" placeholder="Rechercher un client" value={q} onChange={e=>setQ(e.target.value)} />
+            <input type="date" className="input" value={date} onChange={e=>setDate(e.target.value)} />
+            <button className="btn" onClick={load}><Filter className="h-4 w-4"/> Filtrer</button>
           </div>
-          <input type="date" className="input" value={date} onChange={e=>setDate(e.target.value)} />
-          <button className="btn flex items-center gap-2" onClick={load}><Filter className="h-4 w-4"/> Filtrer</button>
-        </div>
-        <div className="flex gap-2">
-          <Link to={date ? `/reservation/new?date=${encodeURIComponent(date)}` : "/reservation/new"} className="btn flex items-center gap-2"><Plus className="h-4 w-4"/> Nouvelle fiche</Link>
-          <button className="btn flex items-center gap-2" onClick={() => {
-            if (!date) { alert('Sélectionnez une date'); return }
-            fileDownload(`/api/reservations/day/${date}/pdf`)
-          }}><Printer className="h-4 w-4"/> Export PDF du jour</button>
+          <div className="flex items-center gap-2">
+            <Link to={date ? `/reservation/new?date=${encodeURIComponent(date)}` : "/reservation/new"} className="btn"><Plus className="h-4 w-4"/> Nouvelle fiche</Link>
+            <button className="btn" onClick={() => { if (!date) { alert('Sélectionnez une date'); return } fileDownload(`/api/reservations/day/${date}/pdf`) }}><Printer className="h-4 w-4"/> Export PDF du jour</button>
+          </div>
         </div>
       </div>
 
-      <div className="mt-6 space-y-4">
-        {rows.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            Aucune réservation trouvée
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {rows.map(r => (
-              <div key={r.id} className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                <div className="p-4 border-b bg-gray-50">
-                  <div className="flex justify-between items-start">
-                    <h3 className="font-medium text-lg flex items-center gap-2">
-                      <User className="h-5 w-5 text-gray-600" />
-                      {r.client_name}
-                    </h3>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      r.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                      r.status === 'printed' ? 'bg-blue-100 text-blue-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {r.status === 'confirmed' ? 'Confirmée' : 
-                       r.status === 'printed' ? 'Imprimée' : 'Brouillon'}
-                    </span>
+      {/* Grille des réservations */}
+      {rows.length === 0 ? (
+        <div className="card">
+          <div className="text-center p-4 text-gray-700">Aucune réservation trouvée</div>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-6">
+          {rows.map(r => (
+            <div key={r.id} className="card card-hoverable">
+              <div className="card-header">
+                <h3 className="text-lg font-medium flex items-center gap-2">
+                  <User className="w-4 h-4 text-gray-600" />
+                  {r.client_name}
+                </h3>
+                <span className={`status-badge ${
+                  r.status === 'confirmed' ? 'is-confirmed' :
+                  r.status === 'printed' ? 'is-printed' :
+                  'is-draft'
+                }`}>
+                  {r.status === 'confirmed' ? 'Confirmée' : r.status === 'printed' ? 'Imprimée' : 'Brouillon'}
+                </span>
+              </div>
+              <div className="card-body">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-gray-700">
+                    <CalendarDays className="w-4 h-4 text-gray-500" />
+                    <span>{formatDate(r.service_date)}</span>
                   </div>
-                </div>
-                
-                <div className="p-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-gray-700">
-                      <CalendarDays className="h-4 w-4 text-gray-500" />
-                      <span>{formatDate(r.service_date)}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-700">
-                      <Clock className="h-4 w-4 text-gray-500" />
-                      <span>{formatTime(r.arrival_time)}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-700">
-                      <Users className="h-4 w-4 text-gray-500" />
-                      <span>{r.pax} couvert{r.pax > 1 ? 's' : ''}</span>
-                    </div>
+                  <div className="flex items-center gap-2 text-gray-700">
+                    <Clock className="w-4 h-4 text-gray-500" />
+                    <span>{formatTime(r.arrival_time)}</span>
                   </div>
-                  
-                  <div className="mt-4 pt-4 border-t flex justify-end gap-2">
-                    <Link 
-                      to={`/reservation/${r.id}`} 
-                      className="btn btn-sm flex items-center gap-1"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      <span>Modifier</span>
-                    </Link>
-                    <button 
-                      onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)}
-                      className="btn btn-sm flex items-center gap-1"
-                    >
-                      <Printer className="h-3.5 w-3.5" />
-                      <span>PDF</span>
-                    </button>
+                  <div className="flex items-center gap-2 text-gray-700">
+                    <Users className="w-4 h-4 text-gray-500" />
+                    <span>{r.pax} couvert{r.pax > 1 ? 's' : ''}</span>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+              <div className="card-footer">
+                <div className="flex items-center gap-2">
+                  <Link to={`/reservation/${r.id}`} className="btn btn-sm"><Pencil className="w-4 h-4"/> Modifier</Link>
+                  <button onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)} className="btn btn-sm"><Printer className="w-4 h-4"/> PDF</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

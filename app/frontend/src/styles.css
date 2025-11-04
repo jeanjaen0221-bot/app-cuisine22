@@ -1,7 +1,7 @@
 /* ===== Variables et styles de base ===== */
 :root {
   /* Couleurs principales */
-  --primary: #6C63FF;
+  --primary: #635bff; /* plus sobre */
   --primary-light: #a29bfe;
   --primary-dark: #4b42c5;
   --secondary: #00B894;
@@ -219,7 +219,7 @@ body {
 .card {
   background-color: var(--bg-primary);
   border-radius: var(--border-radius-lg);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-sm);
   padding: 1.5rem;
   transition: var(--transition);
   border: 1px solid var(--border-color);
@@ -234,7 +234,7 @@ body {
 .card-header {
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--border-color);
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-primary);
   font-size: 1.125rem;
   font-weight: 600;
   display: flex;
@@ -1039,6 +1039,20 @@ body {
 
 /* Disabled utility */
 .disabled\:opacity-60:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Status badges discrets */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid rgba(0,0,0,0.06);
+}
+.status-badge.is-draft { background: var(--gray-100); color: var(--gray-800); }
+.status-badge.is-confirmed { background: #DCFCE7; color: #065F46; }
+.status-badge.is-printed { background: #DBEAFE; color: #1E40AF; }
 
 /* Inputs size variants */
 .input-sm {
