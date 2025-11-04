@@ -172,6 +172,7 @@ body {
   border: 1px solid var(--gray-300);
   color: var(--gray-700);
 }
+.btn-outline:hover { background-color: var(--gray-50); color: var(--gray-900); box-shadow: none; transform: none; }
 .btn-secondary {
   background-color: #EEF2FF;
   color: #3730A3;
@@ -1073,6 +1074,13 @@ body {
 
 /* Disabled utility */
 .disabled\:opacity-60:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Form spacing */
+.form-group > * + * { margin-top: 0.5rem; }
+
+/* Suggestion dropdown items */
+.menu-item { transition: background-color .15s ease, color .15s ease; }
+.menu-item.active { background-color: var(--gray-50); }
 
 /* Status badges discrets */
 .status-badge {

@@ -95,8 +95,8 @@ export default function MenuList() {
 
   return (
     <div className="card">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <h3 className="text-lg font-semibold text-primary">Base de plats</h3>
+      <div className="card-header">
+        <h3 className="text-lg font-semibold">Base de plats</h3>
         <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600">
           <span>Total: <b>{counts.total}</b></span>
           <span>Entrées: <b>{counts.entree}</b></span>
@@ -105,92 +105,87 @@ export default function MenuList() {
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-12 gap-2">
-        <div className="col-span-12 md:col-span-5 relative">
-          <Search className="h-4 w-4 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
-          <input className="input pl-8" placeholder="Rechercher un plat" value={q} onChange={e=>setQ(e.target.value)} />
-        </div>
-        <div className="col-span-12 md:col-span-7 flex flex-wrap gap-2">
-          <div className="flex gap-2">
-            {(['all','entrée','plat','dessert'] as const).map(tf => (
-              <button key={tf} className={`btn ${typeFilter===tf ? '' : 'bg-white text-gray-700 hover:bg-gray-50'}`} onClick={()=>setTypeFilter(tf)}>
-                {tf === 'all' ? 'Tous' : tf.charAt(0).toUpperCase()+tf.slice(1)}
-              </button>
-            ))}
+      <div className="card-body space-y-3">
+        <div className="grid grid-cols-12 gap-2">
+          <div className="col-span-12 md:col-span-5">
+            <input className="input" placeholder="Rechercher un plat" value={q} onChange={e=>setQ(e.target.value)} />
           </div>
-          <div className="flex gap-2">
-            {(['all','true','false'] as const).map(af => (
-              <button key={af} className={`btn ${activeFilter===af ? '' : 'bg-white text-gray-700 hover:bg-gray-50'}`} onClick={()=>setActiveFilter(af)}>
-                {af==='all' ? 'Tous' : af==='true' ? 'Actifs' : 'Inactifs'}
-              </button>
-            ))}
+          <div className="col-span-12 md:col-span-7 flex flex-wrap gap-2">
+            <div className="flex gap-2">
+              {(['all','entrée','plat','dessert'] as const).map(tf => (
+                <button key={tf} className={`btn btn-sm ${typeFilter===tf ? '' : 'bg-white text-gray-700 hover:bg-gray-50'}`} onClick={()=>setTypeFilter(tf)}>
+                  {tf === 'all' ? 'Tous' : tf.charAt(0).toUpperCase()+tf.slice(1)}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              {(['all','true','false'] as const).map(af => (
+                <button key={af} className={`btn btn-sm ${activeFilter===af ? '' : 'bg-white text-gray-700 hover:bg-gray-50'}`} onClick={()=>setActiveFilter(af)}>
+                  {af==='all' ? 'Tous' : af==='true' ? 'Actifs' : 'Inactifs'}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="mt-4 grid grid-cols-12 gap-2">
-        <input className="input col-span-12 md:col-span-6" placeholder="Nom du plat (ajout rapide)" value={name} onChange={e=>setName(e.target.value)} />
-        <select className="input col-span-6 md:col-span-3" value={type} onChange={e=>setType(e.target.value)}>
-          <option>entrée</option>
-          <option>plat</option>
-          <option>dessert</option>
-        </select>
-        <select className="input col-span-6 md:col-span-2" value={String(active)} onChange={e=>setActive(e.target.value==='true')}>
-          <option value="true">Actif</option>
-          <option value="false">Inactif</option>
-        </select>
-        <button className="btn col-span-6 md:col-span-1" onClick={add}>Ajouter</button>
-      </div>
+        <div className="grid grid-cols-12 gap-2">
+          <input className="input col-span-12 md:col-span-6" placeholder="Nom du plat (ajout rapide)" value={name} onChange={e=>setName(e.target.value)} />
+          <select className="input col-span-6 md:col-span-3" value={type} onChange={e=>setType(e.target.value)}>
+            <option>entrée</option>
+            <option>plat</option>
+            <option>dessert</option>
+          </select>
+          <select className="input col-span-6 md:col-span-2" value={String(active)} onChange={e=>setActive(e.target.value==='true')}>
+            <option value="true">Actif</option>
+            <option value="false">Inactif</option>
+          </select>
+          <button className="btn btn-sm col-span-6 md:col-span-1" onClick={add}>Ajouter</button>
+        </div>
 
-      <div className="mt-4 overflow-auto">
-        <table className="min-w-full text-sm">
-          <thead className="sticky top-0 bg-white">
-            <tr className="text-left text-gray-600">
-              <th className="p-2">Nom</th>
-              <th className="p-2" aria-sort={sortKey==='type' ? (sortDir==='asc' ? 'ascending' : 'descending') : 'none'}>
-                <button
-                  type="button"
-                  className="px-2 py-1 rounded hover:bg-gray-100 cursor-pointer select-none"
-                  onClick={()=>toggleSort('type')}
-                >
-                  Type {sortKey==='type' ? (sortDir==='asc' ? '▲' : '▼') : ''}
-                </button>
-              </th>
-              <th className="p-2" aria-sort={sortKey==='active' ? (sortDir==='asc' ? 'ascending' : 'descending') : 'none'}>
-                <button
-                  type="button"
-                  className="px-2 py-1 rounded hover:bg-gray-100 cursor-pointer select-none"
-                  onClick={()=>toggleSort('active')}
-                >
-                  Statut {sortKey==='active' ? (sortDir==='asc' ? '▲' : '▼') : ''}
-                </button>
-              </th>
-              <th className="p-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map(it => (
-              <tr key={it.id} className="border-t hover:bg-gray-50">
-                <td className="p-2 font-medium text-gray-900">{it.name}</td>
-                <td className="p-2">
-                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${it.type==='entrée' ? 'bg-emerald-50 text-emerald-700' : it.type==='plat' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{it.type}</span>
-                </td>
-                <td className="p-2">
-                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${it.active ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-700'}`}>{it.active ? 'Actif' : 'Inactif'}</span>
-                </td>
-                <td className="p-2 flex gap-2">
-                  <button className="btn" onClick={()=>toggleActive(it)}>{it.active ? 'Désactiver' : 'Activer'}</button>
-                  <button className="btn" onClick={()=>remove(it)}>Supprimer</button>
-                </td>
-              </tr>
-            ))}
-            {sorted.length === 0 && (
+        <div className="overflow-auto">
+          <table className="table">
+            <thead>
               <tr>
-                <td className="p-4 text-gray-500" colSpan={4}>Aucun élément ne correspond aux filtres.</td>
+                <th>Nom</th>
+                <th aria-sort={sortKey==='type' ? (sortDir==='asc' ? 'ascending' : 'descending') : 'none'}>
+                  <button type="button" className="px-2 py-1 rounded hover:bg-gray-100 select-none" onClick={()=>toggleSort('type')}>
+                    Type {sortKey==='type' ? (sortDir==='asc' ? '▲' : '▼') : ''}
+                  </button>
+                </th>
+                <th aria-sort={sortKey==='active' ? (sortDir==='asc' ? 'ascending' : 'descending') : 'none'}>
+                  <button type="button" className="px-2 py-1 rounded hover:bg-gray-100 select-none" onClick={()=>toggleSort('active')}>
+                    Statut {sortKey==='active' ? (sortDir==='asc' ? '▲' : '▼') : ''}
+                  </button>
+                </th>
+                <th>Actions</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sorted.map(it => (
+                <tr key={it.id}>
+                  <td className="font-medium text-gray-900">{it.name}</td>
+                  <td>
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${it.type==='entrée' ? 'bg-emerald-50 text-emerald-700' : it.type==='plat' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{it.type}</span>
+                  </td>
+                  <td>
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${it.active ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-700'}`}>{it.active ? 'Actif' : 'Inactif'}</span>
+                  </td>
+                  <td>
+                    <div className="flex gap-2">
+                      <button className="btn btn-sm" onClick={()=>toggleActive(it)}>{it.active ? 'Désactiver' : 'Activer'}</button>
+                      <button className="btn btn-sm" onClick={()=>remove(it)}>Supprimer</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {sorted.length === 0 && (
+                <tr>
+                  <td className="p-4 text-gray-500" colSpan={4}>Aucun élément ne correspond aux filtres.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

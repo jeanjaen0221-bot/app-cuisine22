@@ -51,11 +51,11 @@ export default function ReservationList() {
           <div className="flex items-center gap-2">
             <input className="input" placeholder="Rechercher un client" value={q} onChange={e=>setQ(e.target.value)} />
             <input type="date" className="input" value={date} onChange={e=>setDate(e.target.value)} />
-            <button className="btn btn-sm" onClick={load}><Filter className="h-4 w-4"/> Filtrer</button>
+            <button className="btn btn-sm btn-outline" onClick={load}><Filter className="h-4 w-4"/> Filtrer</button>
           </div>
           <div className="flex items-center gap-2">
             <Link to={date ? `/reservation/new?date=${encodeURIComponent(date)}` : "/reservation/new"} className="btn btn-sm"><Plus className="h-4 w-4"/> Nouvelle fiche</Link>
-            <button className="btn btn-sm" onClick={() => { if (!date) { alert('Sélectionnez une date'); return } fileDownload(`/api/reservations/day/${date}/pdf`) }}><Printer className="h-4 w-4"/> Export PDF du jour</button>
+            <button className="btn btn-sm btn-outline" onClick={() => { if (!date) { alert('Sélectionnez une date'); return } fileDownload(`/api/reservations/day/${date}/pdf`) }}><Printer className="h-4 w-4"/> Export PDF du jour</button>
           </div>
         </div>
       </div>
@@ -100,8 +100,8 @@ export default function ReservationList() {
               </div>
               <div className="card-footer">
                 <div className="flex items-center gap-2">
-                  <Link to={`/reservation/${r.id}`} className="btn btn-sm"><Pencil className="w-4 h-4"/> Modifier</Link>
-                  <button onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)} className="btn btn-sm"><Printer className="w-4 h-4"/> PDF</button>
+                  <Link to={`/reservation/${r.id}`} className="btn btn-sm btn-outline"><Pencil className="w-4 h-4"/> Modifier</Link>
+                  <button onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)} className="btn btn-sm btn-outline"><Printer className="w-4 h-4"/> PDF</button>
                 </div>
               </div>
             </div>
