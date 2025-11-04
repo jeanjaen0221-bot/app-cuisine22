@@ -44,18 +44,18 @@ export default function ReservationList() {
   }, [q, date])
 
   return (
-    <div className="container space-y-6">
+    <div className="space-y-6">
       {/* Barre de filtres */}
       <div className="card">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <input className="input" placeholder="Rechercher un client" value={q} onChange={e=>setQ(e.target.value)} />
             <input type="date" className="input" value={date} onChange={e=>setDate(e.target.value)} />
-            <button className="btn" onClick={load}><Filter className="h-4 w-4"/> Filtrer</button>
+            <button className="btn btn-sm" onClick={load}><Filter className="h-4 w-4"/> Filtrer</button>
           </div>
           <div className="flex items-center gap-2">
-            <Link to={date ? `/reservation/new?date=${encodeURIComponent(date)}` : "/reservation/new"} className="btn"><Plus className="h-4 w-4"/> Nouvelle fiche</Link>
-            <button className="btn" onClick={() => { if (!date) { alert('Sélectionnez une date'); return } fileDownload(`/api/reservations/day/${date}/pdf`) }}><Printer className="h-4 w-4"/> Export PDF du jour</button>
+            <Link to={date ? `/reservation/new?date=${encodeURIComponent(date)}` : "/reservation/new"} className="btn btn-sm"><Plus className="h-4 w-4"/> Nouvelle fiche</Link>
+            <button className="btn btn-sm" onClick={() => { if (!date) { alert('Sélectionnez une date'); return } fileDownload(`/api/reservations/day/${date}/pdf`) }}><Printer className="h-4 w-4"/> Export PDF du jour</button>
           </div>
         </div>
       </div>
@@ -66,7 +66,7 @@ export default function ReservationList() {
           <div className="text-center p-4 text-gray-700">Aucune réservation trouvée</div>
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {rows.map(r => (
             <div key={r.id} className="card card-hoverable">
               <div className="card-header">

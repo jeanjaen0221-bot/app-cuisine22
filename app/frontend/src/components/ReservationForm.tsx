@@ -598,6 +598,7 @@ const ItemRow = React.memo(function ItemRow({
   const [suggest, setSuggest] = useState<{name:string,type:string}[]>([])
   const [q, setQ] = useState('')
   const [qtyInput, setQtyInput] = useState<string>(item.quantity !== undefined ? String(item.quantity) : '')
+  const [activeIdx, setActiveIdx] = useState<number>(-1)
 
   async function loadDefault() {
     const res = await api.get('/api/menu-items/search', { params: { type: item.type } })
@@ -652,18 +653,40 @@ const ItemRow = React.memo(function ItemRow({
             onChange({ name: e.target.value }); 
             setQ(e.target.value); 
           }} 
+          onKeyDown={(e) => {
+            if (!open || suggest.length === 0) return;
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setActiveIdx(idx => (idx + 1) % suggest.length);
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setActiveIdx(idx => (idx <= 0 ? suggest.length - 1 : idx - 1));
+            } else if (e.key === 'Enter') {
+              if (activeIdx >= 0 && activeIdx < suggest.length) {
+                e.preventDefault();
+                const s = suggest[activeIdx];
+                onChange({ name: s.name, type: s.type });
+                setSuggest([]);
+                onClose();
+              }
+            } else if (e.key === 'Escape') {
+              setSuggest([]);
+              onClose();
+            }
+          }}
         />
         {open && suggest.length > 0 && (
           <div className="absolute z-10 bg-white border rounded-md mt-1 max-h-48 overflow-auto w-full">
             {suggest.map((s, i) => (
-              <div 
-                key={i} 
-                className="px-3 py-2 hover:bg-gray-100 cursor-pointer" 
-                onMouseDown={(e) => { 
-                  e.preventDefault(); 
-                  onChange({ name: s.name, type: s.type }); 
-                  setSuggest([]); 
-                  onClose(); 
+              <div
+                key={i}
+                className={`px-3 py-2 cursor-pointer menu-item ${activeIdx === i ? 'active' : ''}`}
+                onMouseEnter={() => setActiveIdx(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange({ name: s.name, type: s.type });
+                  setSuggest([]);
+                  onClose();
                 }}
               >
                 {s.name}
