@@ -31,6 +31,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   const [drink_formula, setDrink] = useState(initial?.drink_formula || DRINKS[0])
   const [notes, setNotes] = useState(initial?.notes || '')
   const [status, setStatus] = useState<Reservation['status']>(initial?.status || 'draft')
+  const [finalVersion, setFinalVersion] = useState<boolean>(Boolean(initial?.final_version))
   const [items, setItems] = useState<ReservationItem[]>(initial?.items || [])
   const [openRow, setOpenRow] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -179,6 +180,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
     setNotes(initial.notes || '');
     setStatus(initial.status || 'draft');
     setItems(initial.items || []);
+    setFinalVersion(Boolean(initial.final_version));
   }, [initial]);
 
   useEffect(() => {
@@ -261,6 +263,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
         drink_formula,
         notes,
         status,
+        final_version: finalVersion,
         items: validItems,
       });
     } catch (error) {
@@ -408,6 +411,19 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                   <option value="confirmed">Confirmée</option>
                   <option value="printed">Imprimée</option>
                 </select>
+              </div>
+              <div className="form-group">
+                <label className="label">Version finale</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="finalVersion"
+                    type="checkbox"
+                    className="form-check-input"
+                    checked={finalVersion}
+                    onChange={e => setFinalVersion(e.target.checked)}
+                  />
+                  <label htmlFor="finalVersion" className="form-check-label">Afficher le tampon « Version finale » en bas du PDF</label>
+                </div>
               </div>
             </div>
           </div>

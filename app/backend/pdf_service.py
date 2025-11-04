@@ -34,10 +34,23 @@ def _split_items(items: List[ReservationItem]):
     return entrees, plats, desserts
 
 
+def _draw_final_stamp(c: canvas.Canvas, page_width: float):
+    c.saveState()
+    c.setStrokeColor(colors.HexColor('#EF4444'))
+    c.setFillColor(colors.HexColor('#EF4444'))
+    c.setFont("Helvetica-Bold", 12)
+    text = "VERSION FINALE"
+    w = c.stringWidth(text, "Helvetica-Bold", 12)
+    x = (page_width - w) / 2
+    y = 20
+    c.drawString(x, y, text)
+    c.restoreState()
+
+
 def generate_reservation_pdf(reservation: Reservation, items: List[ReservationItem]) -> str:
     filename = _reservation_filename(reservation)
 
-    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=54)
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="Section", fontSize=12, leading=14, spaceBefore=6, spaceAfter=4, textColor=colors.HexColor("#111111")))
     styles.add(ParagraphStyle(name="Meta", fontSize=10, leading=13))
@@ -152,7 +165,12 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
     ]))
     story.append(note_tbl)
 
-    doc.build(story)
+    # Build with onLaterPages to add stamp if needed by drawing after flowables
+    def on_page(canvas_obj, doc_obj):
+        if getattr(reservation, 'final_version', False):
+            _draw_final_stamp(canvas_obj, A4[0])
+
+    doc.build(story, onLaterPages=on_page, onFirstPage=on_page)
     return filename
 
 
@@ -252,6 +270,9 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
             return y
         
         y = draw_formatted_text(res.notes, 50, y, width - 90)
+        # Final stamp at bottom
+        if getattr(res, 'final_version', False):
+            _draw_final_stamp(c, width)
 
     c.save()
     return filename

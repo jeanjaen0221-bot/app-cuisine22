@@ -16,6 +16,7 @@ export type Reservation = {
   drink_formula: string
   notes?: string
   status: 'draft' | 'confirmed' | 'printed'
+  final_version: boolean
   created_at: string
   updated_at: string
   items: ReservationItem[]

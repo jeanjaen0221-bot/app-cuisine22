@@ -70,6 +70,7 @@ class ReservationBase(SQLModel):
     drink_formula: str
     notes: Optional[str] = None
     status: ReservationStatus = ReservationStatus.draft
+    final_version: bool = False
 
 
 class Reservation(ReservationBase, table=True):
@@ -96,6 +97,7 @@ class ReservationCreateIn(SQLModel):
     drink_formula: str
     notes: Optional[str] = None
     status: ReservationStatus = ReservationStatus.draft
+    final_version: bool = False
     items: List[ReservationItemCreate] = Field(default_factory=list)
 
 
@@ -107,6 +109,7 @@ class ReservationUpdate(SQLModel):
     drink_formula: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[ReservationStatus] = None
+    final_version: Optional[bool] = None
     items: Optional[List[ReservationItemCreate]] = None
 
 

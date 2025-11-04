@@ -330,7 +330,7 @@ def duplicate_reservation(reservation_id: uuid.UUID, session: Session = Depends(
     items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
 
     new_res = Reservation(**{k: getattr(res, k) for k in [
-        'client_name','pax','service_date','arrival_time','drink_formula','notes','status'
+        'client_name','pax','service_date','arrival_time','drink_formula','notes','status','final_version'
     ]})
     session.add(new_res)
     session.commit()

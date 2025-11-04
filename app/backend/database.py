@@ -17,6 +17,7 @@ engine = create_engine(DATABASE_URL, echo=False, connect_args=connect_args)
 
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
+    ensure_final_version_column()
 
 
 def run_startup_migrations() -> None:
@@ -88,6 +89,41 @@ def run_startup_migrations() -> None:
             """
         ))
 
+def ensure_final_version_column() -> None:
+    """Idempotent column addition for reservation.final_version across backends."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                # Check pragma for column existence
+                res = conn.exec_driver_sql("PRAGMA table_info(reservation);")
+                cols = [row[1] for row in res.fetchall()]
+                if 'final_version' not in cols:
+                    conn.exec_driver_sql("ALTER TABLE reservation ADD COLUMN final_version BOOLEAN DEFAULT 0;")
+            elif backend == 'postgresql':
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 
+                        FROM information_schema.columns 
+                        WHERE table_name='reservation' AND column_name='final_version'
+                      ) THEN
+                        ALTER TABLE reservation ADD COLUMN final_version BOOLEAN DEFAULT FALSE;
+                      END IF;
+                    END$$;
+                    """
+                ))
+            else:
+                # Best-effort: try generic alter
+                try:
+                    conn.execute(text("ALTER TABLE reservation ADD COLUMN final_version BOOLEAN DEFAULT FALSE"))
+                except Exception:
+                    pass
+    except Exception:
+        # Non-fatal; table may not exist yet in some flows
+        pass
 
 @contextmanager
 def session_context() -> Generator[Session, None, None]:
