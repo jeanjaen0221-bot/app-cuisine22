@@ -1,8 +1,34 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../lib/api';
 import { Reservation, ReservationCreate, ReservationItem } from '../types';
-import { User, CalendarDays, Clock, Users, Wine, StickyNote, Utensils, Trash2, Plus, Minus, X } from 'lucide-react';
+import { 
+  User, 
+  CalendarDays, 
+  Clock, 
+  Users, 
+  Wine, 
+  StickyNote, 
+  Utensils, 
+  Trash2, 
+  Plus, 
+  Minus, 
+  X, 
+  Bold, 
+  Italic, 
+  Underline, 
+  AlignLeft, 
+  AlignCenter, 
+  AlignRight, 
+  List, 
+  ListOrdered, 
+  Type,
+  Palette,
+  Save,
+  ArrowLeft,
+  Check,
+  X as XIcon
+} from 'lucide-react';
 
 const DRINKS = [
   'Sans alcool', 'Vin au verre', 'Accords mets & vins', 'Soft + Café', 'Eau + Café'
@@ -211,16 +237,16 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
 
   // Sync when initial changes (e.g., when loading an existing reservation)
   useEffect(() => {
-    if (!initial) return
-    setClient(initial.client_name || '')
-    setDate((initial.service_date || '').slice(0,10))
-    setTime((initial.arrival_time || '').slice(0,5))
-    setPax(initial.pax ?? 2)
-    setDrink(initial.drink_formula || DRINKS[0])
-    setNotes(initial.notes || '')
-    setStatus((initial.status as Reservation['status']) || 'draft')
-    setItems(initial.items || [])
-  }, [initial])
+    if (!initial) return;
+    setClient(initial.client_name || '');
+    setDate(initial.service_date || '');
+    setTime(initial.arrival_time || '');
+    setPax(initial.pax || 2);
+    setDrink(initial.drink_formula || DRINKS[0]);
+    setNotes(initial.notes || '');
+    setStatus(initial.status || 'draft');
+    setItems(initial.items || []);
+  }, [initial]);
 
   useEffect(() => {
     if (!items.length) {
@@ -232,53 +258,50 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
     }
   }, [])
 
-  function updateItem(idx: number, patch: Partial<ReservationItem>) {
+  const updateItem = (idx: number, patch: Partial<ReservationItem>) => {
     setItems(prev => {
-      // Vérifier si la mise à jour est nécessaire
-      const item = prev[idx];
-      const hasChanges = Object.keys(patch).some(key => 
-        item[key as keyof ReservationItem] !== patch[key as keyof ReservationItem]
-      );
-      
-      if (!hasChanges) return prev;
-      
-      return prev.map((it, i) => i === idx ? { ...it, ...patch } : it);
+      const next = [...prev];
+      next[idx] = { ...next[idx], ...patch };
+      return next;
     });
-  }
+  };
 
-  function addItem() {
-    setItems(prev => [...prev, { 
-      type: 'plat', 
-      name: '', 
-      quantity: 1 
-    }]);
-  }
+  const addItem = () => {
+    setItems(prev => [...prev, { name: '', type: 'plat', quantity: 1 }]);
+    setOpenRow(items.length);
+  };
 
   function validate(): boolean {
-    const e: {client?:string,date?:string,pax?:string,time?:string} = {}
-    if (!client_name.trim()) e.client = 'Nom requis'
-    if (!service_date) e.date = 'Date requise'
-    if (!pax || pax < 1) e.pax = 'Min 1'
-    if (arrival_time && !/^\d{2}:\d{2}(:\d{2})?$/.test(arrival_time)) e.time = 'Format HH:MM'
-    // Guard: per-type totals must not exceed pax
-    const totals: Record<string, number> = { 'entrée': 0, 'plat': 0, 'dessert': 0 }
-    for (const it of items || []) {
-      if (it && it.type in totals) totals[it.type] += (Number(it.quantity) || 0)
+    const errs: {client?:string,date?:string,pax?:string,time?:string} = {};
+    if (!client_name.trim()) errs.client = 'Le nom du client est requis';
+    if (!service_date) errs.date = 'La date est requise';
+    if (!arrival_time) errs.time = "L'heure d'arrivée est requise";
+    if (pax < 1) errs.pax = 'Le nombre de personnes doit être supérieur à 0';
+    
+    setErrs(errs);
+    
+    // Vérifier les erreurs sur les articles
+    if (items.length === 0) {
+      setItemsError('Veuillez ajouter au moins un plat');
+      return false;
+    } else if (items.some(item => !item.name.trim())) {
+      setItemsError('Tous les plats doivent avoir un nom');
+      return false;
+    } else if (items.some(item => (item.quantity || 0) < 1)) {
+      setItemsError('La quantité doit être supérieure à 0 pour tous les plats');
+      return false;
     }
-    let ok = Object.keys(e).length === 0
-    let itemsErr: string | null = null
-    const offenders: string[] = []
-    const px = Number(pax) || 0
-    for (const k of Object.keys(totals)) {
-      if (totals[k] > px) offenders.push(`${k}=${totals[k]}`)
-    }
-    if (offenders.length > 0) { ok = false; itemsErr = `Le total par type dépasse le nombre de couverts (${pax}): ${offenders.join(', ')}` }
-    setErrs(e)
-    setItemsError(itemsErr)
-    return ok
-  }
+    
+    setItemsError(null);
+    return Object.keys(errs).length === 0;
+  };
 
-  async function submit() {
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submit();
+  };
+
+  const submit = async () => {
     if (submitting) return;
     if (!validate()) return;
     setSubmitting(true);
@@ -304,270 +327,237 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
         status,
         items: validItems,
       });
+    } catch (error) {
+      console.error('Erreur lors de la soumission:', error);
+      // Gérer les erreurs de soumission ici
     } finally {
       setSubmitting(false);
     }
-  }
+  };
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="label flex items-center gap-2">
-            <User className="h-4 w-4" /> Client
-          </label>
-          <input
-            className="input"
-            value={client_name}
-            onChange={(e) => setClient(e.target.value)}
-            placeholder="Nom du client"
-          />
-          {errs.client && (
-            <div className="text-red-500 text-xs mt-1">{errs.client}</div>
-          )}
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">
+          {initial?.id ? 'Modifier la réservation' : 'Nouvelle réservation'}
+        </h1>
+        <div className="flex items-center space-x-2">
+          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+            status === 'confirmed' ? 'bg-green-100 text-green-800' :
+            status === 'printed' ? 'bg-blue-100 text-blue-800' :
+            'bg-gray-100 text-gray-800'
+          }`}>
+            {status === 'confirmed' ? 'Confirmée' : 
+             status === 'printed' ? 'Imprimée' : 'Brouillon'}
+          </span>
         </div>
-        <div>
-          <label className="label flex items-center gap-2">
-            <CalendarDays className="h-4 w-4" /> Date
-          </label>
-          <input
-            type="date"
-            className="input"
-            value={service_date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-          {errs.date && (
-            <div className="text-red-500 text-xs mt-1">{errs.date}</div>
-          )}
-        </div>
-        <div>
-          <label className="label flex items-center gap-2">
-            <Clock className="h-4 w-4" /> Heure d'arrivée
-          </label>
-          <input
-            type="time"
-            className="input"
-            value={arrival_time}
-            onChange={(e) => setTime(e.target.value)}
-            placeholder="HH:MM"
-          />
-          {errs.time && (
-            <div className="text-red-500 text-xs mt-1">{errs.time}</div>
-          )}
-        </div>
-        <div>
-          <label className="label flex items-center gap-2">
-            <Users className="h-4 w-4" /> Nombre de couverts
-          </label>
-          <div className="flex">
-            <button
-              type="button"
-              className="px-3 bg-gray-100 text-gray-600 rounded-l border border-r-0"
-              onClick={() => setPax((p) => Math.max(1, (p || 1) - 1))}
-            >
-              -
-            </button>
-            <input
-              type="number"
-              min="1"
-              className="input rounded-none border-l-0 border-r-0 w-16 text-center"
-              value={pax}
-              onChange={(e) => setPax(Number(e.target.value))}
-            />
-            <button
-              type="button"
-              className="px-3 bg-gray-100 text-gray-600 rounded-r border border-l-0"
-              onClick={() => setPax((p) => (p || 1) + 1)}
-            >
-              +
-            </button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="card">
+          <div className="card-header">
+            <h2 className="text-lg font-medium">Informations générales</h2>
           </div>
-          {errs.pax && (
-            <div className="text-red-500 text-xs mt-1">{errs.pax}</div>
-          )}
-        </div>
-        <div>
-          <label className="label flex items-center gap-2">
-            <Wine className="h-4 w-4" /> Formule boisson
-          </label>
-          <select
-            className="input"
-            value={drink_formula}
-            onChange={(e) => setDrink(e.target.value)}
-          >
-            {DRINKS.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label">Statut</label>
-          <select
-            className="input"
-            value={status}
-            onChange={(e) =>
-              setStatus(e.target.value as Reservation['status'])
-            }
-          >
-            <option value="draft">Brouillon</option>
-            <option value="confirmed">Confirmée</option>
-            <option value="printed">Imprimée</option>
-          </select>
-        </div>
-        <div className="md:col-span-2">
-          <div className="space-y-2">
-            <label className="label flex items-center gap-2">
-              <StickyNote className="h-4 w-4"/> Notes cuisine
-            </label>
-            
-            {/* Barre d'outils moderne */}
-            <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-t-lg border border-b-0 border-gray-200">
-              <div className="flex items-center divide-x divide-gray-200">
-                <button
-                  type="button"
-                  className="p-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-                  onClick={formatText('*', '*', 'Gras')}
-                  title="Gras (Ctrl+B)"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                  </svg>
-                </button>
-                
-                <button
-                  type="button"
-                  className="p-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-                  onClick={formatText('_', '_', 'Italique')}
-                  title="Italique (Ctrl+I)"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                  </svg>
-                </button>
-                
-                <button
-                  type="button"
-                  className="p-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-                  onClick={formatText('[color=#000000]', '[/color]', 'Couleur du texte', true)}
-                  title="Couleur du texte"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.486M7 17h.01" />
-                  </svg>
-                </button>
-                
-                {/* Bouton liste à puces */}
-                <button
-                  type="button"
-                  className="p-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-                  onClick={() => {
-                    const textarea = document.querySelector('textarea[name="notes"]') as HTMLTextAreaElement;
-                    if (!textarea) return;
-                    const start = textarea.selectionStart;
-                    const end = textarea.selectionEnd;
-                    const selectedText = notes.substring(start, end);
-                    const before = notes.substring(0, start);
-                    const after = notes.substring(end);
-                    
-                    if (selectedText) {
-                      // Si du texte est sélectionné, ajouter des puces à chaque ligne
-                      const lines = selectedText.split('\n').map(line => `- ${line}`).join('\n');
-                      setNotes(`${before}${lines}${after}`);
-                      setTimeout(() => {
-                        textarea.setSelectionRange(start, start + lines.length);
-                        textarea.focus();
-                      }, 0);
-                    } else {
-                      // Si pas de sélection, ajouter une puce simple
-                      setNotes(`${before}- ${after}`);
-                      setTimeout(() => {
-                        textarea.setSelectionRange(start + 2, start + 2);
-                        textarea.focus();
-                      }, 0);
-                    }
-                  }}
-                  title="Liste à puces"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                  </svg>
-                </button>
-                
-                {/* Sélecteur de taille de police */}
-                <div className="relative group">
-                  <button
-                    type="button"
-                    className="p-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors flex items-center gap-1"
-                    title="Taille du texte"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6h18M3 12h18m-9 6h9" />
-                    </svg>
-                    <span className="text-xs">Taille</span>
-                  </button>
-                  <div className="absolute z-10 hidden group-hover:block bg-white rounded-md shadow-lg border border-gray-200 p-2 min-w-[120px]">
-                    <div className="text-xs text-gray-500 px-2 py-1">Taille du texte</div>
-                    {fontSizes.map((size) => (
-                      <button
-                        key={size.value}
-                        type="button"
-                        className={`w-full text-left px-2 py-1 text-sm hover:bg-gray-100 rounded ${fontSize === size.value ? 'bg-blue-50 text-blue-600' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          applyFontSize(size.value);
-                          formatText(`[size=${size.value}]`, '[/size]', `Taille ${size.label}`, false, size.value);
-                        }}
-                      >
-                        {size.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="ml-auto flex items-center space-x-2">
-                <span className="text-sm text-gray-500">
-                  {notes.length} caractères
-                </span>
-              </div>
-            </div>
-            
-            {/* Zone de texte */}
-            <div className="relative">
-              <div className="rich-text-editor-container border rounded-md overflow-hidden">
-                <textarea
-                  name="notes"
-                  className="rich-text-editor w-full p-4 font-sans text-gray-800 focus:outline-none"
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  placeholder="Saisissez vos notes ici..."
-                  rows={6}
-                />
-              </div>
-              
-              {/* Aperçu du formatage en temps réel */}
-              {notes && (
-                <div className="mt-4">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Aperçu :</p>
-                  <div 
-                    className="rich-text-preview p-4 bg-white border border-gray-200 rounded-md"
-                    style={{ 
-                      minHeight: '80px',
-                      maxHeight: '200px',
-                      overflowY: 'auto'
-                    }}
-                    dangerouslySetInnerHTML={{ 
-                      __html: formatPreview(notes) 
-                    }} 
+          <div className="card-body">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="form-group">
+                <label className="label label-required">Nom du client</label>
+                <div className="input-group">
+                  <span className="input-group-text">
+                    <User className="w-4 h-4 text-gray-500" />
+                  </span>
+                  <input 
+                    className="input" 
+                    value={client_name} 
+                    onChange={e => setClient(e.target.value)} 
+                    placeholder="Entrez le nom du client"
+                    required
                   />
                 </div>
-              )}
+                {errs.client && <div className="text-red-500 text-sm mt-1">{errs.client}</div>}
+              </div>
+
+              <div className="form-group">
+                <label className="label label-required">Date de service</label>
+                <div className="input-group">
+                  <span className="input-group-text">
+                    <CalendarDays className="w-4 h-4 text-gray-500" />
+                  </span>
+                  <input 
+                    type="date" 
+                    className="input" 
+                    value={service_date} 
+                    onChange={e => setDate(e.target.value)}
+                    required
+                  />
+                </div>
+                {errs.date && <div className="text-red-500 text-sm mt-1">{errs.date}</div>}
+              </div>
+
+              <div className="form-group">
+                <label className="label label-required">Heure d'arrivée</label>
+                <div className="input-group">
+                  <span className="input-group-text">
+                    <Clock className="w-4 h-4 text-gray-500" />
+                  </span>
+                  <input 
+                    type="time" 
+                    className="input" 
+                    value={arrival_time} 
+                    onChange={e => setTime(e.target.value)}
+                    required
+                  />
+                </div>
+                {errs.time && <div className="text-red-500 text-sm mt-1">{errs.time}</div>}
+              </div>
+
+              <div className="form-group">
+                <label className="label label-required">Nombre de couverts</label>
+                <div className="flex items-center">
+                  <button 
+                    type="button" 
+                    className="btn btn-outline rounded-r-none px-3 border-r-0"
+                    onClick={() => setPax(p => Math.max(1, p - 1))}
+                    aria-label="Réduire le nombre de couverts"
+                  >
+                    <Minus className="w-4 h-4" />
+                  </button>
+                  <div className="relative flex-1">
+                    <input 
+                      type="number" 
+                      min="1"
+                      className="input text-center rounded-none"
+                      value={pax} 
+                      onChange={e => setPax(Math.max(1, Number(e.target.value)))}
+                      required
+                    />
+                  </div>
+                  <button 
+                    type="button" 
+                    className="btn btn-outline rounded-l-none px-3 border-l-0"
+                    onClick={() => setPax(p => p + 1)}
+                    aria-label="Augmenter le nombre de couverts"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Formule boisson</label>
+                <div className="input-group">
+                  <span className="input-group-text">
+                    <Wine className="w-4 h-4 text-gray-500" />
+                  </span>
+                  <select 
+                    className="input" 
+                    value={drink_formula} 
+                    onChange={e => setDrink(e.target.value)}
+                  >
+                    {DRINKS.map(drink => (
+                      <option key={drink} value={drink}>{drink}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Statut</label>
+                <select 
+                  className="input" 
+                  value={status} 
+                  onChange={e => setStatus(e.target.value as any)}
+                >
+                  <option value="draft">Brouillon</option>
+                  <option value="confirmed">Confirmée</option>
+                  <option value="printed">Imprimée</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
-        
+
+        <div className="card">
+          <div className="card-header">
+            <h2 className="text-lg font-medium">Détails supplémentaires</h2>
+          </div>
+          <div className="card-body">
+            <div className="form-group">
+              <div className="flex justify-between items-center mb-2">
+                <label className="label">Notes</label>
+                <div className="flex items-center space-x-1">
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-outline"
+                    onClick={formatText('**', '**', 'Gras')}
+                    title="Gras"
+                    aria-label="Mettre en gras"
+                  >
+                    <Bold className="w-4 h-4" />
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-outline"
+                    onClick={formatText('_', '_', 'Italique')}
+                    title="Italique"
+                    aria-label="Mettre en italique"
+                  >
+                    <Italic className="w-4 h-4" />
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-outline"
+                    onClick={formatText('', '', 'Couleur', true)}
+                    title="Couleur"
+                    aria-label="Changer la couleur du texte"
+                  >
+                    <Palette className="w-4 h-4" />
+                  </button>
+                  <select 
+                    className="input input-sm w-auto" 
+                    value={fontSize} 
+                    onChange={e => applyFontSize(e.target.value)}
+                    title="Taille de police"
+                    aria-label="Taille de police"
+                  >
+                    {fontSizes.map(size => (
+                      <option key={size.value} value={size.value}>{size.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="relative">
+                <div className="rich-text-editor-container border rounded-md overflow-hidden">
+                  <textarea
+                    name="notes"
+                    className="rich-text-editor w-full p-4 font-sans text-gray-800 focus:outline-none"
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    placeholder="Saisissez vos notes ici..."
+                    rows={6}
+                  />
+                </div>
+                {notes && (
+                  <div className="mt-4">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Aperçu :</p>
+                    <div 
+                      className="rich-text-preview p-4 bg-white border border-gray-200 rounded-md"
+                      style={{ 
+                        minHeight: '80px',
+                        maxHeight: '200px',
+                        overflowY: 'auto'
+                      }}
+                      dangerouslySetInnerHTML={{ 
+                        __html: formatPreview(notes) 
+                      }} 
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-primary">Plats</h3>
           <button className="btn" onClick={addItem}>+ Ajouter un plat</button>
@@ -584,11 +574,14 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                 onFocus={()=>setOpenRow(idx)}
                 onClose={()=>setOpenRow(prev => prev === idx ? null : prev)}
                 onChange={(p)=>updateItem(idx,p)}
+                onRemove={() => {
+                  setItems(prev => prev.filter((item, index) => index !== idx));
+                }}
               />
             </div>
           ))}
         </div>
-      </div>
+      </form>
 
       <div className="mt-6 flex gap-2">
         <button className="btn disabled:opacity-60" disabled={submitting} onClick={submit}>{submitting ? 'Sauvegarde…' : 'Sauvegarder'}</button>
@@ -597,7 +590,21 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   );
 }
 
-function ItemRow({ item, onChange, open, onFocus, onClose }: { item: ReservationItem, onChange: (p: Partial<ReservationItem>)=>void, open: boolean, onFocus: ()=>void, onClose: ()=>void }) {
+const ItemRow = React.memo(function ItemRow({ 
+  item, 
+  onChange, 
+  open, 
+  onFocus, 
+  onClose, 
+  onRemove 
+}: { 
+  item: ReservationItem; 
+  onChange: (p: Partial<ReservationItem>) => void; 
+  open: boolean; 
+  onFocus: () => void;
+  onClose: () => void;
+  onRemove: () => void;
+}) {
   const [suggest, setSuggest] = useState<{name:string,type:string}[]>([])
   const [q, setQ] = useState('')
   const [qtyInput, setQtyInput] = useState<string>(item.quantity !== undefined ? String(item.quantity) : '')
@@ -609,30 +616,68 @@ function ItemRow({ item, onChange, open, onFocus, onClose }: { item: Reservation
 
   useEffect(() => {
     const t = setTimeout(async () => {
-      if (!q) { await loadDefault(); return }
-      const res = await api.get('/api/menu-items/search', { params: { q, type: item.type } })
-      setSuggest(res.data)
-    }, 200)
-    return () => clearTimeout(t)
-  }, [q, item.type])
+      if (!q) { 
+        await loadDefault(); 
+        return; 
+      }
+      const res = await api.get('/api/menu-items/search', { params: { q, type: item.type } });
+      setSuggest(res.data);
+    }, 200);
+    return () => clearTimeout(t);
+  }, [q, item.type]);
 
   useEffect(() => {
-    setQtyInput(item.quantity !== undefined ? String(item.quantity) : '')
-  }, [item.quantity])
+    setQtyInput(item.quantity !== undefined ? String(item.quantity) : '');
+  }, [item.quantity]);
 
   return (
-    <div className="grid grid-cols-12 gap-2" onBlur={(e)=>{ if (!e.currentTarget.contains(e.relatedTarget as Node)) onClose() }}>
-      <select className="input col-span-2" value={item.type} onChange={e=>{ onChange({ type: e.target.value }); setQ(''); }}>
+    <div 
+      className="grid grid-cols-12 gap-2" 
+      onBlur={(e) => { 
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) onClose(); 
+      }}
+    >
+      <select 
+        className="input col-span-2" 
+        value={item.type} 
+        onChange={(e) => { 
+          onChange({ type: e.target.value }); 
+          setQ(''); 
+        }}
+      >
         <option>entrée</option>
         <option>plat</option>
         <option>dessert</option>
       </select>
       <div className="col-span-8 relative">
-        <input className="input w-full" placeholder="Nom du plat" value={item.name} onFocus={()=>{ onFocus(); if (!q) loadDefault() }} onChange={e=>{ onChange({ name: e.target.value }); setQ(e.target.value) }} />
-        {open && suggest.length>0 && (
+        <input 
+          className="input w-full" 
+          placeholder="Nom du plat" 
+          value={item.name} 
+          onFocus={() => { 
+            onFocus(); 
+            if (!q) loadDefault(); 
+          }} 
+          onChange={(e) => { 
+            onChange({ name: e.target.value }); 
+            setQ(e.target.value); 
+          }} 
+        />
+        {open && suggest.length > 0 && (
           <div className="absolute z-10 bg-white border rounded-md mt-1 max-h-48 overflow-auto w-full">
             {suggest.map((s, i) => (
-              <div key={i} className="px-3 py-2 hover:bg-gray-100 cursor-pointer" onMouseDown={(e)=>{ e.preventDefault(); onChange({ name: s.name, type: s.type }); setSuggest([]); onClose(); }}>{s.name}</div>
+              <div 
+                key={i} 
+                className="px-3 py-2 hover:bg-gray-100 cursor-pointer" 
+                onMouseDown={(e) => { 
+                  e.preventDefault(); 
+                  onChange({ name: s.name, type: s.type }); 
+                  setSuggest([]); 
+                  onClose(); 
+                }}
+              >
+                {s.name}
+              </div>
             ))}
           </div>
         )}
@@ -642,15 +687,17 @@ function ItemRow({ item, onChange, open, onFocus, onClose }: { item: Reservation
         min={0}
         className="input col-span-2"
         value={qtyInput}
-        onChange={e=>{
-          const v = e.target.value
+        onChange={(e) => {
+          const v = e.target.value;
           if (/^\d*$/.test(v)) {
-            setQtyInput(v)
-            onChange({ quantity: v === '' ? 0 : parseInt(v, 10) })
+            setQtyInput(v);
+            onChange({ quantity: v === '' ? 0 : parseInt(v, 10) });
           }
         }}
-        onBlur={()=>{ if (qtyInput === '') setQtyInput('0') }}
+        onBlur={() => { 
+          if (qtyInput === '') setQtyInput('0'); 
+        }}
       />
     </div>
-  )
+  );
 }
