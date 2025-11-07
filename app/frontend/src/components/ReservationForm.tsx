@@ -434,7 +434,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                       >
                         <span className="inline-flex items-center gap-2">
                           <img
-                            src={`/assets/allergens/${a.key}.png`}
+                            src={`/backend-assets/allergens/${a.key}.png`}
                             alt={a.label}
                             title={a.label}
                             className="h-5 w-5 object-contain"

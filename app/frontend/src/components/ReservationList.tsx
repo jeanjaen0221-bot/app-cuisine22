@@ -169,7 +169,7 @@ export default function ReservationList() {
                       {splitAllergens(r.allergens).map(a => (
                         <span key={a} className="inline-flex items-center gap-1">
                           <img
-                            src={`/assets/allergens/${a}.png`}
+                            src={`/backend-assets/allergens/${a}.png`}
                             alt={a}
                             title={a}
                             className="h-5 w-5 object-contain"
