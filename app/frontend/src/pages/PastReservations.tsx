@@ -43,6 +43,7 @@ export default function PastReservations() {
                 <th>Heure</th>
                 <th>Couverts</th>
                 <th>Statut</th>
+                <th>Allergènes</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -61,6 +62,14 @@ export default function PastReservations() {
                     }`}>
                       {r.status === 'confirmed' ? 'Confirmée' : r.status === 'printed' ? 'Imprimée' : 'Brouillon'}
                     </span>
+                  </td>
+                  <td>
+                    <div className="flex flex-wrap gap-1">
+                      {(r.allergens ? r.allergens.split(',').map(s=>s.trim()).filter(Boolean) : []).map(a => (
+                        <span key={a} className="inline-block bg-red-50 text-red-700 text-xs px-2 py-1 rounded">{a}</span>
+                      ))}
+                      {(!r.allergens || r.allergens.trim()==='') && <span className="text-gray-500 text-xs">-</span>}
+                    </div>
                   </td>
                   <td>
                     <div className="flex items-center gap-2">

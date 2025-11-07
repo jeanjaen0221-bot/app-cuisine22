@@ -6,7 +6,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.platypus.flowables import HRFlowable
 
 from .models import Reservation, ReservationItem
@@ -59,7 +59,7 @@ def _draw_final_stamp(c: canvas.Canvas, page_width: float):
     # Try PNG first
     try:
         img_path = _find_stamp_path()
-        if os.path.isfile(img_path):
+        if img_path and os.path.isfile(img_path):
             # Target width, keep aspect
             target_w = 160
             from PIL import Image as PILImage  # pillow is in requirements
@@ -89,6 +89,17 @@ def _draw_final_stamp(c: canvas.Canvas, page_width: float):
     y = 20
     c.drawString(x, y, text)
     c.restoreState()
+
+
+def _parse_allergens(csv: str | None) -> list[str]:
+    if not csv:
+        return []
+    return [s.strip() for s in str(csv).split(',') if s and s.strip()]
+
+
+def _find_allergen_icon(key: str) -> str | None:
+    p = os.path.join(ASSETS_DIR, "allergens", f"{key}.png")
+    return p if os.path.isfile(p) else None
 
 
 def generate_reservation_pdf(reservation: Reservation, items: List[ReservationItem]) -> str:
@@ -164,6 +175,31 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
         ('BOTTOMPADDING', (0,0), (-1,-1), 4),
     ]))
     story.append(fb_tbl)
+    story.append(Spacer(1, 10))
+
+    # Allergens section
+    story.append(Paragraph("<b>Allergènes :</b>", styles['Section']))
+    alls = _parse_allergens(getattr(reservation, 'allergens', ''))
+    if not alls:
+        story.append(Paragraph("-", styles['Meta']))
+    else:
+        row = []
+        for key in alls:
+            icon = _find_allergen_icon(key)
+            if icon:
+                try:
+                    row.append(RLImage(icon, width=22, height=22))
+                except Exception:
+                    row.append(Paragraph(key, styles['Meta']))
+            else:
+                row.append(Paragraph(key, styles['Meta']))
+        tbl = Table([row])
+        tbl.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ('RIGHTPADDING', (0,0), (-1,-1), 6),
+        ]))
+        story.append(tbl)
     story.append(Spacer(1, 10))
 
     notes = reservation.notes or ""
@@ -267,6 +303,34 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
         c.setFont("Helvetica", 11)
         c.drawString(50, y, f"{res.drink_formula}")
         y -= 16
+
+        # Allergens (icons if available)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(40, y, "Allergènes :")
+        y -= 16
+        alls = _parse_allergens(getattr(res, 'allergens', ''))
+        if not alls:
+            c.setFont("Helvetica", 11)
+            c.drawString(50, y, "-")
+            y -= 16
+        else:
+            x = 50
+            size = 16
+            for key in alls:
+                icon = _find_allergen_icon(key)
+                if icon:
+                    try:
+                        c.drawImage(icon, x, y - size + 4, width=size, height=size, mask='auto', preserveAspectRatio=True, anchor='sw')
+                        x += size + 8
+                    except Exception:
+                        c.setFont("Helvetica", 10)
+                        c.drawString(x, y, key)
+                        x += 60
+                else:
+                    c.setFont("Helvetica", 10)
+                    c.drawString(x, y, key)
+                    x += 60
+            y -= size + 8
 
         c.setFont("Helvetica-Bold", 12)
         c.drawString(40, y, "Notes :")

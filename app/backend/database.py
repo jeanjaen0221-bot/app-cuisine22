@@ -18,6 +18,7 @@ engine = create_engine(DATABASE_URL, echo=False, connect_args=connect_args)
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     ensure_final_version_column()
+    ensure_allergens_column()
 
 
 def run_startup_migrations() -> None:
@@ -119,6 +120,38 @@ def ensure_final_version_column() -> None:
                 # Best-effort: try generic alter
                 try:
                     conn.execute(text("ALTER TABLE reservation ADD COLUMN final_version BOOLEAN DEFAULT FALSE"))
+                except Exception:
+                    pass
+    except Exception:
+        # Non-fatal; table may not exist yet in some flows
+        pass
+
+def ensure_allergens_column() -> None:
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                res = conn.exec_driver_sql("PRAGMA table_info(reservation);")
+                cols = [row[1] for row in res.fetchall()]
+                if 'allergens' not in cols:
+                    conn.exec_driver_sql("ALTER TABLE reservation ADD COLUMN allergens VARCHAR(1024) DEFAULT '';")
+            elif backend == 'postgresql':
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name='reservation' AND column_name='allergens'
+                      ) THEN
+                        ALTER TABLE reservation ADD COLUMN allergens VARCHAR(1024) DEFAULT '';
+                      END IF;
+                    END$$;
+                    """
+                ))
+            else:
+                try:
+                    conn.execute(text("ALTER TABLE reservation ADD COLUMN allergens VARCHAR(1024) DEFAULT ''"))
                 except Exception:
                     pass
     except Exception:

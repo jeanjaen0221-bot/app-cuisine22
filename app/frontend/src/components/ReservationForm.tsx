@@ -18,6 +18,23 @@ const DRINKS = [
   'Sans alcool', 'Vin au verre', 'Accords mets & vins', 'Soft + Café', 'Eau + Café'
 ]
 
+const ALLERGENS = [
+  { key: 'gluten', label: 'Gluten' },
+  { key: 'crustaces', label: 'Crustacés' },
+  { key: 'oeufs', label: 'Œufs' },
+  { key: 'poisson', label: 'Poisson' },
+  { key: 'arachides', label: 'Arachides' },
+  { key: 'soja', label: 'Soja' },
+  { key: 'lait', label: 'Lait' },
+  { key: 'fruits_a_coque', label: 'Fruits à coque' },
+  { key: 'celeri', label: 'Céleri' },
+  { key: 'moutarde', label: 'Moutarde' },
+  { key: 'sesame', label: 'Sésame' },
+  { key: 'sulfites', label: 'Sulfites' },
+  { key: 'lupin', label: 'Lupin' },
+  { key: 'mollusques', label: 'Mollusques' },
+]
+
 type Props = {
   initial?: Partial<Reservation>
   onSubmit: (payload: Partial<ReservationCreate>) => Promise<void>
@@ -32,6 +49,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   const [notes, setNotes] = useState(initial?.notes || '')
   const [status, setStatus] = useState<Reservation['status']>(initial?.status || 'draft')
   const [finalVersion, setFinalVersion] = useState<boolean>(Boolean(initial?.final_version))
+  const [allergens, setAllergens] = useState<string[]>(initial?.allergens ? String(initial.allergens).split(',').map(s=>s.trim()).filter(Boolean) : [])
   const [items, setItems] = useState<ReservationItem[]>(initial?.items || [])
   const [openRow, setOpenRow] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -181,6 +199,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
     setStatus(initial.status || 'draft');
     setItems(initial.items || []);
     setFinalVersion(Boolean(initial.final_version));
+    setAllergens(initial.allergens ? String(initial.allergens).split(',').map(s=>s.trim()).filter(Boolean) : []);
   }, [initial]);
 
   useEffect(() => {
@@ -263,6 +282,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
         drink_formula,
         notes,
         status,
+        allergens: allergens.join(','),
         final_version: finalVersion,
         items: validItems,
       });
@@ -397,6 +417,25 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                       <option key={drink} value={drink}>{drink}</option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Allergènes</label>
+                <div className="flex flex-wrap gap-2">
+                  {ALLERGENS.map(a => {
+                    const active = allergens.includes(a.key)
+                    return (
+                      <button
+                        key={a.key}
+                        type="button"
+                        className={`btn btn-sm ${active ? '' : 'btn-outline'}`}
+                        onClick={() => setAllergens(prev => active ? prev.filter(k => k !== a.key) : [...prev, a.key])}
+                      >
+                        {a.label}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 

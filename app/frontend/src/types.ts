@@ -17,6 +17,7 @@ export type Reservation = {
   notes?: string
   status: 'draft' | 'confirmed' | 'printed'
   final_version: boolean
+  allergens?: string
   created_at: string
   updated_at: string
   items: ReservationItem[]

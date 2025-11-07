@@ -180,6 +180,11 @@ def create_reservation(payload: ReservationCreateIn, session: Session = Depends(
         "notes": notes,
         "pax": pax,
     })
+    # Allergens sanitize
+    allergens = str(data.get("allergens", "") or "").strip()
+    if len(allergens) > 1024:
+        allergens = allergens[:1024]
+    data["allergens"] = allergens
 
     # Server-side guard: per-type totals must not exceed pax
     try:
@@ -257,6 +262,10 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
         update_data["notes"] = (str(update_data["notes"]) or "").strip()
         if len(update_data["notes"]) > 4000:
             update_data["notes"] = update_data["notes"][:4000]
+    if "allergens" in update_data:
+        update_data["allergens"] = (str(update_data["allergens"]) or "").strip()
+        if len(update_data["allergens"]) > 1024:
+            update_data["allergens"] = update_data["allergens"][:1024]
     if "pax" in update_data and update_data["pax"] is not None:
         p = int(update_data["pax"])
         if p < 1:
@@ -330,7 +339,7 @@ def duplicate_reservation(reservation_id: uuid.UUID, session: Session = Depends(
     items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
 
     new_res = Reservation(**{k: getattr(res, k) for k in [
-        'client_name','pax','service_date','arrival_time','drink_formula','notes','status','final_version'
+        'client_name','pax','service_date','arrival_time','drink_formula','notes','status','final_version','allergens'
     ]})
     session.add(new_res)
     session.commit()

@@ -71,6 +71,7 @@ class ReservationBase(SQLModel):
     notes: Optional[str] = None
     status: ReservationStatus = ReservationStatus.draft
     final_version: bool = False
+    allergens: Optional[str] = ""  # CSV: e.g. "gluten,arachides,soja"
 
 
 class Reservation(ReservationBase, table=True):
@@ -98,6 +99,7 @@ class ReservationCreateIn(SQLModel):
     notes: Optional[str] = None
     status: ReservationStatus = ReservationStatus.draft
     final_version: bool = False
+    allergens: Optional[str] = ""
     items: List[ReservationItemCreate] = Field(default_factory=list)
 
 
@@ -110,6 +112,7 @@ class ReservationUpdate(SQLModel):
     notes: Optional[str] = None
     status: Optional[ReservationStatus] = None
     final_version: Optional[bool] = None
+    allergens: Optional[str] = None
     items: Optional[List[ReservationItemCreate]] = None
 
 
