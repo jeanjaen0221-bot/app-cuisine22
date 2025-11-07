@@ -1093,3 +1093,28 @@ body {
   font-size: 0.875rem;
   line-height: 1.25rem;
 }
+
+/* ===== Allergen chips & icons ===== */
+.allergen-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem; /* 6px */
+  height: 2rem; /* 32px */
+  padding: 0.25rem 0.5rem; /* 4px 8px */
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.allergen-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  display: block;
+  flex: 0 0 18px;
+}
+
+.allergen-chip-label {
+  font-size: 0.75rem; /* text-xs */
+  line-height: 1rem;
+  white-space: nowrap;
+}

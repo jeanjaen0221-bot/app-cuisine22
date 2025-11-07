@@ -429,7 +429,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                       <button
                         key={a.key}
                         type="button"
-                        className={`btn btn-sm ${active ? '' : 'btn-outline'}`}
+                        className={`btn btn-sm allergen-chip ${active ? '' : 'btn-outline'}`}
                         onClick={() => setAllergens(prev => active ? prev.filter(k => k !== a.key) : [...prev, a.key])}
                       >
                         <span className="inline-flex items-center gap-2">
@@ -437,10 +437,10 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                             src={`/backend-assets/allergens/${a.key}.png`}
                             alt={a.label}
                             title={a.label}
-                            className="h-5 w-5 object-contain"
+                            className="allergen-icon"
                             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                           />
-                          <span>{a.label}</span>
+                          <span className="allergen-chip-label">{a.label}</span>
                         </span>
                       </button>
                     )

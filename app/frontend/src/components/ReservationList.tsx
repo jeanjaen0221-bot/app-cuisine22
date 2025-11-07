@@ -172,7 +172,7 @@ export default function ReservationList() {
                             src={`/backend-assets/allergens/${a}.png`}
                             alt={a}
                             title={a}
-                            className="h-5 w-5 object-contain"
+                            className="allergen-icon"
                             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                           />
                           <span className="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded">{a}</span>
