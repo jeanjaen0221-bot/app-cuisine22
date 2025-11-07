@@ -165,9 +165,18 @@ export default function ReservationList() {
                   )}
                   {/* Allergènes */}
                   {splitAllergens(r.allergens).length > 0 && (
-                    <div className="space-x-1 space-y-1 pt-1">
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
                       {splitAllergens(r.allergens).map(a => (
-                        <span key={a} className="inline-block align-middle bg-red-50 text-red-700 text-xs px-2 py-1 rounded">{a}</span>
+                        <span key={a} className="inline-flex items-center gap-1">
+                          <img
+                            src={`/assets/allergens/${a}.png`}
+                            alt={a}
+                            title={a}
+                            className="h-5 w-5 object-contain"
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                          />
+                          <span className="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded">{a}</span>
+                        </span>
                       ))}
                     </div>
                   )}

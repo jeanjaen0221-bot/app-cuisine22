@@ -432,7 +432,16 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                         className={`btn btn-sm ${active ? '' : 'btn-outline'}`}
                         onClick={() => setAllergens(prev => active ? prev.filter(k => k !== a.key) : [...prev, a.key])}
                       >
-                        {a.label}
+                        <span className="inline-flex items-center gap-2">
+                          <img
+                            src={`/assets/allergens/${a.key}.png`}
+                            alt={a.label}
+                            title={a.label}
+                            className="h-5 w-5 object-contain"
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                          />
+                          <span>{a.label}</span>
+                        </span>
                       </button>
                     )
                   })}

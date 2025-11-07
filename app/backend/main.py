@@ -41,6 +41,9 @@ except Exception as e:
 # Static serving for built frontend if available
 backend_dir = Path(__file__).parent
 frontend_dist = (backend_dir / "../frontend/dist").resolve()
+assets_dir = (backend_dir / "assets").resolve()
+if assets_dir.exists():
+    app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 if frontend_dist.exists():
     app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
 
