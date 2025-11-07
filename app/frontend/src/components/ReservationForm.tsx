@@ -422,27 +422,28 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
 
               <div className="form-group">
                 <label className="label">Allergènes</label>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-3">
                   {ALLERGENS.map(a => {
                     const active = allergens.includes(a.key)
+                    const toggle = () => setAllergens(prev => active ? prev.filter(k => k !== a.key) : [...prev, a.key])
                     return (
-                      <button
-                        key={a.key}
-                        type="button"
-                        className={`btn btn-sm allergen-chip ${active ? '' : 'btn-outline'}`}
-                        onClick={() => setAllergens(prev => active ? prev.filter(k => k !== a.key) : [...prev, a.key])}
-                      >
-                        <span className="inline-flex items-center gap-2">
+                      <div key={a.key} className="allergen-pill" onClick={toggle}>
+                        <button
+                          type="button"
+                          className={`btn btn-sm btn-outline allergen-btn ${active ? 'is-active' : ''}`}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggle(); }}
+                          aria-pressed={active}
+                          title={a.label}
+                        >
                           <img
                             src={`/backend-assets/allergens/${a.key}.png`}
                             alt={a.label}
-                            title={a.label}
                             className="allergen-icon"
                             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                           />
-                          <span className="allergen-chip-label">{a.label}</span>
-                        </span>
-                      </button>
+                        </button>
+                        <span className="allergen-label" role="button">{a.label}</span>
+                      </div>
                     )
                   })}
                 </div>
