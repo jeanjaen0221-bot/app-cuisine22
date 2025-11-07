@@ -422,7 +422,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
 
               <div className="form-group">
                 <label className="label">Allergènes</label>
-                <div className="flex flex-wrap gap-3">
+                <div className="allergens-grid">
                   {ALLERGENS.map(a => {
                     const active = allergens.includes(a.key)
                     const toggle = () => setAllergens(prev => active ? prev.filter(k => k !== a.key) : [...prev, a.key])
@@ -433,6 +433,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                           className={`btn btn-sm btn-outline allergen-btn ${active ? 'is-active' : ''}`}
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggle(); }}
                           aria-pressed={active}
+                          aria-label={a.label}
                           title={a.label}
                         >
                           <img
