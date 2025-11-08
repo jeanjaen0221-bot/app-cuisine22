@@ -110,17 +110,25 @@ export default function MenuList() {
           <div className="col-span-12 md:col-span-5">
             <input className="input" placeholder="Rechercher un plat" value={q} onChange={e=>setQ(e.target.value)} />
           </div>
-          <div className="col-span-12 md:col-span-7 flex flex-wrap gap-2">
-            <div className="flex gap-2">
+          <div className="col-span-12 md:col-span-7 flex flex-wrap gap-4 items-center">
+            <div className="btn-group" role="group" aria-label="Filtrer par type">
               {(['all','entrée','plat','dessert'] as const).map(tf => (
-                <button key={tf} className={`btn btn-sm ${typeFilter===tf ? '' : 'bg-white text-gray-700 hover:bg-gray-50'}`} onClick={()=>setTypeFilter(tf)}>
+                <button
+                  key={tf}
+                  className={`btn btn-sm ${typeFilter===tf ? '' : 'btn-outline'}`}
+                  onClick={()=>setTypeFilter(tf)}
+                >
                   {tf === 'all' ? 'Tous' : tf.charAt(0).toUpperCase()+tf.slice(1)}
                 </button>
               ))}
             </div>
-            <div className="flex gap-2">
+            <div className="btn-group" role="group" aria-label="Filtrer par statut">
               {(['all','true','false'] as const).map(af => (
-                <button key={af} className={`btn btn-sm ${activeFilter===af ? '' : 'bg-white text-gray-700 hover:bg-gray-50'}`} onClick={()=>setActiveFilter(af)}>
+                <button
+                  key={af}
+                  className={`btn btn-sm ${activeFilter===af ? '' : 'btn-outline'}`}
+                  onClick={()=>setActiveFilter(af)}
+                >
                   {af==='all' ? 'Tous' : af==='true' ? 'Actifs' : 'Inactifs'}
                 </button>
               ))}
@@ -142,7 +150,7 @@ export default function MenuList() {
           <button className="btn btn-sm col-span-6 md:col-span-1" onClick={add}>Ajouter</button>
         </div>
 
-        <div className="overflow-auto">
+        <div className="table-container">
           <table className="table">
             <thead>
               <tr>
@@ -163,7 +171,7 @@ export default function MenuList() {
             <tbody>
               {sorted.map(it => (
                 <tr key={it.id}>
-                  <td className="font-medium text-gray-900">{it.name}</td>
+                  <td className="font-medium text-gray-900 name-cell">{it.name}</td>
                   <td>
                     <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${it.type==='entrée' ? 'bg-emerald-50 text-emerald-700' : it.type==='plat' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{it.type}</span>
                   </td>
@@ -171,9 +179,9 @@ export default function MenuList() {
                     <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${it.active ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-700'}`}>{it.active ? 'Actif' : 'Inactif'}</span>
                   </td>
                   <td>
-                    <div className="flex gap-2">
-                      <button className="btn btn-sm" onClick={()=>toggleActive(it)}>{it.active ? 'Désactiver' : 'Activer'}</button>
-                      <button className="btn btn-sm" onClick={()=>remove(it)}>Supprimer</button>
+                    <div className="flex gap-2 actions-cell">
+                      <button className="btn btn-sm btn-outline" onClick={()=>toggleActive(it)}>{it.active ? 'Désactiver' : 'Activer'}</button>
+                      <button className="btn btn-sm btn-outline" onClick={()=>remove(it)}>Supprimer</button>
                     </div>
                   </td>
                 </tr>
