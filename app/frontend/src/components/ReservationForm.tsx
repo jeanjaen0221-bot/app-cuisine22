@@ -18,7 +18,7 @@ const DRINKS = [
   'Sans alcool', 'Vin au verre', 'Accords mets & vins', 'Soft + Café', 'Eau + Café'
 ]
 
-const ALLERGENS = [
+const DEFAULT_ALLERGENS = [
   { key: 'gluten', label: 'Gluten' },
   { key: 'crustaces', label: 'Crustacés' },
   { key: 'oeufs', label: 'Œufs' },
@@ -55,6 +55,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [errs, setErrs] = useState<{client?:string,date?:string,pax?:string,time?:string}>({})
   const [itemsError, setItemsError] = useState<string | null>(null)
+  const [allergenDefs, setAllergenDefs] = useState<{key:string,label:string}[]>([])
 
   // État pour la taille de police
   const [fontSize, setFontSize] = useState('text-base');
@@ -210,6 +211,21 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
         { type: 'dessert', name: '', quantity: 0 },
       ])
     }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadAllergens() {
+      try {
+        const r = await api.get('/api/allergens')
+        const arr = Array.isArray(r.data) ? r.data.map((a:any)=>({ key: a.key, label: a.label })) : []
+        if (!cancelled) setAllergenDefs(arr.length ? arr : DEFAULT_ALLERGENS)
+      } catch {
+        if (!cancelled) setAllergenDefs(DEFAULT_ALLERGENS)
+      }
+    }
+    loadAllergens()
+    return () => { cancelled = true }
   }, [])
 
   const updateItem = (idx: number, patch: Partial<ReservationItem>) => {
@@ -423,7 +439,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
               <div className="form-group">
                 <label className="label">Allergènes</label>
                 <div className="allergens-grid">
-                  {ALLERGENS.map(a => {
+                  {allergenDefs.map(a => {
                     const active = allergens.includes(a.key)
                     const toggle = () => setAllergens(prev => active ? prev.filter(k => k !== a.key) : [...prev, a.key])
                     return (
