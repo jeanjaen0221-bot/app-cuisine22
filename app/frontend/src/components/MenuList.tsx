@@ -93,15 +93,27 @@ export default function MenuList() {
     await load()
   }
 
+  async function clearAll() {
+    const ok1 = confirm('Voulez-vous vraiment supprimer TOUS les plats ?')
+    if (!ok1) return
+    const ok2 = confirm('Confirmation finale: cette action est irréversible. Continuer ?')
+    if (!ok2) return
+    await api.delete('/api/menu-items', { params: { confirm: true } })
+    await load()
+  }
+
   return (
     <div className="card">
       <div className="card-header">
         <h3 className="text-lg font-semibold">Base de plats</h3>
-        <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600">
-          <span>Total: <b>{counts.total}</b></span>
-          <span>Entrées: <b>{counts.entree}</b></span>
-          <span>Plats: <b>{counts.plat}</b></span>
-          <span>Desserts: <b>{counts.dessert}</b></span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600">
+            <span>Total: <b>{counts.total}</b></span>
+            <span>Entrées: <b>{counts.entree}</b></span>
+            <span>Plats: <b>{counts.plat}</b></span>
+            <span>Desserts: <b>{counts.dessert}</b></span>
+          </div>
+          <button className="btn btn-sm btn-danger" onClick={clearAll}>Tout supprimer</button>
         </div>
       </div>
 

@@ -3,7 +3,7 @@ import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
 
 from ..database import get_session
 from ..models import MenuItem, MenuItemCreate, MenuItemRead, MenuItemUpdate
@@ -65,5 +65,14 @@ def delete_item(item_id: uuid.UUID, session: Session = Depends(get_session)):
     if not it:
         raise HTTPException(404, "Item not found")
     session.delete(it)
+    session.commit()
+    return {"ok": True}
+
+
+@router.delete("")
+def delete_all_items(confirm: bool = False, session: Session = Depends(get_session)):
+    if not confirm:
+        raise HTTPException(400, "Confirmation required")
+    session.exec(delete(MenuItem))
     session.commit()
     return {"ok": True}

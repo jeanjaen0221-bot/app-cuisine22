@@ -101,24 +101,17 @@ export default function ReservationList() {
                 </div>
               </div>
               <div className="card-body">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-gray-700">
-                    <CalendarDays className="w-4 h-4 text-gray-500" />
-                    <span>{formatDate(r.service_date)}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-700">
-                    <Clock className="w-4 h-4 text-gray-500" />
-                    <span>{formatTime(r.arrival_time)}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-700">
-                    <Users className="w-4 h-4 text-gray-500" />
-                    <span>{r.pax} couvert{r.pax > 1 ? 's' : ''}</span>
+                <div className="space-y-3">
+                  <div className="meta-list">
+                    <div className="meta-item"><CalendarDays className="w-4 h-4" /><span>{formatDate(r.service_date)}</span></div>
+                    <div className="meta-item"><Clock className="w-4 h-4" /><span>{formatTime(r.arrival_time)}</span></div>
+                    <div className="meta-item"><Users className="w-4 h-4" /><span>{r.pax} couvert{r.pax > 1 ? 's' : ''}</span></div>
                   </div>
                   {/* Résumé plats */}
                   {Array.isArray(r.items) && r.items.length > 0 && (
                     <div className="pt-1 border-t border-gray-100 mt-2 space-y-1 text-gray-800">
                       <div>
-                        <span className="font-medium">Entrées:</span>{' '}
+                        <span className="section-label">Entrées</span>{' : '}
                         {(() => {
                           const list = r.items.filter(i => (i.type||'').toLowerCase().startsWith('entrée') && (i.quantity||0)>0)
                             .map(i => `${i.quantity}× ${i.name}`);
@@ -128,7 +121,7 @@ export default function ReservationList() {
                         {r.items.filter(i => (i.type||'').toLowerCase().startsWith('entrée') && (i.quantity||0)>0).length > 3 ? '…' : ''}
                       </div>
                       <div>
-                        <span className="font-medium">Plats:</span>{' '}
+                        <span className="section-label">Plats</span>{' : '}
                         {(() => {
                           const list = r.items.filter(i => (i.type||'').toLowerCase() === 'plat' && (i.quantity||0)>0)
                             .map(i => `${i.quantity}× ${i.name}`);
@@ -138,7 +131,7 @@ export default function ReservationList() {
                         {r.items.filter(i => (i.type||'').toLowerCase() === 'plat' && (i.quantity||0)>0).length > 3 ? '…' : ''}
                       </div>
                       <div>
-                        <span className="font-medium">Desserts:</span>{' '}
+                        <span className="section-label">Desserts</span>{' : '}
                         {(() => {
                           const list = r.items.filter(i => (i.type||'').toLowerCase() === 'dessert' && (i.quantity||0)>0)
                             .map(i => `${i.quantity}× ${i.name}`);
@@ -159,8 +152,8 @@ export default function ReservationList() {
                   {/* Notes */}
                   {r.notes && (
                     <div className="text-gray-700">
-                      <span className="font-medium">Notes:</span>{' '}
-                      <span className="text-gray-700">{cleanNotesPreview(r.notes)}</span>
+                      <span className="section-label">Notes</span>{': '}
+                      <span className="text-gray-700 note-preview">{cleanNotesPreview(r.notes, 160)}</span>
                     </div>
                   )}
                   {/* Allergènes */}

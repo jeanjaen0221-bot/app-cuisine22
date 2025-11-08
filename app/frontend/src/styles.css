@@ -1225,3 +1225,36 @@ body {
 .table .name-cell { min-width: 320px; }
 .table .actions-cell { white-space: nowrap; }
 .table .actions-cell .btn { padding: 0.35rem 0.6rem; font-size: 0.8rem; }
+
+/* ===== Reservation cards polish ===== */
+.meta-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+  color: var(--gray-700);
+}
+
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.meta-item svg { color: var(--gray-500); }
+
+@media (max-width: 640px) {
+  .meta-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.section-label {
+  font-weight: 600;
+  color: var(--gray-800);
+}
+
+.note-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  overflow: hidden;
+}
