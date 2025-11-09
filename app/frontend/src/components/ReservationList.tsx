@@ -34,11 +34,13 @@ const cleanNotesPreview = (s: string | undefined, max = 120) => {
 };
 
 const splitAllergens = (csv?: string) => (csv ? csv.split(',').map(s=>s.trim()).filter(Boolean) : []);
+type AllergenMeta = { key: string; label: string; icon_url?: string }
 
 export default function ReservationList() {
   const [rows, setRows] = useState<Reservation[]>([])
   const [q, setQ] = useState('')
   const [date, setDate] = useState<string>('')
+  const [allergenMeta, setAllergenMeta] = useState<Record<string, AllergenMeta>>({})
 
   async function load() {
     const params: any = {}
@@ -51,6 +53,22 @@ export default function ReservationList() {
   }
 
   useEffect(() => { load() }, [])
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const res = await api.get('/api/allergens')
+        if (!mounted) return
+        const map: Record<string, AllergenMeta> = {}
+        for (const a of (Array.isArray(res.data) ? res.data : [])) {
+          if (!a?.key) continue
+          map[a.key] = { key: a.key, label: a.label || a.key, icon_url: a.icon_url || undefined }
+        }
+        setAllergenMeta(map)
+      } catch {}
+    })()
+    return () => { mounted = false }
+  }, [])
   useEffect(() => {
     const t = setTimeout(() => { load() }, 300)
     return () => clearTimeout(t)
@@ -81,9 +99,9 @@ export default function ReservationList() {
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {rows.map(r => (
-            <div key={r.id} className="card card-hoverable">
+            <div key={r.id} className="card card-hoverable reservation-card">
               <div className="card-header">
-                <h3 className="text-lg font-medium flex items-center gap-2">
+                <h3 className="text-lg font-medium flex items-center gap-2 capitalize">
                   <User className="w-4 h-4 text-gray-600" />
                   {r.client_name}
                 </h3>
@@ -107,6 +125,7 @@ export default function ReservationList() {
                     <div className="meta-item"><Clock className="w-4 h-4" /><span>{formatTime(r.arrival_time)}</span></div>
                     <div className="meta-item"><Users className="w-4 h-4" /><span>{r.pax} couvert{r.pax > 1 ? 's' : ''}</span></div>
                   </div>
+                  <div className="card-sep" />
                   {/* Résumé plats */}
                   {Array.isArray(r.items) && r.items.length > 0 && (
                     <div className="pt-1 border-t border-gray-100 mt-2 space-y-1 text-gray-800">
@@ -146,7 +165,7 @@ export default function ReservationList() {
                   {r.drink_formula && (
                     <div className="flex items-center gap-2 text-gray-700">
                       <Wine className="w-4 h-4 text-gray-500" />
-                      <span className="truncate max-w-full">{r.drink_formula}</span>
+                      <span className="badge badge-secondary drink-badge" title="Formule boisson">{r.drink_formula}</span>
                     </div>
                   )}
                   {/* Notes */}
@@ -159,18 +178,23 @@ export default function ReservationList() {
                   {/* Allergènes */}
                   {splitAllergens(r.allergens).length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 pt-1">
-                      {splitAllergens(r.allergens).map(a => (
-                        <span key={a} className="inline-flex items-center gap-1">
-                          <img
-                            src={`/backend-assets/allergens/${a}.png`}
-                            alt={a}
-                            title={a}
-                            className="allergen-icon"
-                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-                          />
-                          <span className="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded">{a}</span>
-                        </span>
-                      ))}
+                      {splitAllergens(r.allergens).map(a => {
+                        const meta = allergenMeta[a]
+                        const label = meta?.label || a
+                        const icon = meta?.icon_url || `/backend-assets/allergens/${a}.png`
+                        return (
+                          <span key={a} className="allergen-chip allergen-chip-card">
+                            <img
+                              src={icon}
+                              alt={label}
+                              title={label}
+                              className="allergen-icon"
+                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                            />
+                            <span className="allergen-chip-label">{label}</span>
+                          </span>
+                        )
+                      })}
                     </div>
                   )}
                 </div>

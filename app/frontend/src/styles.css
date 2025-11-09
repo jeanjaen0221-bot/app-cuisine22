@@ -1258,3 +1258,15 @@ body {
   line-clamp: 2;
   overflow: hidden;
 }
+
+/* ——— Reservation cards enhanced ——— */
+.reservation-card { transition: var(--transition); }
+.reservation-card:hover { border-color: var(--primary-light); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+
+.card-sep { height: 1px; background: linear-gradient(90deg, transparent, var(--border-color), transparent); margin: 0.25rem 0 0.75rem; }
+
+/* Chips inside cards (icon + label) */
+.allergen-chip-card { background: var(--gray-100); border: 1px solid var(--border-color); }
+
+/* Drink formula badge look */
+.drink-badge { background: var(--gray-100); color: var(--gray-800); border: 1px solid var(--border-color); }
