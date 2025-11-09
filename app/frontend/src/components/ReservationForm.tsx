@@ -18,7 +18,8 @@ const DRINKS = [
   'Sans alcool', 'Vin au verre', 'Accords mets & vins', 'Soft + Café', 'Eau + Café'
 ]
 
-const ALLERGENS = [
+type AllergenOption = { key: string; label: string; icon_url?: string; has_icon?: boolean }
+const DEFAULT_ALLERGENS: AllergenOption[] = [
   { key: 'gluten', label: 'Gluten' },
   { key: 'crustaces', label: 'Crustacés' },
   { key: 'oeufs', label: 'Œufs' },
@@ -55,6 +56,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [errs, setErrs] = useState<{client?:string,date?:string,pax?:string,time?:string}>({})
   const [itemsError, setItemsError] = useState<string | null>(null)
+  const [allergenOptions, setAllergenOptions] = useState<AllergenOption[]>(DEFAULT_ALLERGENS)
 
   // État pour la taille de police
   const [fontSize, setFontSize] = useState('text-base');
@@ -210,6 +212,23 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
         { type: 'dessert', name: '', quantity: 0 },
       ])
     }
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const res = await api.get('/api/allergens')
+        const fromApi: AllergenOption[] = Array.isArray(res.data) ? res.data : []
+        const byKey: Record<string, AllergenOption> = {}
+        DEFAULT_ALLERGENS.forEach(a => { byKey[a.key] = a })
+        fromApi.forEach(a => { byKey[a.key] = { ...(byKey[a.key] || {}), ...a } })
+        const merged = Object.values(byKey)
+        allergens.forEach(k => { if (!merged.find(a => a.key === k)) merged.push({ key: k, label: k }) })
+        if (mounted) setAllergenOptions(merged)
+      } catch {}
+    })()
+    return () => { mounted = false }
   }, [])
 
   const updateItem = (idx: number, patch: Partial<ReservationItem>) => {
@@ -423,7 +442,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
               <div className="form-group">
                 <label className="label">Allergènes</label>
                 <div className="allergens-grid">
-                  {ALLERGENS.map(a => {
+                  {allergenOptions.map(a => {
                     const active = allergens.includes(a.key)
                     const toggle = () => setAllergens(prev => active ? prev.filter(k => k !== a.key) : [...prev, a.key])
                     return (
@@ -437,7 +456,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                           title={a.label}
                         >
                           <img
-                            src={`/backend-assets/allergens/${a.key}.png`}
+                            src={a.icon_url || `/backend-assets/allergens/${a.key}.png`}
                             alt={a.label}
                             className="allergen-icon"
                             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
