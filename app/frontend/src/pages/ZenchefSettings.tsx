@@ -30,7 +30,7 @@ export default function ZenchefSettings() {
     } finally {
       setSaving(false)
     }
-
+   }
   async function loadAllergens() {
     setLoadingAllergens(true)
     try {
