@@ -1106,11 +1106,11 @@ body {
 }
 
 .allergen-icon {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
   display: block;
-  flex: 0 0 18px;
+  flex: 0 0 20px;
 }
 
 .allergen-chip-label {

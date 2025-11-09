@@ -161,7 +161,7 @@ export default function ZenchefSettings() {
                   <td>
                     <div className="flex items-center gap-2">
                       {a.has_icon ? (
-                        <img src={a.icon_url} alt={a.label} className="h-6 w-6 object-contain" />
+                        <img src={a.icon_url} alt={a.label} className="allergen-icon" />
                       ) : (
                         <span className="text-xs text-gray-500 inline-flex items-center gap-1"><Image className="w-4 h-4"/>Aucune</span>
                       )}

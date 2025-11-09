@@ -188,7 +188,7 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
             icon = _find_allergen_icon(key)
             if icon:
                 try:
-                    row.append(RLImage(icon, width=22, height=22))
+                    row.append(RLImage(icon, width=20, height=20))
                     # Afficher aussi le libellé à côté de l'icône
                     row.append(Paragraph(key, styles['Meta']))
                 except Exception:
@@ -317,7 +317,7 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
             y -= 16
         else:
             x = 50
-            size = 16
+            size = 20
             for key in alls:
                 icon = _find_allergen_icon(key)
                 if icon:

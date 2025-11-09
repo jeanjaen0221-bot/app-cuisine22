@@ -137,6 +137,8 @@ def backfill_allergen_icons() -> None:
         if not os.path.isdir(icons_dir):
             return
         from datetime import datetime
+        from PIL import Image
+        import io
         from .models import Allergen as AllergenModel
         with Session(engine) as session:
             for fname in os.listdir(icons_dir):
@@ -146,7 +148,32 @@ def backfill_allergen_icons() -> None:
                 path = os.path.join(icons_dir, fname)
                 try:
                     with open(path, 'rb') as f:
-                        blob = f.read()
+                        raw = f.read()
+                    # Normalize: trim transparent borders, square canvas, resize to 320px
+                    try:
+                        im = Image.open(io.BytesIO(raw)).convert('RGBA')
+                        bbox = im.getbbox()
+                        if bbox:
+                            im = im.crop(bbox)
+                        max_side = max(im.size)
+                        pad = int(max_side * 0.08)
+                        canvas_side = max_side + pad * 2
+                        canvas = Image.new('RGBA', (canvas_side, canvas_side), (0,0,0,0))
+                        x = (canvas_side - im.size[0]) // 2
+                        y = (canvas_side - im.size[1]) // 2
+                        canvas.paste(im, (x,y), im)
+                        canvas = canvas.resize((320, 320), Image.LANCZOS)
+                        out = io.BytesIO()
+                        canvas.save(out, format='PNG', optimize=True)
+                        blob = out.getvalue()
+                        # Write back normalized file
+                        try:
+                            with open(path, 'wb') as wf:
+                                wf.write(blob)
+                        except Exception:
+                            pass
+                    except Exception:
+                        blob = raw
                 except Exception:
                     continue
                 row = session.get(AllergenModel, key)

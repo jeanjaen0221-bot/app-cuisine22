@@ -59,6 +59,35 @@ def _icon_url_for(key: str) -> str:
     return f"{PUBLIC_PREFIX}/{key}.png"
 
 
+def _normalize_png(content: bytes, target_px: int = 320, padding_ratio: float = 0.08) -> bytes:
+    """Trim fully transparent borders and resize to a square PNG with transparent padding.
+    Returns normalized PNG bytes. Keeps aspect ratio and adds small padding.
+    """
+    try:
+        from PIL import Image  # pillow
+        import io
+        im = Image.open(io.BytesIO(content)).convert("RGBA")
+        # Trim transparent borders
+        bbox = im.getbbox()  # for RGBA, bbox uses non-zero alpha implicitly
+        if bbox:
+            im = im.crop(bbox)
+        # Fit into square canvas with padding
+        max_side = max(im.size)
+        pad = int(max_side * padding_ratio)
+        canvas_side = max_side + pad * 2
+        canvas = Image.new("RGBA", (canvas_side, canvas_side), (0, 0, 0, 0))
+        # Center paste
+        x = (canvas_side - im.size[0]) // 2
+        y = (canvas_side - im.size[1]) // 2
+        canvas.paste(im, (x, y), im)
+        # Resize to target
+        canvas = canvas.resize((target_px, target_px), Image.LANCZOS)
+        out = io.BytesIO()
+        canvas.save(out, format="PNG", optimize=True)
+        return out.getvalue()
+    except Exception:
+        return content
+
 @router.get("", response_model=List[AllergenResponse])
 def list_allergens(session: Session = Depends(get_session)):
     meta = _read_meta()
@@ -111,16 +140,18 @@ def upload_icon(key: str, file: UploadFile = File(...), session: Session = Depen
     # Basic sig check for PNG
     if not content.startswith(b"\x89PNG\r\n\x1a\n"):
         raise HTTPException(400, "Invalid PNG file")
+    # Normalize before saving (trim transparent margins and resize)
+    normalized = _normalize_png(content)
     with open(_icon_path_for(key), "wb") as f:
-        f.write(content)
+        f.write(normalized)
     meta = _read_meta()
     label = meta.get(key, {}).get("label", key)
     # Upsert icon bytes in DB
     row = session.get(AllergenModel, key)
     if row is None:
-        row = AllergenModel(key=key, label=label, icon_bytes=content, updated_at=datetime.utcnow())
+        row = AllergenModel(key=key, label=label, icon_bytes=normalized, updated_at=datetime.utcnow())
     else:
-        row.icon_bytes = content
+        row.icon_bytes = normalized
         if not row.label:
             row.label = label
         row.updated_at = datetime.utcnow()
