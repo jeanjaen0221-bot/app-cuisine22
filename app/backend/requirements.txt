@@ -9,3 +9,6 @@ reportlab==4.2.5
 aiofiles==24.1.0
 psycopg2-binary==2.9.9
 requests==2.32.3
+python-multipart==0.0.9
+Pillow==10.4.0
+tzdata==2024.1
