@@ -189,6 +189,8 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
             if icon:
                 try:
                     row.append(RLImage(icon, width=22, height=22))
+                    # Afficher aussi le libellé à côté de l'icône
+                    row.append(Paragraph(key, styles['Meta']))
                 except Exception:
                     row.append(Paragraph(key, styles['Meta']))
             else:
@@ -321,7 +323,10 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
                 if icon:
                     try:
                         c.drawImage(icon, x, y - size + 4, width=size, height=size, mask='auto', preserveAspectRatio=True, anchor='sw')
-                        x += size + 8
+                        # Afficher aussi le libellé à droite de l'icône
+                        c.setFont("Helvetica", 10)
+                        c.drawString(x + size + 4, y, key)
+                        x += size + 8 + 60
                     except Exception:
                         c.setFont("Helvetica", 10)
                         c.drawString(x, y, key)
