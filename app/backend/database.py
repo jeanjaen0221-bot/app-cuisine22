@@ -122,6 +122,9 @@ def ensure_final_version_column() -> None:
                     conn.execute(text("ALTER TABLE reservation ADD COLUMN final_version BOOLEAN DEFAULT FALSE"))
                 except Exception:
                     pass
+    except Exception:
+        # Non-fatal; table may not exist yet in some flows
+        pass
 
 
 def backfill_allergen_icons() -> None:
