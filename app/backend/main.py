@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response
 
-from .database import init_db, run_startup_migrations, session_context
+from .database import init_db, run_startup_migrations, session_context, backfill_allergen_icons
 from .routers import reservations, menu_items, zenchef, allergens
 
 load_dotenv()
@@ -33,6 +33,11 @@ app.include_router(allergens.router)
 
 # Ensure DB
 init_db()
+# Backfill existing allergen icons into DB rows (idempotent)
+try:
+    backfill_allergen_icons()
+except Exception as e:
+    print(f"Backfill allergen icons skipped: {e}")
 # Apply idempotent startup migrations automatically on Railway (PostgreSQL)
 try:
     run_startup_migrations()

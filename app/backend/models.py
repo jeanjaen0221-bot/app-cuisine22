@@ -133,3 +133,11 @@ class Setting(SQLModel, table=True):
 class ProcessedRequest(SQLModel, table=True):
     key: str = Field(primary_key=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# Store allergens metadata and icon bytes in DB (in addition to file assets for compatibility)
+class Allergen(SQLModel, table=True):
+    key: str = Field(primary_key=True)
+    label: str
+    icon_bytes: Optional[bytes] = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

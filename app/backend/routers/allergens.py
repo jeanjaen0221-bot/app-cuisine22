@@ -5,8 +5,11 @@ from typing import List, Dict, Any
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from pydantic import BaseModel, Field
+from datetime import datetime
+from sqlmodel import Session, select
 
 from ..database import get_session  # unused, but keeps pattern consistent
+from ..models import Allergen as AllergenModel
 
 router = APIRouter(prefix="/api/allergens", tags=["allergens"])
 
@@ -19,7 +22,7 @@ PUBLIC_PREFIX = "/backend-assets/allergens"
 os.makedirs(ALLERGENS_DIR, exist_ok=True)
 
 
-class Allergen(BaseModel):
+class AllergenResponse(BaseModel):
     key: str = Field(..., min_length=1, max_length=64)
     label: str = Field(..., min_length=1, max_length=128)
     icon_url: str | None = None
@@ -56,19 +59,26 @@ def _icon_url_for(key: str) -> str:
     return f"{PUBLIC_PREFIX}/{key}.png"
 
 
-@router.get("", response_model=List[Allergen])
-def list_allergens():
+@router.get("", response_model=List[AllergenResponse])
+def list_allergens(session: Session = Depends(get_session)):
     meta = _read_meta()
-    out: List[Allergen] = []
-    for key, info in sorted(meta.items(), key=lambda kv: (kv[1].get("order", 9999), kv[1].get("label", kv[0]))):
+    # Load DB rows
+    rows = session.exec(select(AllergenModel)).all()
+    labels: Dict[str, str] = {}
+    for key, info in meta.items():
+        labels[key] = (info.get("label") or key)
+    for r in rows:
+        labels[r.key] = r.label or labels.get(r.key) or r.key
+    out: List[AllergenResponse] = []
+    for key in sorted(labels.keys(), key=lambda k: (meta.get(k, {}).get("order", 9999), labels[k])):
         p = _icon_path_for(key)
         has_icon = os.path.isfile(p)
-        out.append(Allergen(key=key, label=info.get("label") or key, has_icon=has_icon, icon_url=_icon_url_for(key) if has_icon else None))
+        out.append(AllergenResponse(key=key, label=labels[key], has_icon=has_icon, icon_url=_icon_url_for(key) if has_icon else None))
     return out
 
 
-@router.put("/{key}", response_model=Allergen)
-def upsert_allergen(key: str, payload: AllergenUpsert):
+@router.put("/{key}", response_model=AllergenResponse)
+def upsert_allergen(key: str, payload: AllergenUpsert, session: Session = Depends(get_session)):
     key = key.strip()
     if not key:
         raise HTTPException(400, "Invalid key")
@@ -78,12 +88,21 @@ def upsert_allergen(key: str, payload: AllergenUpsert):
     meta.setdefault(key, {})
     meta[key]["label"] = payload.label.strip() or key
     _write_meta(meta)
+    # Upsert in DB as well
+    row = session.get(AllergenModel, key)
+    if row is None:
+        row = AllergenModel(key=key, label=meta[key]["label"], icon_bytes=None, updated_at=datetime.utcnow())
+    else:
+        row.label = meta[key]["label"]
+        row.updated_at = datetime.utcnow()
+    session.add(row)
+    session.commit()
     has_icon = os.path.isfile(_icon_path_for(key))
-    return Allergen(key=key, label=meta[key]["label"], has_icon=has_icon, icon_url=_icon_url_for(key) if has_icon else None)
+    return AllergenResponse(key=key, label=meta[key]["label"], has_icon=has_icon, icon_url=_icon_url_for(key) if has_icon else None)
 
 
-@router.post("/{key}/icon", response_model=Allergen)
-def upload_icon(key: str, file: UploadFile = File(...)):
+@router.post("/{key}/icon", response_model=AllergenResponse)
+def upload_icon(key: str, file: UploadFile = File(...), session: Session = Depends(get_session)):
     if not file.filename.lower().endswith(".png"):
         raise HTTPException(400, "Only PNG files are accepted")
     content = file.file.read()
@@ -96,15 +115,34 @@ def upload_icon(key: str, file: UploadFile = File(...)):
         f.write(content)
     meta = _read_meta()
     label = meta.get(key, {}).get("label", key)
-    return Allergen(key=key, label=label, has_icon=True, icon_url=_icon_url_for(key))
+    # Upsert icon bytes in DB
+    row = session.get(AllergenModel, key)
+    if row is None:
+        row = AllergenModel(key=key, label=label, icon_bytes=content, updated_at=datetime.utcnow())
+    else:
+        row.icon_bytes = content
+        if not row.label:
+            row.label = label
+        row.updated_at = datetime.utcnow()
+    session.add(row)
+    session.commit()
+    return AllergenResponse(key=key, label=label, has_icon=True, icon_url=_icon_url_for(key))
 
 
 @router.delete("/{key}")
-def delete_allergen(key: str):
+def delete_allergen(key: str, session: Session = Depends(get_session)):
     meta = _read_meta()
     if key in meta:
         del meta[key]
         _write_meta(meta)
+    # Best-effort remove from DB (keep icon file by default)
+    try:
+        row = session.get(AllergenModel, key)
+        if row is not None:
+            session.delete(row)
+            session.commit()
+    except Exception:
+        pass
     # Do not delete icon by default to avoid accidental data loss; uncomment if needed
     # try:
     #     os.remove(_icon_path_for(key))

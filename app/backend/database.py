@@ -122,8 +122,41 @@ def ensure_final_version_column() -> None:
                     conn.execute(text("ALTER TABLE reservation ADD COLUMN final_version BOOLEAN DEFAULT FALSE"))
                 except Exception:
                     pass
+
+
+def backfill_allergen_icons() -> None:
+    """On startup, load any existing PNG icons from assets/allergens into DB rows.
+    Idempotent: only sets icon_bytes if missing. Creates row if absent.
+    """
+    try:
+        base_dir = os.path.dirname(__file__)
+        icons_dir = os.path.join(base_dir, "assets", "allergens")
+        if not os.path.isdir(icons_dir):
+            return
+        from datetime import datetime
+        from .models import Allergen as AllergenModel
+        with Session(engine) as session:
+            for fname in os.listdir(icons_dir):
+                if not fname.lower().endswith('.png'):
+                    continue
+                key = os.path.splitext(fname)[0]
+                path = os.path.join(icons_dir, fname)
+                try:
+                    with open(path, 'rb') as f:
+                        blob = f.read()
+                except Exception:
+                    continue
+                row = session.get(AllergenModel, key)
+                if row is None:
+                    row = AllergenModel(key=key, label=key, icon_bytes=blob, updated_at=datetime.utcnow())
+                else:
+                    if not row.icon_bytes:
+                        row.icon_bytes = blob
+                        row.updated_at = datetime.utcnow()
+                session.add(row)
+            session.commit()
     except Exception:
-        # Non-fatal; table may not exist yet in some flows
+        # best-effort; non-fatal
         pass
 
 def ensure_allergens_column() -> None:
