@@ -31,10 +31,3 @@ export type MenuItem = {
   type: 'entrée' | 'plat' | 'dessert' | string
   active: boolean
 }
-
-export type AllergenDef = {
-  key: string
-  label: string
-  has_icon?: boolean
-  icon_url?: string
-}
