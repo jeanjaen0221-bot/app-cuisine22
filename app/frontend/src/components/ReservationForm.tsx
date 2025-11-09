@@ -15,7 +15,13 @@ import {
 } from 'lucide-react';
 
 const DRINKS = [
-  'Sans alcool', 'Vin au verre', 'Accords mets & vins', 'Soft + Café', 'Eau + Café'
+  'sans alcool',
+  'avec alcool',
+  'sans alcool + cava',
+  'avec alcool + cava',
+  'sans alcool + champ',
+  'avec alcool + champ',
+  'sans Formule',
 ]
 
 type AllergenOption = { key: string; label: string; icon_url?: string; has_icon?: boolean }
@@ -267,6 +273,22 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
       setItemsError('La quantité doit être supérieure à 0 pour tous les plats');
       return false;
     }
+    // Garde-fou: les totaux par type ne doivent pas dépasser le nombre de couverts (pax)
+    const totals: Record<string, number> = { 'entrée': 0, 'plat': 0, 'dessert': 0 };
+    for (const it of items) {
+      const t = (it.type || '').toLowerCase();
+      const isEntree = t.startsWith('entrée') || t.startsWith('entree');
+      if (isEntree) totals['entrée'] += Number(it.quantity || 0);
+      else if (t === 'plat') totals['plat'] += Number(it.quantity || 0);
+      else if (t === 'dessert') totals['dessert'] += Number(it.quantity || 0);
+    }
+    const offenders = Object.entries(totals)
+      .filter(([_, v]) => v > (Number(pax) || 0))
+      .map(([k, v]) => `${k}=${v}`);
+    if (offenders.length > 0) {
+      setItemsError(`Le total par type dépasse le nombre de couverts (${pax}) : ${offenders.join(', ')}`);
+      return false;
+    }
     
     setItemsError(null);
     return Object.keys(errs).length === 0;
@@ -307,11 +329,39 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
       });
     } catch (error) {
       console.error('Erreur lors de la soumission:', error);
-      // Gérer les erreurs de soumission ici
+      // Afficher le message d'erreur serveur (ex: 422 garde-fou backend)
+      try {
+        const anyErr: any = error as any;
+        const detail = anyErr?.response?.data?.detail || anyErr?.message;
+        if (detail) setItemsError(String(detail));
+      } catch {}
     } finally {
       setSubmitting(false);
     }
   };
+
+  // Feedback visuel en direct si dépassement pendant la saisie
+  useEffect(() => {
+    // Ne pas écraser un message d'erreur différent pendant la soumission
+    const totals: Record<string, number> = { 'entrée': 0, 'plat': 0, 'dessert': 0 };
+    for (const it of items) {
+      const t = (it.type || '').toLowerCase();
+      const isEntree = t.startsWith('entrée') || t.startsWith('entree');
+      if (isEntree) totals['entrée'] += Number(it.quantity || 0);
+      else if (t === 'plat') totals['plat'] += Number(it.quantity || 0);
+      else if (t === 'dessert') totals['dessert'] += Number(it.quantity || 0);
+    }
+    const offenders = Object.entries(totals)
+      .filter(([_, v]) => v > (Number(pax) || 0))
+      .map(([k, v]) => `${k}=${v}`);
+    if (offenders.length > 0) {
+      setItemsError(`Le total par type dépasse le nombre de couverts (${pax}) : ${offenders.join(', ')}`);
+    } else if (itemsError && itemsError.startsWith('Le total par type dépasse')) {
+      // Nettoyer le message si c'était uniquement le garde-fou
+      setItemsError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, pax]);
 
   return (
     <div className="container py-6 space-y-6">

@@ -25,7 +25,7 @@ export default function EditReservation() {
         pax: 2,
         service_date: d,
         arrival_time: '',
-        drink_formula: 'Sans alcool',
+        drink_formula: 'sans alcool',
         notes: '',
         status: 'draft',
         final_version: false,
