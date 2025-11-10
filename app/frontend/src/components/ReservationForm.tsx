@@ -21,6 +21,7 @@ const DRINKS = [
   'avec alcool + cava',
   'sans alcool + champ',
   'avec alcool + champ',
+  'à la carte',
   'sans Formule',
 ]
 
