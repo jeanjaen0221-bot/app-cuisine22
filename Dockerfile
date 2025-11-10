@@ -25,4 +25,5 @@ COPY --from=fe /fe/dist /app/frontend/dist
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 EXPOSE 8080
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Bind to PORT provided by Railway/Heroku-like platforms (fallback 8080 for local/docker run)
+CMD ["sh", "-lc", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
