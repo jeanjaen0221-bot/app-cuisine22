@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, FileResponse
 
 from .database import init_db, run_startup_migrations, session_context, backfill_allergen_icons
 from .routers import reservations, menu_items, zenchef, allergens
@@ -51,7 +51,9 @@ assets_dir = (backend_dir / "assets").resolve()
 if assets_dir.exists():
     app.mount("/backend-assets", StaticFiles(directory=str(assets_dir)), name="assets")
 if frontend_dist.exists():
-    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
+    assets_subdir = (frontend_dist / "assets")
+    if assets_subdir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_subdir)), name="frontend-assets")
 
 
 # --- Correlation & Request logging middleware ---
@@ -108,3 +110,18 @@ async def health():
     except Exception:
         ok_db = False
     return {"status": "ok", "db": ok_db}
+
+
+@app.get("/{full_path:path}")
+async def spa_fallback(full_path: str):
+    index_file = frontend_dist / "index.html"
+    if not index_file.exists():
+        raise HTTPException(status_code=404, detail="Frontend build not found")
+    if (
+        full_path.startswith("api")
+        or full_path.startswith("backend-assets")
+        or full_path.startswith("assets")
+        or full_path in {"favicon.ico", "health", "docs", "redoc", "openapi.json"}
+    ):
+        raise HTTPException(status_code=404)
+    return FileResponse(str(index_file))
