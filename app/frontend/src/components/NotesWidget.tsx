@@ -100,7 +100,7 @@ export default function NotesWidget() {
               <div className="space-y-2">
                 <input
                   className="input w-full"
-                  placeholder="Nom de la note (obligatoire)"
+                  placeholder="Prénom (obligatoire)"
                   value={newName}
                   onChange={e => setNewName(e.target.value)}
                 />
@@ -118,7 +118,6 @@ export default function NotesWidget() {
               </div>
 
               <div className="card-sep" />
-
               <div className="space-y-2">
                 {notes.map(n => (
                   <div key={n.id} className="border rounded-md p-2">
@@ -126,7 +125,7 @@ export default function NotesWidget() {
                       <div className="space-y-2">
                         <input
                           className="input w-full"
-                          placeholder="Nom de la note"
+                          placeholder="Prénom"
                           value={editing[n.id].name}
                           onChange={e => setEditing(prev => ({ ...prev, [n.id]: { ...prev[n.id], name: e.target.value } }))}
                         />

@@ -23,9 +23,9 @@ def create_note(payload: NoteCreate, session: Session = Depends(get_session)):
     name = (payload.name or "").strip()
     content = (payload.content or "").strip()
     if not name:
-        raise HTTPException(400, "Name is required")
+        raise HTTPException(400, "Le prénom est obligatoire")
     if not content:
-        raise HTTPException(400, "Content is required")
+        raise HTTPException(400, "Le contenu est obligatoire")
     row = NoteModel(name=name, content=content)
     session.add(row)
     session.commit()
@@ -41,11 +41,11 @@ def update_note(note_id: uuid.UUID, payload: NoteUpdate, session: Session = Depe
     if payload.name is not None:
         row.name = (payload.name or "").strip()
         if not row.name:
-            raise HTTPException(400, "Name cannot be empty")
+            raise HTTPException(400, "Le prénom ne peut pas être vide")
     if payload.content is not None:
         row.content = (payload.content or "").strip()
         if not row.content:
-            raise HTTPException(400, "Content cannot be empty")
+            raise HTTPException(400, "Le contenu ne peut pas être vide")
     row.updated_at = datetime.utcnow()
     session.add(row)
     session.commit()
