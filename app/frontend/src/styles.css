@@ -52,6 +52,20 @@
 
 .app-theme.app-theme-violet .reservation-card .meta-list { color: var(--text); }
 .app-theme.app-theme-violet .reservation-card .meta-item svg { color: rgba(66,32,82,.65); }
+.app-theme.app-theme-violet .reservation-card .meta-item span { color: var(--text); font-weight: 500; }
+
+/* Multi-line menu lists for Entrées/Plats/Desserts */
+.app-theme.app-theme-violet .menu-list {
+  list-style: disc;
+  padding-left: 1rem;
+  margin: .25rem 0 0 .25rem;
+}
+.app-theme.app-theme-violet .menu-line {
+  color: var(--text);
+  line-height: 1.35;
+  white-space: normal;
+}
+.app-theme.app-theme-violet .menu-more { color: var(--accent); }
 
 .app-theme.app-theme-violet .reservation-card .section-label {
   color: var(--accent);

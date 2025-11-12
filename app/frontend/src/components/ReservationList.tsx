@@ -162,40 +162,61 @@ export default function ReservationList() {
                   </div>
                   <div className="card-sep" />
                   {/* Résumé plats */}
-                  {Array.isArray(r.items) && r.items.length > 0 && (
-                    <div className="pt-1 border-t border-gray-100 mt-2 space-y-1 text-gray-800">
+              {Array.isArray(r.items) && r.items.length > 0 && (
+                <div className="pt-1 border-t border-gray-100 mt-2 space-y-2 text-gray-800">
+                  {(() => {
+                    const list = r.items.filter(i => (i.type||'').toLowerCase().startsWith('entrée') && (i.quantity||0)>0)
+                      .map(i => `${i.quantity}× ${i.name}`)
+                    const head = list.slice(0,5)
+                    const more = list.length > head.length
+                    return (
                       <div>
                         <span className="section-label">Entrées</span>{' : '}
-                        {(() => {
-                          const list = r.items.filter(i => (i.type||'').toLowerCase().startsWith('entrée') && (i.quantity||0)>0)
-                            .map(i => `${i.quantity}× ${i.name}`);
-                          const head = list.slice(0,3).join(', ');
-                          return head || '-';
-                        })()}
-                        {r.items.filter(i => (i.type||'').toLowerCase().startsWith('entrée') && (i.quantity||0)>0).length > 3 ? '…' : ''}
+                        {list.length === 0 ? '-' : (
+                          <ul className="menu-list">
+                            {head.map((txt, idx) => (<li className="menu-line" key={`e-${idx}`}>{txt}</li>))}
+                            {more && <li className="menu-more">…</li>}
+                          </ul>
+                        )}
                       </div>
+                    )
+                  })()}
+                  {(() => {
+                    const list = r.items.filter(i => (i.type||'').toLowerCase() === 'plat' && (i.quantity||0)>0)
+                      .map(i => `${i.quantity}× ${i.name}`)
+                    const head = list.slice(0,5)
+                    const more = list.length > head.length
+                    return (
                       <div>
                         <span className="section-label">Plats</span>{' : '}
-                        {(() => {
-                          const list = r.items.filter(i => (i.type||'').toLowerCase() === 'plat' && (i.quantity||0)>0)
-                            .map(i => `${i.quantity}× ${i.name}`);
-                          const head = list.slice(0,3).join(', ');
-                          return head || '-';
-                        })()}
-                        {r.items.filter(i => (i.type||'').toLowerCase() === 'plat' && (i.quantity||0)>0).length > 3 ? '…' : ''}
+                        {list.length === 0 ? '-' : (
+                          <ul className="menu-list">
+                            {head.map((txt, idx) => (<li className="menu-line" key={`p-${idx}`}>{txt}</li>))}
+                            {more && <li className="menu-more">…</li>}
+                          </ul>
+                        )}
                       </div>
+                    )
+                  })()}
+                  {(() => {
+                    const list = r.items.filter(i => (i.type||'').toLowerCase() === 'dessert' && (i.quantity||0)>0)
+                      .map(i => `${i.quantity}× ${i.name}`)
+                    const head = list.slice(0,5)
+                    const more = list.length > head.length
+                    return (
                       <div>
                         <span className="section-label">Desserts</span>{' : '}
-                        {(() => {
-                          const list = r.items.filter(i => (i.type||'').toLowerCase() === 'dessert' && (i.quantity||0)>0)
-                            .map(i => `${i.quantity}× ${i.name}`);
-                          const head = list.slice(0,3).join(', ');
-                          return head || '-';
-                        })()}
-                        {r.items.filter(i => (i.type||'').toLowerCase() === 'dessert' && (i.quantity||0)>0).length > 3 ? '…' : ''}
+                        {list.length === 0 ? '-' : (
+                          <ul className="menu-list">
+                            {head.map((txt, idx) => (<li className="menu-line" key={`d-${idx}`}>{txt}</li>))}
+                            {more && <li className="menu-more">…</li>}
+                          </ul>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
+                </div>
+              )}
                   {/* Formule boisson */}
                   {r.drink_formula && (
                     <div className="flex items-center gap-2 text-gray-700">
