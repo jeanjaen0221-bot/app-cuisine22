@@ -1375,6 +1375,42 @@ body {
 .table .actions-cell .btn { padding: 0.35rem 0.6rem; font-size: 0.8rem; }
 
 /* ===== Reservation cards polish ===== */
+
+/* ===== Menu table (Base de plats) — readability polish ===== */
+.app-theme.app-theme-violet .menu-table {
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.app-theme.app-theme-violet .menu-table thead th {
+  background: linear-gradient(180deg, rgba(248,244,238,.9), rgba(248,244,238,0.6));
+  box-shadow: 0 1px 0 0 rgba(105,51,129,.18);
+}
+.app-theme.app-theme-violet .menu-table th,
+.app-theme.app-theme-violet .menu-table td { padding: 0.75rem 0.9rem; }
+.app-theme.app-theme-violet .menu-table tbody tr:nth-child(odd) { background: rgba(105,51,129,.02); }
+.app-theme.app-theme-violet .menu-table tbody tr:hover { background: rgba(105,51,129,.05); }
+
+/* Column widths */
+.app-theme.app-theme-violet .menu-table th:nth-child(1),
+.app-theme.app-theme-violet .menu-table td:nth-child(1) { width: 60%; }
+.app-theme.app-theme-violet .menu-table th:nth-child(2),
+.app-theme.app-theme-violet .menu-table td:nth-child(2) { width: 14%; }
+.app-theme.app-theme-violet .menu-table th:nth-child(3),
+.app-theme.app-theme-violet .menu-table td:nth-child(3) { width: 12%; }
+.app-theme.app-theme-violet .menu-table th:nth-child(4),
+.app-theme.app-theme-violet .menu-table td:nth-child(4) { width: 14%; }
+
+/* Name wrapping and readability */
+.app-theme.app-theme-violet .menu-table .name-cell {
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+/* Actions cell */
+.app-theme.app-theme-violet .menu-table .actions-cell { gap: .4rem; }
+.app-theme.app-theme-violet .menu-table .actions-cell .btn { padding: 0.35rem 0.6rem; font-size: .82rem; }
 .meta-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

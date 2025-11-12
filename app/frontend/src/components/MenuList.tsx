@@ -163,7 +163,7 @@ export default function MenuList() {
         </div>
 
         <div className="table-container">
-          <table className="table">
+          <table className="table menu-table">
             <thead>
               <tr>
                 <th>Nom</th>
@@ -183,7 +183,7 @@ export default function MenuList() {
             <tbody>
               {sorted.map(it => (
                 <tr key={it.id}>
-                  <td className="font-medium text-gray-900 name-cell">{it.name}</td>
+                  <td className="font-medium text-gray-900 name-cell" title={it.name}>{it.name}</td>
                   <td>
                     <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${it.type==='entrée' ? 'bg-emerald-50 text-emerald-700' : it.type==='plat' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{it.type}</span>
                   </td>
