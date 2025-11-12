@@ -50,6 +50,11 @@ export default function ReservationList() {
   const [allergenMeta, setAllergenMeta] = useState<Record<string, AllergenMeta>>({})
   const [months, setMonths] = useState<{ key: string; label: string }[]>([])
   const [selectedMonth, setSelectedMonth] = useState<string>('')
+  const [expanded, setExpanded] = useState<Record<string, { entries?: boolean; mains?: boolean; desserts?: boolean; notes?: boolean; allergens?: boolean }>>({})
+
+  function toggle(resId: string, key: keyof NonNullable<(typeof expanded)[string]>) {
+    setExpanded(prev => ({ ...prev, [resId]: { ...prev[resId], [key]: !prev[resId]?.[key] } }))
+  }
 
   async function load() {
     const params: any = {}
@@ -167,16 +172,23 @@ export default function ReservationList() {
                   {(() => {
                     const list = r.items.filter(i => (i.type||'').toLowerCase().startsWith('entrée') && (i.quantity||0)>0)
                       .map(i => `${i.quantity}× ${i.name}`)
-                    const head = list.slice(0,5)
-                    const more = list.length > head.length
+                    const isOpen = !!expanded[r.id]?.entries
+                    const shown = isOpen ? list : list.slice(0,5)
+                    const more = list.length > shown.length
                     return (
                       <div>
                         <span className="section-label">Entrées</span>{' : '}
                         {list.length === 0 ? '-' : (
-                          <ul className="menu-list">
-                            {head.map((txt, idx) => (<li className="menu-line" key={`e-${idx}`}>{txt}</li>))}
-                            {more && <li className="menu-more">…</li>}
-                          </ul>
+                          <>
+                            <ul className="menu-list">
+                              {shown.map((txt, idx) => (<li className="menu-line" key={`e-${idx}`}>{txt}</li>))}
+                            </ul>
+                            { (more || isOpen) && (
+                              <button className="section-toggle" onClick={() => toggle(r.id, 'entries')}>
+                                {isOpen ? 'Réduire' : 'Voir tout'}
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     )
@@ -184,16 +196,23 @@ export default function ReservationList() {
                   {(() => {
                     const list = r.items.filter(i => (i.type||'').toLowerCase() === 'plat' && (i.quantity||0)>0)
                       .map(i => `${i.quantity}× ${i.name}`)
-                    const head = list.slice(0,5)
-                    const more = list.length > head.length
+                    const isOpen = !!expanded[r.id]?.mains
+                    const shown = isOpen ? list : list.slice(0,5)
+                    const more = list.length > shown.length
                     return (
                       <div>
                         <span className="section-label">Plats</span>{' : '}
                         {list.length === 0 ? '-' : (
-                          <ul className="menu-list">
-                            {head.map((txt, idx) => (<li className="menu-line" key={`p-${idx}`}>{txt}</li>))}
-                            {more && <li className="menu-more">…</li>}
-                          </ul>
+                          <>
+                            <ul className="menu-list">
+                              {shown.map((txt, idx) => (<li className="menu-line" key={`p-${idx}`}>{txt}</li>))}
+                            </ul>
+                            { (more || isOpen) && (
+                              <button className="section-toggle" onClick={() => toggle(r.id, 'mains')}>
+                                {isOpen ? 'Réduire' : 'Voir tout'}
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     )
@@ -201,16 +220,23 @@ export default function ReservationList() {
                   {(() => {
                     const list = r.items.filter(i => (i.type||'').toLowerCase() === 'dessert' && (i.quantity||0)>0)
                       .map(i => `${i.quantity}× ${i.name}`)
-                    const head = list.slice(0,5)
-                    const more = list.length > head.length
+                    const isOpen = !!expanded[r.id]?.desserts
+                    const shown = isOpen ? list : list.slice(0,5)
+                    const more = list.length > shown.length
                     return (
                       <div>
                         <span className="section-label">Desserts</span>{' : '}
                         {list.length === 0 ? '-' : (
-                          <ul className="menu-list">
-                            {head.map((txt, idx) => (<li className="menu-line" key={`d-${idx}`}>{txt}</li>))}
-                            {more && <li className="menu-more">…</li>}
-                          </ul>
+                          <>
+                            <ul className="menu-list">
+                              {shown.map((txt, idx) => (<li className="menu-line" key={`d-${idx}`}>{txt}</li>))}
+                            </ul>
+                            { (more || isOpen) && (
+                              <button className="section-toggle" onClick={() => toggle(r.id, 'desserts')}>
+                                {isOpen ? 'Réduire' : 'Voir tout'}
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     )
@@ -228,29 +254,52 @@ export default function ReservationList() {
                   {r.notes && (
                     <div className="text-gray-700">
                       <span className="section-label">Notes</span>{': '}
-                      <span className="text-gray-700 note-preview">{cleanNotesPreview(r.notes, 160)}</span>
+                      {expanded[r.id]?.notes ? (
+                        <div className="note-full">{r.notes}</div>
+                      ) : (
+                        <span className="text-gray-700 note-preview">{cleanNotesPreview(r.notes, 220)}</span>
+                      )}
+                      {r.notes.length > 220 && (
+                        <button className="section-toggle" onClick={() => toggle(r.id, 'notes')}>
+                          {expanded[r.id]?.notes ? 'Réduire' : 'Voir tout'}
+                        </button>
+                      )}
                     </div>
                   )}
                   {/* Allergènes */}
                   {splitAllergens(r.allergens).length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 pt-1">
-                      {splitAllergens(r.allergens).map(a => {
-                        const meta = allergenMeta[a]
-                        const label = meta?.label || a
-                        const icon = meta?.icon_url || `/backend-assets/allergens/${a}.png`
+                      {(() => {
+                        const list = splitAllergens(r.allergens)
+                        const isOpen = !!expanded[r.id]?.allergens
+                        const shown = isOpen ? list : list.slice(0, 8)
                         return (
-                          <span key={a} className="allergen-chip allergen-chip-card">
-                            <img
-                              src={icon}
-                              alt={label}
-                              title={label}
-                              className="allergen-icon"
-                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-                            />
-                            <span className="allergen-chip-label">{label}</span>
-                          </span>
+                          <>
+                            {shown.map(a => {
+                              const meta = allergenMeta[a]
+                              const label = meta?.label || a
+                              const icon = meta?.icon_url || `/backend-assets/allergens/${a}.png`
+                              return (
+                                <span key={a} className="allergen-chip allergen-chip-card">
+                                  <img
+                                    src={icon}
+                                    alt={label}
+                                    title={label}
+                                    className="allergen-icon"
+                                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                                  />
+                                  <span className="allergen-chip-label">{label}</span>
+                                </span>
+                              )
+                            })}
+                            {list.length > 8 && (
+                              <button className="section-toggle" onClick={() => toggle(r.id, 'allergens')}>
+                                {isOpen ? 'Réduire' : `+${list.length - 8} plus`}
+                              </button>
+                            )}
+                          </>
                         )
-                      })}
+                      })()}
                     </div>
                   )}
                 </div>

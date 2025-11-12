@@ -67,6 +67,23 @@
 }
 .app-theme.app-theme-violet .menu-more { color: var(--accent); }
 
+/* Toggle link for expanding/collapsing sections */
+.app-theme.app-theme-violet .section-toggle {
+  display: inline-block;
+  margin-top: .25rem;
+  font-size: .85rem;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.app-theme.app-theme-violet .section-toggle:hover { opacity: .85; }
+
+/* Full note block when expanded */
+.app-theme.app-theme-violet .note-full { white-space: pre-wrap; color: var(--text); margin-top: .25rem; }
+
 .app-theme.app-theme-violet .reservation-card .section-label {
   color: var(--accent);
   font-weight: 700;
