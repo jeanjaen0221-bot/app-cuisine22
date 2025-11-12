@@ -166,6 +166,8 @@ export default function ReservationList() {
                     <div className="meta-item"><Users className="w-4 h-4" /><span>{r.pax} couvert{r.pax > 1 ? 's' : ''}</span></div>
                   </div>
                   <div className="card-sep" />
+                <div className="res-sections">
+                  <div className="res-col res-col-main">
                   {/* Résumé plats */}
               {Array.isArray(r.items) && r.items.length > 0 && (
                 <div className="pt-1 border-t border-gray-100 mt-2 space-y-2 text-gray-800">
@@ -175,21 +177,20 @@ export default function ReservationList() {
                     const isOpen = !!expanded[r.id]?.entries
                     const shown = isOpen ? list : list.slice(0,5)
                     const more = list.length > shown.length
+                    if (list.length === 0) return null
                     return (
-                      <div>
-                        <span className="section-label">Entrées</span>{' : '}
-                        {list.length === 0 ? '-' : (
-                          <>
-                            <ul className="menu-list">
-                              {shown.map((txt, idx) => (<li className="menu-line" key={`e-${idx}`}>{txt}</li>))}
-                            </ul>
-                            { (more || isOpen) && (
-                              <button className="section-toggle" onClick={() => toggle(r.id, 'entries')}>
-                                {isOpen ? 'Réduire' : 'Voir tout'}
-                              </button>
-                            )}
-                          </>
-                        )}
+                      <div className="res-block">
+                        <span className="section-label">Entrées</span> <span className="section-count">({list.length})</span>{' : '}
+                        <>
+                          <ul className="menu-list">
+                            {shown.map((txt, idx) => (<li className="menu-line" key={`e-${idx}`}>{txt}</li>))}
+                          </ul>
+                          { (more || isOpen) && (
+                            <button className="section-toggle" onClick={() => toggle(r.id, 'entries')}>
+                              {isOpen ? 'Réduire' : 'Voir tout'}
+                            </button>
+                          )}
+                        </>
                       </div>
                     )
                   })()}
@@ -199,21 +200,20 @@ export default function ReservationList() {
                     const isOpen = !!expanded[r.id]?.mains
                     const shown = isOpen ? list : list.slice(0,5)
                     const more = list.length > shown.length
+                    if (list.length === 0) return null
                     return (
-                      <div>
-                        <span className="section-label">Plats</span>{' : '}
-                        {list.length === 0 ? '-' : (
-                          <>
-                            <ul className="menu-list">
-                              {shown.map((txt, idx) => (<li className="menu-line" key={`p-${idx}`}>{txt}</li>))}
-                            </ul>
-                            { (more || isOpen) && (
-                              <button className="section-toggle" onClick={() => toggle(r.id, 'mains')}>
-                                {isOpen ? 'Réduire' : 'Voir tout'}
-                              </button>
-                            )}
-                          </>
-                        )}
+                      <div className="res-block">
+                        <span className="section-label">Plats</span> <span className="section-count">({list.length})</span>{' : '}
+                        <>
+                          <ul className="menu-list">
+                            {shown.map((txt, idx) => (<li className="menu-line" key={`p-${idx}`}>{txt}</li>))}
+                          </ul>
+                          { (more || isOpen) && (
+                            <button className="section-toggle" onClick={() => toggle(r.id, 'mains')}>
+                              {isOpen ? 'Réduire' : 'Voir tout'}
+                            </button>
+                          )}
+                        </>
                       </div>
                     )
                   })()}
@@ -223,52 +223,66 @@ export default function ReservationList() {
                     const isOpen = !!expanded[r.id]?.desserts
                     const shown = isOpen ? list : list.slice(0,5)
                     const more = list.length > shown.length
+                    if (list.length === 0) return null
                     return (
-                      <div>
-                        <span className="section-label">Desserts</span>{' : '}
-                        {list.length === 0 ? '-' : (
-                          <>
-                            <ul className="menu-list">
-                              {shown.map((txt, idx) => (<li className="menu-line" key={`d-${idx}`}>{txt}</li>))}
-                            </ul>
-                            { (more || isOpen) && (
-                              <button className="section-toggle" onClick={() => toggle(r.id, 'desserts')}>
-                                {isOpen ? 'Réduire' : 'Voir tout'}
-                              </button>
-                            )}
-                          </>
-                        )}
+                      <div className="res-block">
+                        <span className="section-label">Desserts</span> <span className="section-count">({list.length})</span>{' : '}
+                        <>
+                          <ul className="menu-list">
+                            {shown.map((txt, idx) => (<li className="menu-line" key={`d-${idx}`}>{txt}</li>))}
+                          </ul>
+                          { (more || isOpen) && (
+                            <button className="section-toggle" onClick={() => toggle(r.id, 'desserts')}>
+                              {isOpen ? 'Réduire' : 'Voir tout'}
+                            </button>
+                          )}
+                        </>
                       </div>
                     )
                   })()}
                 </div>
               )}
+                  </div>
+                  <div className="res-col res-col-aside">
                   {/* Formule boisson */}
                   {r.drink_formula && (
-                    <div className="flex items-center gap-2 text-gray-700">
-                      <Wine className="w-4 h-4 text-gray-500" />
-                      <span className="badge badge-secondary drink-badge" title="Formule boisson">{r.drink_formula}</span>
+                    <div className="drink-callout" title="Formule boisson">
+                      <Wine className="w-4 h-4" />
+                      <span className="drink-text">{r.drink_formula}</span>
                     </div>
                   )}
                   {/* Notes */}
                   {r.notes && (
                     <div className="text-gray-700">
                       <span className="section-label">Notes</span>{': '}
-                      {expanded[r.id]?.notes ? (
-                        <div className="note-full">{r.notes}</div>
-                      ) : (
-                        <span className="text-gray-700 note-preview">{cleanNotesPreview(r.notes, 220)}</span>
-                      )}
-                      {r.notes.length > 220 && (
-                        <button className="section-toggle" onClick={() => toggle(r.id, 'notes')}>
-                          {expanded[r.id]?.notes ? 'Réduire' : 'Voir tout'}
-                        </button>
-                      )}
+                      {(() => {
+                        const lines = String(r.notes || '')
+                          .split(/\r?\n|\s*-\s+/g)
+                          .map(s => s.trim())
+                          .filter(Boolean)
+                        const isOpen = !!expanded[r.id]?.notes
+                        const shown = isOpen ? lines : lines.slice(0, 5)
+                        return lines.length === 0 ? (
+                          <>-</>
+                        ) : (
+                          <>
+                            <ul className="menu-list note-list">
+                              {shown.map((l, i) => (<li key={`n-${i}`} className="menu-line">{l}</li>))}
+                            </ul>
+                            {(lines.length > 5 || isOpen) && (
+                              <button className="section-toggle" onClick={() => toggle(r.id, 'notes')}>
+                                {isOpen ? 'Réduire' : 'Voir tout'}
+                              </button>
+                            )}
+                          </>
+                        )
+                      })()}
                     </div>
                   )}
                   {/* Allergènes */}
                   {splitAllergens(r.allergens).length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <div className="section-label w-full">Allergènes</div>
                       {(() => {
                         const list = splitAllergens(r.allergens)
                         const isOpen = !!expanded[r.id]?.allergens
@@ -302,6 +316,8 @@ export default function ReservationList() {
                       })()}
                     </div>
                   )}
+                  </div>
+                </div>
                 </div>
               </div>
               <div className="card-footer">
