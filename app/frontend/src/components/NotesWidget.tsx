@@ -71,7 +71,15 @@ export default function NotesWidget() {
   const hasEditing = useMemo(() => Object.keys(editing).length > 0, [editing])
 
   const fmt = (iso: string) => {
-    try { return new Date(iso).toLocaleString('fr-FR') } catch { return iso }
+    try {
+      const d = new Date(iso)
+      return new Intl.DateTimeFormat('fr-BE', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false,
+        timeZone: 'Europe/Brussels',
+      }).format(d)
+    } catch { return iso }
   }
   const initials = (name: string) => {
     const n = (name || '').trim().split(/\s+/).filter(Boolean)
