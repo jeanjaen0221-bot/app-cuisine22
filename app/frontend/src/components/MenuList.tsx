@@ -118,27 +118,30 @@ export default function MenuList() {
       </div>
 
       <div className="card-body space-y-3">
-        <div className="grid grid-cols-12 gap-2 controls-row">
-          <div className="col-span-12 md:col-span-5">
+        <div className="controls-panel">
+        <div className="controls-stack controls-row">
+          <div className="controls-top">
             <input className="input" placeholder="Rechercher un plat" value={q} onChange={e=>setQ(e.target.value)} />
           </div>
-          <div className="col-span-12 md:col-span-7 flex flex-wrap gap-4 items-center">
-            <div className="btn-group" role="group" aria-label="Filtrer par type">
+          <div className="controls-filters">
+            <div className="filter-group" aria-label="Filtrer par type">
+              <span className="filter-label">Type</span>
               {(['all','entrée','plat','dessert'] as const).map(tf => (
                 <button
                   key={tf}
-                  className={`btn btn-sm ${typeFilter===tf ? '' : 'btn-outline'}`}
+                  className={`filter-chip ${typeFilter===tf ? 'is-active' : ''}`}
                   onClick={()=>setTypeFilter(tf)}
                 >
                   {tf === 'all' ? 'Tous' : tf.charAt(0).toUpperCase()+tf.slice(1)}
                 </button>
               ))}
             </div>
-            <div className="btn-group" role="group" aria-label="Filtrer par statut">
+            <div className="filter-group" aria-label="Filtrer par statut">
+              <span className="filter-label">Statut</span>
               {(['all','true','false'] as const).map(af => (
                 <button
                   key={af}
-                  className={`btn btn-sm ${activeFilter===af ? '' : 'btn-outline'}`}
+                  className={`filter-chip ${activeFilter===af ? 'is-active' : ''}`}
                   onClick={()=>setActiveFilter(af)}
                 >
                   {af==='all' ? 'Tous' : af==='true' ? 'Actifs' : 'Inactifs'}
@@ -147,7 +150,8 @@ export default function MenuList() {
             </div>
           </div>
         </div>
-
+        <div className="controls-divider" />
+        <div className="controls-hint">Ajout rapide</div>
         <div className="grid grid-cols-12 gap-2 add-row">
           <input className="input col-span-12 md:col-span-6" placeholder="Nom du plat (ajout rapide)" value={name} onChange={e=>setName(e.target.value)} />
           <select className="input col-span-6 md:col-span-3" value={type} onChange={e=>setType(e.target.value)}>
@@ -160,6 +164,7 @@ export default function MenuList() {
             <option value="false">Inactif</option>
           </select>
           <button className="btn btn-sm col-span-6 md:col-span-1" onClick={add}>Ajouter</button>
+        </div>
         </div>
 
         <div className="table-container">
