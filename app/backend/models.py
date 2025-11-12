@@ -141,3 +141,25 @@ class Allergen(SQLModel, table=True):
     label: str
     icon_bytes: Optional[bytes] = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Note(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    content: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class NoteCreate(SQLModel):
+    content: str
+
+
+class NoteUpdate(SQLModel):
+    content: Optional[str] = None
+
+
+class NoteRead(SQLModel):
+    id: uuid.UUID
+    content: str
+    created_at: datetime
+    updated_at: datetime

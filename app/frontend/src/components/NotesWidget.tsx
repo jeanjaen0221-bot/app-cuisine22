@@ -1,0 +1,157 @@
+import { useEffect, useMemo, useState } from 'react'
+import { api } from '../lib/api'
+import { Note } from '../types'
+import { MessageSquare, X, Plus, Pencil, Trash2, Save } from 'lucide-react'
+
+export default function NotesWidget() {
+  const [open, setOpen] = useState(false)
+  const [notes, setNotes] = useState<Note[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [newContent, setNewContent] = useState('')
+  const [editing, setEditing] = useState<Record<string, string>>({})
+
+  async function load() {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await api.get('/api/notes')
+      setNotes(Array.isArray(res.data) ? res.data : [])
+    } catch (e: any) {
+      setError(e?.userMessage || 'Erreur de chargement')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (open) load()
+  }, [open])
+
+  async function addNote() {
+    const content = newContent.trim()
+    if (!content) return
+    setError(null)
+    try {
+      await api.post('/api/notes', { content })
+      setNewContent('')
+      await load()
+    } catch (e: any) {
+      setError(e?.userMessage || 'Erreur lors de l\'ajout')
+    }
+  }
+
+  async function saveNote(id: string) {
+    const content = (editing[id] ?? '').trim()
+    if (!content) return
+    setError(null)
+    try {
+      await api.put(`/api/notes/${id}`, { content })
+      setEditing(prev => { const n = { ...prev }; delete n[id]; return n })
+      await load()
+    } catch (e: any) {
+      setError(e?.userMessage || 'Erreur lors de la sauvegarde')
+    }
+  }
+
+  async function deleteNote(id: string) {
+    setError(null)
+    try {
+      await api.delete(`/api/notes/${id}`)
+      await load()
+    } catch (e: any) {
+      setError(e?.userMessage || 'Erreur lors de la suppression')
+    }
+  }
+
+  const hasEditing = useMemo(() => Object.keys(editing).length > 0, [editing])
+
+  return (
+    <>
+      <div className="fixed bottom-4 right-4 z-40">
+        <button
+          className={`btn ${open ? '' : 'btn-primary'} rounded-full shadow-lg px-3 py-3`}
+          onClick={() => setOpen(v => !v)}
+          aria-label={open ? 'Fermer les notes' : 'Ouvrir les notes'}
+        >
+          {open ? <X className="w-5 h-5"/> : <MessageSquare className="w-5 h-5"/>}
+        </button>
+      </div>
+
+      {open && (
+        <div className="fixed bottom-20 right-4 z-40 w-[22rem] max-w-[90vw]">
+          <div className="card shadow-xl">
+            <div className="card-header">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold">Notes</h3>
+                <button className="btn btn-sm" onClick={() => setOpen(false)} aria-label="Fermer">
+                  <X className="w-4 h-4"/>
+                </button>
+              </div>
+            </div>
+            <div className="card-body space-y-3 max-h-[60vh] overflow-auto">
+              {error && <div className="text-sm text-red-600">{error}</div>}
+              {loading && <div className="text-sm text-gray-600">Chargement…</div>}
+
+              <div className="space-y-2">
+                <textarea
+                  className="input w-full h-20"
+                  placeholder="Écrire une note…"
+                  value={newContent}
+                  onChange={e => setNewContent(e.target.value)}
+                />
+                <div className="flex justify-end">
+                  <button className="btn btn-primary btn-sm" onClick={addNote}>
+                    <Plus className="w-4 h-4"/> Ajouter
+                  </button>
+                </div>
+              </div>
+
+              <div className="card-sep" />
+
+              <div className="space-y-2">
+                {notes.map(n => (
+                  <div key={n.id} className="border rounded-md p-2">
+                    {editing[n.id] !== undefined ? (
+                      <div className="space-y-2">
+                        <textarea
+                          className="input w-full h-24"
+                          value={editing[n.id]}
+                          onChange={e => setEditing(prev => ({ ...prev, [n.id]: e.target.value }))}
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <button className="btn btn-sm" onClick={() => saveNote(n.id)}>
+                            <Save className="w-4 h-4"/> Sauvegarder
+                          </button>
+                          <button className="btn btn-sm btn-outline" onClick={() => setEditing(prev => { const x = { ...prev }; delete x[n.id]; return x })}>
+                            Annuler
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="whitespace-pre-wrap text-sm text-gray-800">{n.content}</div>
+                        <div className="text-[11px] text-gray-500">Maj: {new Date(n.updated_at).toLocaleString('fr-FR')}</div>
+                        <div className="flex items-center justify-end gap-2">
+                          <button className="btn btn-sm btn-outline" onClick={() => setEditing(prev => ({ ...prev, [n.id]: n.content }))}>
+                            <Pencil className="w-4 h-4"/> Éditer
+                          </button>
+                          <button className="btn btn-sm btn-outline" onClick={() => deleteNote(n.id)}>
+                            <Trash2 className="w-4 h-4"/> Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {notes.length === 0 && !loading && (
+                  <div className="text-sm text-gray-600">Aucune note pour l'instant.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}

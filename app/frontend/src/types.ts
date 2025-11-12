@@ -31,3 +31,10 @@ export type MenuItem = {
   type: 'entrée' | 'plat' | 'dessert' | string
   active: boolean
 }
+
+export type Note = {
+  id: UUID
+  content: string
+  created_at: string
+  updated_at: string
+}

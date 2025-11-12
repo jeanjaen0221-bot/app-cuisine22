@@ -1,5 +1,6 @@
 import { Routes, Route, NavLink } from 'react-router-dom'
 import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History } from 'lucide-react'
+import NotesWidget from '../components/NotesWidget'
 import Home from './Home'
 import EditReservation from './EditReservation'
 import MenuPage from './MenuPage'
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/menu" element={<MenuPage />} />
           <Route path="/settings" element={<ZenchefSettings />} />
         </Routes>
+        <NotesWidget />
       </main>
     </div>
   )
