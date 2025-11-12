@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
@@ -55,6 +55,26 @@ export default function ReservationList() {
   function toggle(resId: string, key: keyof NonNullable<(typeof expanded)[string]>) {
     setExpanded(prev => ({ ...prev, [resId]: { ...prev[resId], [key]: !prev[resId]?.[key] } }))
   }
+
+  const allergenFallback: Record<string, string> = useMemo(() => ({
+    gl: 'Gluten',
+    la: 'Lait',
+    oe: 'Oeufs',
+    ar: 'Arachide',
+    so: 'Soja',
+    fr: 'Fruits à coque',
+    se: 'Sésame',
+    su: 'Sulfites',
+    po: 'Poisson',
+    cr: 'Crustacés',
+    mo: 'Mollusques',
+    ce: 'Céleri',
+    lu: 'Lupin',
+    mu: 'Moutarde',
+    ai: 'Ail',
+  }), [])
+
+  const friendlyAllergen = (key: string) => allergenMeta[key]?.label || allergenFallback[key] || key
 
   async function load() {
     const params: any = {}
@@ -280,44 +300,32 @@ export default function ReservationList() {
                     </div>
                   )}
                   {/* Allergènes */}
-                  {splitAllergens(r.allergens).length > 0 && (
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <div className="section-label w-full">Allergènes</div>
-                      {(() => {
-                        const list = splitAllergens(r.allergens)
-                        const isOpen = !!expanded[r.id]?.allergens
-                        const shown = isOpen ? list : list.slice(0, 8)
-                        return (
-                          <>
-                            {shown.map(a => {
-                              const meta = allergenMeta[a]
-                              const label = meta?.label || a
-                              const icon = meta?.icon_url || `/backend-assets/allergens/${a}.png`
-                              return (
-                                <span key={a} className="allergen-chip allergen-chip-card">
-                                  <img
-                                    src={icon}
-                                    alt={label}
-                                    title={label}
-                                    className="allergen-icon"
-                                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-                                  />
-                                  <span className="allergen-chip-label">{label}</span>
-                                </span>
-                              )
-                            })}
-                            {list.length > 8 && (
-                              <button className="section-toggle" onClick={() => toggle(r.id, 'allergens')}>
-                                {isOpen ? 'Réduire' : `+${list.length - 8} plus`}
-                              </button>
-                            )}
-                          </>
-                        )
-                      })()}
-                    </div>
-                  )}
+                  {/* Allergènes déplacés pleine largeur sous la grille */}
                   </div>
                 </div>
+                {/* Allergènes en pleine largeur */}
+                {splitAllergens(r.allergens).length > 0 && (
+                  <div className="allergens-block res-row-full">
+                    <div className="section-label w-full">Allergènes</div>
+                    {splitAllergens(r.allergens).map(a => {
+                      const meta = allergenMeta[a]
+                      const label = friendlyAllergen(a)
+                      const icon = meta?.icon_url || `/backend-assets/allergens/${a}.png`
+                      return (
+                        <span key={a} className="allergen-chip allergen-chip-card">
+                          <img
+                            src={icon}
+                            alt={label}
+                            title={label}
+                            className="allergen-icon"
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                          />
+                          <span className="allergen-chip-label">{label}</span>
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
                 </div>
               </div>
               <div className="card-footer">

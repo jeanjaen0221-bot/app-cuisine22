@@ -95,6 +95,7 @@
   .app-theme.app-theme-violet .res-sections { grid-template-columns: 1.2fr 0.8fr; }
 }
 .app-theme.app-theme-violet .res-col { min-width: 0; }
+.app-theme.app-theme-violet .res-sections .res-row-full { grid-column: 1 / -1; }
 
 /* Drink formula callout */
 .app-theme.app-theme-violet .drink-callout {
@@ -126,7 +127,8 @@
 .app-theme.app-theme-violet .menu-list { margin-top: .15rem; }
 
 /* Allergen pills polish */
-.app-theme.app-theme-violet .allergen-chip { display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .5rem; border-radius: 9999px; }
+.app-theme.app-theme-violet .allergens-block { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; background: rgba(105,51,129,.03); border: 1px solid rgba(105,51,129,.10); border-radius: 10px; padding: .5rem; }
+.app-theme.app-theme-violet .allergen-chip { display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .5rem; border-radius: 9999px; white-space: nowrap; }
 .app-theme.app-theme-violet .allergen-icon { width: 14px; height: 14px; }
 .app-theme.app-theme-violet .allergen-chip-label { font-size: .82rem; color: var(--accent); }
 
