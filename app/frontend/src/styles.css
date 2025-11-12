@@ -1498,6 +1498,23 @@ body {
 /* Reduce sticky header stacking so it doesn't overlay controls */
 .app-theme.app-theme-violet .menu-table thead th { z-index: 0; }
 
+/* Quick add (Ajout rapide) */
+.app-theme.app-theme-violet .menu-list-page .add-stack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: .6rem;
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .app-theme.app-theme-violet .menu-list-page .add-stack { grid-template-columns: 1.2fr 1fr; }
+  .app-theme.app-theme-violet .menu-list-page .add-top { grid-column: 1 / 2; }
+  .app-theme.app-theme-violet .menu-list-page .add-controls { grid-column: 2 / 3; }
+}
+.app-theme.app-theme-violet .menu-list-page .input-large { height: 44px; font-size: 1rem; }
+.app-theme.app-theme-violet .menu-list-page .add-controls { display: grid; grid-template-columns: auto 1fr auto 1fr auto; gap: .5rem .6rem; align-items: center; }
+.app-theme.app-theme-violet .menu-list-page .add-controls .input { height: 40px; }
+.app-theme.app-theme-violet .menu-list-page .add-controls .btn { height: 40px; }
+
 .meta-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

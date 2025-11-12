@@ -152,18 +152,24 @@ export default function MenuList() {
         </div>
         <div className="controls-divider" />
         <div className="controls-hint">Ajout rapide</div>
-        <div className="grid grid-cols-12 gap-2 add-row">
-          <input className="input col-span-12 md:col-span-6" placeholder="Nom du plat (ajout rapide)" value={name} onChange={e=>setName(e.target.value)} />
-          <select className="input col-span-6 md:col-span-3" value={type} onChange={e=>setType(e.target.value)}>
-            <option>entrée</option>
-            <option>plat</option>
-            <option>dessert</option>
-          </select>
-          <select className="input col-span-6 md:col-span-2" value={String(active)} onChange={e=>setActive(e.target.value==='true')}>
-            <option value="true">Actif</option>
-            <option value="false">Inactif</option>
-          </select>
-          <button className="btn btn-sm col-span-6 md:col-span-1" onClick={add}>Ajouter</button>
+        <div className="add-stack add-row">
+          <div className="add-top">
+            <input className="input input-large" placeholder="Nom du plat" value={name} onChange={e=>setName(e.target.value)} />
+          </div>
+          <div className="add-controls">
+            <label className="filter-label" htmlFor="add-type">Type</label>
+            <select id="add-type" className="input" value={type} onChange={e=>setType(e.target.value)}>
+              <option>entrée</option>
+              <option>plat</option>
+              <option>dessert</option>
+            </select>
+            <label className="filter-label" htmlFor="add-active">Statut</label>
+            <select id="add-active" className="input" value={String(active)} onChange={e=>setActive(e.target.value==='true')}>
+              <option value="true">Actif</option>
+              <option value="false">Inactif</option>
+            </select>
+            <button className="btn btn-primary" onClick={add}>Ajouter</button>
+          </div>
         </div>
         </div>
 
