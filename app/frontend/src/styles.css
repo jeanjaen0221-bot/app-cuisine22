@@ -24,6 +24,49 @@
 .app-theme.app-theme-violet .table tr { transition: background .15s ease; }
 .app-theme.app-theme-violet .table tr:hover { background: rgba(105,51,129,.04); }
 .app-theme.app-theme-violet .badge, .app-theme.app-theme-violet .chip { background: rgba(105,51,129,.08); color: var(--accent); border: 1px solid rgba(105,51,129,.18); border-radius: 9999px; }
+
+/* ===== Reservation cards — elegant violet/prune/cream styling ===== */
+.app-theme.app-theme-violet .reservation-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-s);
+}
+.app-theme.app-theme-violet .reservation-card:hover {
+  box-shadow: var(--shadow-m);
+  border-color: rgba(105,51,129,.28);
+}
+.app-theme.app-theme-violet .reservation-card .card-header {
+  background: linear-gradient(180deg, rgba(248,244,238,.85), rgba(248,244,238,0));
+  border-bottom: 1px solid rgba(105,51,129,.14);
+  padding: 0.9rem 1.25rem;
+}
+.app-theme.app-theme-violet .reservation-card .card-header h3 { color: var(--accent); font-weight: 600; letter-spacing: .01em; }
+.app-theme.app-theme-violet .reservation-card .card-body { padding: 1rem 1.25rem; }
+.app-theme.app-theme-violet .reservation-card .card-footer {
+  background: rgba(248,244,238,.6);
+  border-top: 1px solid rgba(105,51,129,.14);
+}
+.app-theme.app-theme-violet .reservation-card .card-footer .btn { background: #fff; border-color: rgba(105,51,129,.22); color: var(--accent); }
+.app-theme.app-theme-violet .reservation-card .card-footer .btn:hover { background: rgba(105,51,129,.06); }
+
+.app-theme.app-theme-violet .reservation-card .meta-list { color: var(--text); }
+.app-theme.app-theme-violet .reservation-card .meta-item svg { color: rgba(66,32,82,.65); }
+
+.app-theme.app-theme-violet .reservation-card .section-label {
+  color: var(--accent);
+  font-weight: 700;
+}
+.app-theme.app-theme-violet .reservation-card .card-sep { background: linear-gradient(90deg, transparent, rgba(105,51,129,.22), transparent); }
+
+.app-theme.app-theme-violet .status-badge { border-radius: 9999px; border: 1px solid rgba(0,0,0,0.06); box-shadow: 0 1px 2px rgba(66,32,82,.08); }
+
+/* Allergens and badges polished */
+.app-theme.app-theme-violet .allergen-chip-card { background: rgba(105,51,129,.06); border: 1px solid rgba(105,51,129,.16); }
+.app-theme.app-theme-violet .drink-badge { background: rgba(105,51,129,.08); color: var(--accent); border: 1px solid rgba(105,51,129,.16); }
+
+/* Notes preview clamp and color */
+.app-theme.app-theme-violet .note-preview { -webkit-line-clamp: 3; line-clamp: 3; color: #3a3340; }
 /* ===== Variables et styles de base ===== */
 :root {
   /* Couleurs principales */
