@@ -1411,6 +1411,37 @@ body {
 /* Actions cell */
 .app-theme.app-theme-violet .menu-table .actions-cell { gap: .4rem; }
 .app-theme.app-theme-violet .menu-table .actions-cell .btn { padding: 0.35rem 0.6rem; font-size: .82rem; }
+
+/* ===== MenuList page controls (inputs & buttons) ===== */
+.app-theme.app-theme-violet .menu-list-page .controls-row,
+.app-theme.app-theme-violet .menu-list-page .add-row {
+  position: relative;
+  z-index: 2;
+}
+.app-theme.app-theme-violet .menu-list-page .table-container { position: relative; z-index: 1; margin-top: .25rem; }
+
+/* Make inputs/selects and small buttons the same height */
+.app-theme.app-theme-violet .menu-list-page .controls-row .input,
+.app-theme.app-theme-violet .menu-list-page .add-row .input {
+  height: 40px;
+  padding-top: .375rem;
+  padding-bottom: .375rem;
+}
+.app-theme.app-theme-violet .menu-list-page .controls-row .btn.btn-sm,
+.app-theme.app-theme-violet .menu-list-page .add-row .btn.btn-sm {
+  height: 40px;
+  padding: 0 .75rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Button groups should wrap nicely with spacing */
+.app-theme.app-theme-violet .menu-list-page .btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
 .meta-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

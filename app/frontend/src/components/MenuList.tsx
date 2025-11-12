@@ -103,7 +103,7 @@ export default function MenuList() {
   }
 
   return (
-    <div className="card">
+    <div className="card menu-list-page">
       <div className="card-header">
         <h3 className="text-lg font-semibold">Base de plats</h3>
         <div className="flex items-center gap-3">
@@ -118,7 +118,7 @@ export default function MenuList() {
       </div>
 
       <div className="card-body space-y-3">
-        <div className="grid grid-cols-12 gap-2">
+        <div className="grid grid-cols-12 gap-2 controls-row">
           <div className="col-span-12 md:col-span-5">
             <input className="input" placeholder="Rechercher un plat" value={q} onChange={e=>setQ(e.target.value)} />
           </div>
@@ -148,7 +148,7 @@ export default function MenuList() {
           </div>
         </div>
 
-        <div className="grid grid-cols-12 gap-2">
+        <div className="grid grid-cols-12 gap-2 add-row">
           <input className="input col-span-12 md:col-span-6" placeholder="Nom du plat (ajout rapide)" value={name} onChange={e=>setName(e.target.value)} />
           <select className="input col-span-6 md:col-span-3" value={type} onChange={e=>setType(e.target.value)}>
             <option>entrée</option>
