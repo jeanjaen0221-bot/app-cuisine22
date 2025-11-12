@@ -84,7 +84,7 @@ export default function NotesWidget() {
     <>
       <div style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 1000 }}>
         <button
-          className={`btn ${open ? '' : 'btn-primary'} rounded-full px-3 py-3`}
+          className={`btn ${open ? '' : 'btn-primary'} rounded-full px-3 py-3 notes-fab`}
           onClick={() => setOpen(v => !v)}
           aria-label={open ? 'Fermer les notes' : 'Ouvrir les notes'}
         >
@@ -94,10 +94,11 @@ export default function NotesWidget() {
 
       {open && (
         <div style={{ position: 'fixed', bottom: 80, right: 16, zIndex: 1000, width: '22rem', maxWidth: '90vw' }}>
-          <div className="card">
+          <div className="notes-theme">
+          <div className="card notes-panel">
             <div className="card-header">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold">Notes</h3>
+                <h3 className="text-base font-semibold notes-title">Notes</h3>
                 <button className="btn btn-sm" onClick={() => setOpen(false)} aria-label="Fermer">
                   <X className="w-4 h-4"/>
                 </button>
@@ -192,6 +193,7 @@ export default function NotesWidget() {
                 )}
               </div>
             </div>
+          </div>
           </div>
         </div>
       )}
