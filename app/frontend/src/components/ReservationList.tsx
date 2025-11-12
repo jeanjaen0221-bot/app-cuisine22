@@ -82,12 +82,12 @@ export default function ReservationList() {
     return () => clearTimeout(t)
   }, [q, date])
   useEffect(() => {
-    const keys = Array.from(new Set(allRows.map(r => monthKey(r.service_date)))).sort().reverse()
+    const keys = Array.from(new Set(allRows.map(r => monthKey(r.service_date)))).sort()
     const list = keys.map(k => ({ key: k, label: monthLabel(k) }))
     setMonths(list)
     const currentKey = new Date().toISOString().slice(0,7)
     if (!selectedMonth || !list.find(m => m.key === selectedMonth)) {
-      setSelectedMonth(list.find(m => m.key === currentKey)?.key || (list[0]?.key || ''))
+      setSelectedMonth(list.find(m => m.key === currentKey)?.key || (list[list.length - 1]?.key || ''))
     }
     const base = allRows.filter(r => !selectedMonth || monthKey(r.service_date) === selectedMonth)
     const filtered = date ? base.filter(r => String(r.service_date).slice(0,10) === date) : base
