@@ -145,21 +145,25 @@ class Allergen(SQLModel, table=True):
 
 class Note(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    name: str
     content: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class NoteCreate(SQLModel):
+    name: str
     content: str
 
 
 class NoteUpdate(SQLModel):
+    name: Optional[str] = None
     content: Optional[str] = None
 
 
 class NoteRead(SQLModel):
     id: uuid.UUID
+    name: str
     content: str
     created_at: datetime
     updated_at: datetime

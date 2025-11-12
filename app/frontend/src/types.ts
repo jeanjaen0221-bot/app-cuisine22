@@ -34,6 +34,7 @@ export type MenuItem = {
 
 export type Note = {
   id: UUID
+  name: string
   content: string
   created_at: string
   updated_at: string

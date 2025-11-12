@@ -20,10 +20,13 @@ def list_notes(session: Session = Depends(get_session)):
 
 @router.post("", response_model=NoteRead)
 def create_note(payload: NoteCreate, session: Session = Depends(get_session)):
+    name = (payload.name or "").strip()
     content = (payload.content or "").strip()
+    if not name:
+        raise HTTPException(400, "Name is required")
     if not content:
         raise HTTPException(400, "Content is required")
-    row = NoteModel(content=content)
+    row = NoteModel(name=name, content=content)
     session.add(row)
     session.commit()
     session.refresh(row)
@@ -35,8 +38,14 @@ def update_note(note_id: uuid.UUID, payload: NoteUpdate, session: Session = Depe
     row = session.get(NoteModel, note_id)
     if not row:
         raise HTTPException(404, "Note not found")
+    if payload.name is not None:
+        row.name = (payload.name or "").strip()
+        if not row.name:
+            raise HTTPException(400, "Name cannot be empty")
     if payload.content is not None:
         row.content = (payload.content or "").strip()
+        if not row.content:
+            raise HTTPException(400, "Content cannot be empty")
     row.updated_at = datetime.utcnow()
     session.add(row)
     session.commit()

@@ -8,8 +8,9 @@ export default function NotesWidget() {
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [newName, setNewName] = useState('')
   const [newContent, setNewContent] = useState('')
-  const [editing, setEditing] = useState<Record<string, string>>({})
+  const [editing, setEditing] = useState<Record<string, { name: string; content: string }>>({})
 
   async function load() {
     setLoading(true)
@@ -29,11 +30,13 @@ export default function NotesWidget() {
   }, [open])
 
   async function addNote() {
+    const name = newName.trim()
     const content = newContent.trim()
-    if (!content) return
+    if (!name || !content) return
     setError(null)
     try {
-      await api.post('/api/notes', { content })
+      await api.post('/api/notes', { name, content })
+      setNewName('')
       setNewContent('')
       await load()
     } catch (e: any) {
@@ -42,11 +45,12 @@ export default function NotesWidget() {
   }
 
   async function saveNote(id: string) {
-    const content = (editing[id] ?? '').trim()
-    if (!content) return
+    const name = (editing[id]?.name ?? '').trim()
+    const content = (editing[id]?.content ?? '').trim()
+    if (!name || !content) return
     setError(null)
     try {
-      await api.put(`/api/notes/${id}`, { content })
+      await api.put(`/api/notes/${id}`, { name, content })
       setEditing(prev => { const n = { ...prev }; delete n[id]; return n })
       await load()
     } catch (e: any) {
@@ -94,14 +98,20 @@ export default function NotesWidget() {
               {loading && <div className="text-sm text-gray-600">Chargement…</div>}
 
               <div className="space-y-2">
+                <input
+                  className="input w-full"
+                  placeholder="Nom de la note (obligatoire)"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                />
                 <textarea
                   className="input w-full h-20"
-                  placeholder="Écrire une note…"
+                  placeholder="Contenu de la note (obligatoire)"
                   value={newContent}
                   onChange={e => setNewContent(e.target.value)}
                 />
                 <div className="flex justify-end">
-                  <button className="btn btn-primary btn-sm" onClick={addNote}>
+                  <button className="btn btn-primary btn-sm" onClick={addNote} disabled={!newName.trim() || !newContent.trim()}>
                     <Plus className="w-4 h-4"/> Ajouter
                   </button>
                 </div>
@@ -114,10 +124,16 @@ export default function NotesWidget() {
                   <div key={n.id} className="border rounded-md p-2">
                     {editing[n.id] !== undefined ? (
                       <div className="space-y-2">
+                        <input
+                          className="input w-full"
+                          placeholder="Nom de la note"
+                          value={editing[n.id].name}
+                          onChange={e => setEditing(prev => ({ ...prev, [n.id]: { ...prev[n.id], name: e.target.value } }))}
+                        />
                         <textarea
                           className="input w-full h-24"
-                          value={editing[n.id]}
-                          onChange={e => setEditing(prev => ({ ...prev, [n.id]: e.target.value }))}
+                          value={editing[n.id].content}
+                          onChange={e => setEditing(prev => ({ ...prev, [n.id]: { ...prev[n.id], content: e.target.value } }))}
                         />
                         <div className="flex items-center justify-end gap-2">
                           <button className="btn btn-sm" onClick={() => saveNote(n.id)}>
@@ -130,10 +146,11 @@ export default function NotesWidget() {
                       </div>
                     ) : (
                       <div className="space-y-2">
+                        <div className="text-sm font-semibold text-gray-800">{n.name}</div>
                         <div className="whitespace-pre-wrap text-sm text-gray-800">{n.content}</div>
                         <div className="text-[11px] text-gray-500">Maj: {new Date(n.updated_at).toLocaleString('fr-FR')}</div>
                         <div className="flex items-center justify-end gap-2">
-                          <button className="btn btn-sm btn-outline" onClick={() => setEditing(prev => ({ ...prev, [n.id]: n.content }))}>
+                          <button className="btn btn-sm btn-outline" onClick={() => setEditing(prev => ({ ...prev, [n.id]: { name: n.name, content: n.content } }))}>
                             <Pencil className="w-4 h-4"/> Éditer
                           </button>
                           <button className="btn btn-sm btn-outline" onClick={() => deleteNote(n.id)}>

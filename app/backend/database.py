@@ -19,6 +19,7 @@ def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     ensure_final_version_column()
     ensure_allergens_column()
+    ensure_notes_name_column()
 
 
 def run_startup_migrations() -> None:
@@ -124,6 +125,67 @@ def ensure_final_version_column() -> None:
                     pass
     except Exception:
         # Non-fatal; table may not exist yet in some flows
+        pass
+
+
+def ensure_notes_name_column() -> None:
+    """Ensure Note table has a non-null name column; backfill from content if empty.
+    Idempotent across sqlite/postgresql.
+    """
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                # Check column existence
+                try:
+                    res = conn.exec_driver_sql("PRAGMA table_info(note);")
+                except Exception:
+                    return
+                cols = [row[1] for row in res.fetchall()]
+                if 'name' not in cols:
+                    conn.exec_driver_sql("ALTER TABLE note ADD COLUMN name VARCHAR(255) DEFAULT '';")
+                # Backfill reasonable default from content
+                try:
+                    conn.exec_driver_sql(
+                        "UPDATE note SET name = substr(content,1,60) WHERE (name IS NULL OR name = '') AND content IS NOT NULL AND content <> '';"
+                    )
+                    conn.exec_driver_sql(
+                        "UPDATE note SET name = 'Note' WHERE (name IS NULL OR name = '');"
+                    )
+                except Exception:
+                    pass
+            elif backend == 'postgresql':
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name='note' AND column_name='name'
+                      ) THEN
+                        ALTER TABLE note ADD COLUMN name VARCHAR(255) DEFAULT '';
+                      END IF;
+                    END$$;
+                    """
+                ))
+                # Backfill defaults
+                try:
+                    conn.execute(text(
+                        "UPDATE note SET name = LEFT(content, 60) WHERE (name IS NULL OR name = '') AND content IS NOT NULL AND content <> '';"
+                    ))
+                    conn.execute(text(
+                        "UPDATE note SET name = 'Note' WHERE (name IS NULL OR name = '');"
+                    ))
+                except Exception:
+                    pass
+            else:
+                # Best-effort generic alter
+                try:
+                    conn.execute(text("ALTER TABLE note ADD COLUMN name VARCHAR(255)"))
+                except Exception:
+                    pass
+    except Exception:
+        # Non-fatal
         pass
 
 
