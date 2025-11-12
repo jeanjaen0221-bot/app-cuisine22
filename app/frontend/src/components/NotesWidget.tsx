@@ -93,7 +93,7 @@ export default function NotesWidget() {
       </div>
 
       {open && (
-        <div style={{ position: 'fixed', bottom: 80, right: 16, zIndex: 1000, width: '22rem', maxWidth: '90vw' }}>
+        <div style={{ position: 'fixed', bottom: 80, right: 20, zIndex: 1000, width: 'min(24rem, calc(100vw - 40px))' }}>
           <div className="notes-theme">
           <div className="card notes-panel">
             <div className="card-header">
