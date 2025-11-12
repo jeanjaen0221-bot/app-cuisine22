@@ -9,7 +9,7 @@ import PastReservations from './PastReservations'
 
 export default function App() {
   return (
-    <div className="app-layout">
+    <div className="app-layout app-theme app-theme-violet">
       <aside className="sidebar">
         <div className="sidebar-header">FicheCuisineManager</div>
         <nav className="sidebar-nav">
