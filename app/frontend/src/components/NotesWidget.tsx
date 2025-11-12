@@ -107,7 +107,8 @@ export default function NotesWidget() {
               {error && <div className="text-sm text-red-600">{error}</div>}
               {loading && <div className="text-sm text-gray-600">Chargement…</div>}
 
-              <div className="space-y-2">
+              <div className="notes-section-title">Nouvelle note</div>
+              <div className="notes-form space-y-2">
                 <div className="form-group">
                   <div className="label">Prénom</div>
                   <div className="input-group">
@@ -136,7 +137,7 @@ export default function NotesWidget() {
                 </div>
               </div>
 
-              <div className="card-sep" />
+              <div className="notes-section-title">Historique</div>
               <div className="space-y-2">
                 {notes.map(n => (
                   <div key={n.id} className="notes-item">

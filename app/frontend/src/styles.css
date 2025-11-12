@@ -1297,3 +1297,17 @@ body {
 .notes-meta { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; color: var(--gray-600); }
 .notes-actions { display: inline-flex; gap: 0.25rem; }
 .notes-content { white-space: pre-wrap; color: var(--gray-800); font-size: 0.9375rem; }
+.notes-section-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--gray-600);
+  margin-top: .25rem;
+}
+.notes-form {
+  background: var(--gray-50);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: .75rem;
+}
