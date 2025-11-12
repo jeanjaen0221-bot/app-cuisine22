@@ -35,12 +35,21 @@ const cleanNotesPreview = (s: string | undefined, max = 120) => {
 
 const splitAllergens = (csv?: string) => (csv ? csv.split(',').map(s=>s.trim()).filter(Boolean) : []);
 type AllergenMeta = { key: string; label: string; icon_url?: string }
+const monthKey = (s: string) => String(s).slice(0, 7)
+const monthLabel = (key: string) => {
+  const [y, m] = key.split('-')
+  const d = new Date(Number(y), Number(m) - 1, 1)
+  return d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+}
 
 export default function ReservationList() {
   const [rows, setRows] = useState<Reservation[]>([])
+  const [allRows, setAllRows] = useState<Reservation[]>([])
   const [q, setQ] = useState('')
   const [date, setDate] = useState<string>('')
   const [allergenMeta, setAllergenMeta] = useState<Record<string, AllergenMeta>>({})
+  const [months, setMonths] = useState<{ key: string; label: string }[]>([])
+  const [selectedMonth, setSelectedMonth] = useState<string>('')
 
   async function load() {
     const params: any = {}
@@ -48,8 +57,7 @@ export default function ReservationList() {
     // Fetch only upcoming on server; apply date filter client-side
     const res = await api.get('/api/reservations/upcoming', { params })
     const all: Reservation[] = res.data
-    const filtered = date ? all.filter(r => String(r.service_date).slice(0,10) === date) : all
-    setRows(filtered)
+    setAllRows(all)
   }
 
   useEffect(() => { load() }, [])
@@ -73,9 +81,36 @@ export default function ReservationList() {
     const t = setTimeout(() => { load() }, 300)
     return () => clearTimeout(t)
   }, [q, date])
+  useEffect(() => {
+    const keys = Array.from(new Set(allRows.map(r => monthKey(r.service_date)))).sort().reverse()
+    const list = keys.map(k => ({ key: k, label: monthLabel(k) }))
+    setMonths(list)
+    const currentKey = new Date().toISOString().slice(0,7)
+    if (!selectedMonth || !list.find(m => m.key === selectedMonth)) {
+      setSelectedMonth(list.find(m => m.key === currentKey)?.key || (list[0]?.key || ''))
+    }
+    const base = allRows.filter(r => !selectedMonth || monthKey(r.service_date) === selectedMonth)
+    const filtered = date ? base.filter(r => String(r.service_date).slice(0,10) === date) : base
+    setRows(filtered)
+  }, [allRows, selectedMonth, date])
 
   return (
     <div className="space-y-6">
+      <div className="card">
+        <div className="card-body">
+          <div className="flex flex-wrap gap-2">
+            {months.map(m => (
+              <button
+                key={m.key}
+                className={`btn btn-sm ${selectedMonth === m.key ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setSelectedMonth(m.key)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
       {/* Barre de filtres */}
       <div className="card">
         <div className="flex items-center justify-between">
