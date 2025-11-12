@@ -104,42 +104,13 @@ export default function NotesWidget() {
                 </button>
               </div>
             </div>
-            <div className="card-body space-y-3" style={{ maxHeight: '60vh', overflow: 'auto' }}>
+            <div className="card-body space-y-3 notes-body">
               {error && <div className="text-sm text-red-600">{error}</div>}
               {loading && <div className="text-sm text-gray-600">Chargement…</div>}
 
-              <div className="notes-section-title">Nouvelle note</div>
-              <div className="notes-form space-y-2">
-                <div className="form-group">
-                  <div className="label">Prénom</div>
-                  <div className="input-group">
-                    <span className="input-group-text"><User className="w-4 h-4"/></span>
-                    <input
-                      className="input"
-                      placeholder="Prénom (obligatoire)"
-                      value={newName}
-                      onChange={e => setNewName(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <div className="label">Note</div>
-                  <textarea
-                    className="input w-full h-24"
-                    placeholder="Contenu de la note (obligatoire)"
-                    value={newContent}
-                    onChange={e => setNewContent(e.target.value)}
-                  />
-                </div>
-                <div className="flex justify-end">
-                  <button className="btn btn-primary btn-sm" onClick={addNote} disabled={!newName.trim() || !newContent.trim()}>
-                    <Plus className="w-4 h-4"/> Ajouter
-                  </button>
-                </div>
-              </div>
-
-              <div className="notes-section-title">Historique</div>
-              <div className="space-y-2">
+              <div className="notes-scroll">
+                <div className="notes-section-title">Historique</div>
+                <div className="space-y-2">
                 {notes.map(n => (
                   <div key={n.id} className="notes-item">
                     {editing[n.id] !== undefined ? (
@@ -191,6 +162,39 @@ export default function NotesWidget() {
                 {notes.length === 0 && !loading && (
                   <div className="text-sm text-gray-600">Aucune note pour l'instant.</div>
                 )}
+                </div>
+              </div>
+
+              <div className="notes-composer">
+                <div className="notes-section-title">Nouvelle note</div>
+                <div className="notes-form space-y-2">
+                  <div className="form-group">
+                    <div className="label">Prénom</div>
+                    <div className="input-group">
+                      <span className="input-group-text"><User className="w-4 h-4"/></span>
+                      <input
+                        className="input"
+                        placeholder="Prénom (obligatoire)"
+                        value={newName}
+                        onChange={e => setNewName(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <div className="label">Message</div>
+                    <textarea
+                      className="input w-full h-24"
+                      placeholder="Contenu de la note (obligatoire)"
+                      value={newContent}
+                      onChange={e => setNewContent(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <button className="btn btn-primary btn-sm" onClick={addNote} disabled={!newName.trim() || !newContent.trim()}>
+                      <Plus className="w-4 h-4"/> Envoyer
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
