@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import { Note } from '../types'
-import { MessageSquare, X, Plus, Pencil, Trash2, Save } from 'lucide-react'
+import { MessageSquare, X, Plus, Pencil, Trash2, Save, User, Clock } from 'lucide-react'
 
 export default function NotesWidget() {
   const [open, setOpen] = useState(false)
@@ -70,6 +70,16 @@ export default function NotesWidget() {
 
   const hasEditing = useMemo(() => Object.keys(editing).length > 0, [editing])
 
+  const fmt = (iso: string) => {
+    try { return new Date(iso).toLocaleString('fr-FR') } catch { return iso }
+  }
+  const initials = (name: string) => {
+    const n = (name || '').trim().split(/\s+/).filter(Boolean)
+    if (n.length === 0) return '?'
+    if (n.length === 1) return n[0].slice(0,2).toUpperCase()
+    return (n[0][0] + n[1][0]).toUpperCase()
+  }
+
   return (
     <>
       <div style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 1000 }}>
@@ -93,23 +103,32 @@ export default function NotesWidget() {
                 </button>
               </div>
             </div>
-            <div className="card-body space-y-3 max-h-[60vh] overflow-auto">
+            <div className="card-body space-y-3" style={{ maxHeight: '60vh', overflow: 'auto' }}>
               {error && <div className="text-sm text-red-600">{error}</div>}
               {loading && <div className="text-sm text-gray-600">Chargement…</div>}
 
               <div className="space-y-2">
-                <input
-                  className="input w-full"
-                  placeholder="Prénom (obligatoire)"
-                  value={newName}
-                  onChange={e => setNewName(e.target.value)}
-                />
-                <textarea
-                  className="input w-full h-20"
-                  placeholder="Contenu de la note (obligatoire)"
-                  value={newContent}
-                  onChange={e => setNewContent(e.target.value)}
-                />
+                <div className="form-group">
+                  <div className="label">Prénom</div>
+                  <div className="input-group">
+                    <span className="input-group-text"><User className="w-4 h-4"/></span>
+                    <input
+                      className="input"
+                      placeholder="Prénom (obligatoire)"
+                      value={newName}
+                      onChange={e => setNewName(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <div className="label">Note</div>
+                  <textarea
+                    className="input w-full h-24"
+                    placeholder="Contenu de la note (obligatoire)"
+                    value={newContent}
+                    onChange={e => setNewContent(e.target.value)}
+                  />
+                </div>
                 <div className="flex justify-end">
                   <button className="btn btn-primary btn-sm" onClick={addNote} disabled={!newName.trim() || !newContent.trim()}>
                     <Plus className="w-4 h-4"/> Ajouter
@@ -120,7 +139,7 @@ export default function NotesWidget() {
               <div className="card-sep" />
               <div className="space-y-2">
                 {notes.map(n => (
-                  <div key={n.id} className="border rounded-md p-2">
+                  <div key={n.id} className="notes-item">
                     {editing[n.id] !== undefined ? (
                       <div className="space-y-2">
                         <input
@@ -145,17 +164,24 @@ export default function NotesWidget() {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        <div className="text-sm font-semibold text-gray-800">{n.name}</div>
-                        <div className="whitespace-pre-wrap text-sm text-gray-800">{n.content}</div>
-                        <div className="text-[11px] text-gray-500">Maj: {new Date(n.updated_at).toLocaleString('fr-FR')}</div>
-                        <div className="flex items-center justify-end gap-2">
-                          <button className="btn btn-sm btn-outline" onClick={() => setEditing(prev => ({ ...prev, [n.id]: { name: n.name, content: n.content } }))}>
-                            <Pencil className="w-4 h-4"/> Éditer
-                          </button>
-                          <button className="btn btn-sm btn-outline" onClick={() => deleteNote(n.id)}>
-                            <Trash2 className="w-4 h-4"/> Supprimer
-                          </button>
+                        <div className="notes-item-header">
+                          <div className="notes-item-author">
+                            <div className="notes-avatar">{initials(n.name)}</div>
+                            <div>
+                              <div className="notes-author-name">{n.name}</div>
+                              <div className="notes-meta"><Clock className="w-3 h-3"/> {fmt(n.updated_at)}</div>
+                            </div>
+                          </div>
+                          <div className="notes-actions">
+                            <button className="btn btn-ghost btn-sm" title="Éditer" onClick={() => setEditing(prev => ({ ...prev, [n.id]: { name: n.name, content: n.content } }))}>
+                              <Pencil className="w-4 h-4"/>
+                            </button>
+                            <button className="btn btn-ghost btn-sm" title="Supprimer" onClick={() => deleteNote(n.id)}>
+                              <Trash2 className="w-4 h-4"/>
+                            </button>
+                          </div>
                         </div>
+                        <div className="notes-content">{n.content}</div>
                       </div>
                     )}
                   </div>
