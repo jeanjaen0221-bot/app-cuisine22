@@ -72,7 +72,10 @@ export default function NotesWidget() {
 
   const fmt = (iso: string) => {
     try {
-      const d = new Date(iso)
+      // Treat backend naive timestamps as UTC if no timezone is present
+      const hasTZ = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso)
+      const normalized = hasTZ ? iso : iso + 'Z'
+      const d = new Date(normalized)
       return new Intl.DateTimeFormat('fr-BE', {
         year: 'numeric', month: '2-digit', day: '2-digit',
         hour: '2-digit', minute: '2-digit', second: '2-digit',
