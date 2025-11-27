@@ -9,7 +9,7 @@ from reportlab.pdfgen import canvas
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.platypus.flowables import HRFlowable
 
-from .models import Reservation, ReservationItem
+from .models import Reservation, ReservationItem, BillingInfo
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_DIR = os.path.abspath(os.path.join(BASE_DIR, "../generated_pdfs"))
@@ -24,6 +24,11 @@ def _reservation_filename(reservation: Reservation) -> str:
 
 def _day_filename(d: date) -> str:
     return os.path.join(PDF_DIR, f"fiches_{d}.pdf")
+
+
+def _invoice_filename(reservation: Reservation) -> str:
+    safe_client = str(reservation.client_name).replace(" ", "_")
+    return os.path.join(PDF_DIR, f"facture_{reservation.service_date}_{safe_client}_{reservation.id}.pdf")
 
 
 def _split_items(items: List[ReservationItem]):
@@ -388,4 +393,100 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
             _draw_final_stamp(c, width)
 
     c.save()
+    return filename
+
+
+def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem], billing: BillingInfo) -> str:
+    filename = _invoice_filename(reservation)
+
+    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=48, bottomMargin=48)
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="H1", fontSize=18, leading=22, spaceAfter=10))
+    styles.add(ParagraphStyle(name="H2", fontSize=12, leading=16, spaceAfter=6, textColor=colors.HexColor('#374151')))
+    styles.add(ParagraphStyle(name="Meta", fontSize=10, leading=14))
+
+    story: list = []
+
+    # Header: Restaurant (left) / Invoice title (right)
+    title_tbl = Table([
+        [Paragraph("<b>FACTURE</b>", styles['H1']), Paragraph(f"Date: {reservation.service_date}<br/>Réservation: {reservation.id}", styles['Meta'])]
+    ], colWidths=[None, 220])
+    title_tbl.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
+    ]))
+    story.append(title_tbl)
+    story.append(Spacer(1, 10))
+
+    # Addresses: Billing to / Reservation client
+    bill_to_lines = [
+        f"<b>{billing.company_name}</b>",
+        billing.address_line1,
+    ]
+    if billing.address_line2:
+        bill_to_lines.append(billing.address_line2)
+    bill_to_lines.append(f"{billing.zip_code} {billing.city}")
+    if billing.country:
+        bill_to_lines.append(billing.country)
+    if billing.vat_number:
+        bill_to_lines.append(f"TVA: {billing.vat_number}")
+    if billing.email:
+        bill_to_lines.append(f"Email: {billing.email}")
+    if billing.phone:
+        bill_to_lines.append(f"Tel: {billing.phone}")
+
+    left = Paragraph("<br/>".join([str(x) for x in bill_to_lines if x]), styles['Meta'])
+    right = Paragraph("<b>Client</b><br/>" + str(reservation.client_name), styles['Meta'])
+    addr_tbl = Table([[left, right]], colWidths=[None, 220])
+    addr_tbl.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
+    ]))
+    story.append(addr_tbl)
+    story.append(Spacer(1, 16))
+
+    # Reservation meta
+    meta_rows = [
+        [Paragraph("Date du service", styles['Meta']), Paragraph(str(reservation.service_date), styles['Meta'])],
+        [Paragraph("Heure d’arrivée", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],
+        [Paragraph("Couverts", styles['Meta']), Paragraph(str(reservation.pax), styles['Meta'])],
+        [Paragraph("Formule boisson", styles['Meta']), Paragraph(str(reservation.drink_formula or '-'), styles['Meta'])],
+    ]
+    meta_tbl = Table(meta_rows, colWidths=[120, None])
+    meta_tbl.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    story.append(meta_tbl)
+    story.append(Spacer(1, 14))
+
+    # Items table (no pricing for now)
+    data = [[Paragraph('<b>Qté</b>', styles['Meta']), Paragraph('<b>Description</b>', styles['Meta'])]]
+    for it in items:
+        data.append([str(it.quantity), it.name])
+    items_tbl = Table(data, colWidths=[50, None])
+    items_tbl.setStyle(TableStyle([
+        ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#111827')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('ALIGN', (0,1), (0,-1), 'CENTER'),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 6),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f9fafb')]),
+    ]))
+    story.append(items_tbl)
+    story.append(Spacer(1, 14))
+
+    # Notes / Payment terms
+    if billing.payment_terms or billing.notes:
+        story.append(Paragraph('<b>Conditions de paiement</b>', styles['H2']))
+        story.append(Paragraph(str(billing.payment_terms or '-'), styles['Meta']))
+        story.append(Spacer(1, 8))
+        if billing.notes:
+            story.append(Paragraph('<b>Notes</b>', styles['H2']))
+            story.append(Paragraph(str(billing.notes), styles['Meta']))
+
+    doc.build(story)
     return filename

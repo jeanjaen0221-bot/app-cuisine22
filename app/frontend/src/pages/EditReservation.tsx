@@ -3,6 +3,7 @@ import ReservationForm from '../components/ReservationForm'
 import { useEffect, useState } from 'react'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
+import BillingModal from '../components/BillingModal'
 
 export default function EditReservation() {
   const { id } = useParams()
@@ -11,6 +12,7 @@ export default function EditReservation() {
   const [data, setData] = useState<Reservation | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [billingOpen, setBillingOpen] = useState(false)
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
   const isExisting = !!id && id !== 'new' && uuidRegex.test(id)
 
@@ -86,6 +88,8 @@ export default function EditReservation() {
               <>
                 <button className="btn" onClick={duplicate}>Dupliquer</button>
                 <button className="btn" onClick={()=>fileDownload(`/api/reservations/${id}/pdf`)}>PDF</button>
+                <button className="btn" onClick={()=>setBillingOpen(true)}>Facturation</button>
+                <button className="btn btn-outline" onClick={()=>fileDownload(`/api/reservations/${id}/invoice-pdf`)}>PDF Facture</button>
               </>
             )}
           </div>
@@ -97,6 +101,9 @@ export default function EditReservation() {
         <div key={(data && (data as any).id) || (!isExisting ? 'new' : id)}>
           <ReservationForm initial={data || undefined} onSubmit={save} />
         </div>
+      )}
+      {id && id !== 'new' && (
+        <BillingModal reservationId={id} open={billingOpen} onClose={()=>setBillingOpen(false)} />
       )}
     </div>
   )

@@ -167,3 +167,67 @@ class NoteRead(SQLModel):
     content: str
     created_at: datetime
     updated_at: datetime
+
+
+# Billing information for invoicing linked to a reservation
+class BillingInfo(SQLModel, table=True):
+    # Use reservation_id as primary key to enforce 1:1 relation
+    reservation_id: uuid.UUID = Field(primary_key=True, foreign_key="reservation.id")
+    company_name: str
+    address_line1: str
+    address_line2: Optional[str] = None
+    zip_code: str
+    city: str
+    country: str = "Belgique"
+    vat_number: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    payment_terms: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class BillingInfoCreate(SQLModel):
+    company_name: str
+    address_line1: str
+    address_line2: Optional[str] = None
+    zip_code: str
+    city: str
+    country: Optional[str] = None
+    vat_number: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    payment_terms: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class BillingInfoUpdate(SQLModel):
+    company_name: Optional[str] = None
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    zip_code: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    vat_number: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    payment_terms: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class BillingInfoRead(SQLModel):
+    reservation_id: uuid.UUID
+    company_name: str
+    address_line1: str
+    address_line2: Optional[str] = None
+    zip_code: str
+    city: str
+    country: str
+    vat_number: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    payment_terms: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime

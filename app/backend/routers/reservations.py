@@ -20,8 +20,12 @@ from ..models import (
     ReservationItem,
     ReservationRead,
     ReservationUpdate,
+    BillingInfo,
+    BillingInfoCreate,
+    BillingInfoRead,
+    BillingInfoUpdate,
 )
-from ..pdf_service import generate_reservation_pdf, generate_day_pdf
+from ..pdf_service import generate_reservation_pdf, generate_day_pdf, generate_invoice_pdf
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
 
@@ -371,4 +375,73 @@ def export_day_pdf(d: date, session: Session = Depends(get_session)):
         items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == r.id)).all()
         items_by_res[str(r.id)] = items
     path = generate_day_pdf(d, rows, items_by_res)
+    return FileResponse(path, filename=os.path.basename(path), media_type="application/pdf")
+
+
+# ===== Billing endpoints =====
+@router.get("/{reservation_id}/billing", response_model=BillingInfoRead)
+def get_billing(reservation_id: uuid.UUID, session: Session = Depends(get_session)):
+    res = session.get(Reservation, reservation_id)
+    if not res:
+        raise HTTPException(404, "Reservation not found")
+    row = session.get(BillingInfo, reservation_id)
+    if not row:
+        raise HTTPException(404, "Billing not found")
+    return BillingInfoRead(**row.model_dump())
+
+
+@router.post("/{reservation_id}/billing", response_model=BillingInfoRead)
+def create_billing(reservation_id: uuid.UUID, payload: BillingInfoCreate, session: Session = Depends(get_session)):
+    res = session.get(Reservation, reservation_id)
+    if not res:
+        raise HTTPException(404, "Reservation not found")
+    existing = session.get(BillingInfo, reservation_id)
+    if existing:
+        raise HTTPException(409, "Billing already exists, use PUT to update")
+    data = payload.model_dump()
+    data.setdefault('country', 'Belgique')
+    row = BillingInfo(reservation_id=reservation_id, **data)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return BillingInfoRead(**row.model_dump())
+
+
+@router.put("/{reservation_id}/billing", response_model=BillingInfoRead)
+def update_billing(reservation_id: uuid.UUID, payload: BillingInfoUpdate, session: Session = Depends(get_session)):
+    res = session.get(Reservation, reservation_id)
+    if not res:
+        raise HTTPException(404, "Reservation not found")
+    row = session.get(BillingInfo, reservation_id)
+    if not row:
+        # upsert behavior: create when absent
+        data = BillingInfoCreate(**{k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}).model_dump()
+        if 'company_name' not in data or 'address_line1' not in data or 'zip_code' not in data or 'city' not in data:
+            raise HTTPException(400, "Champs requis manquants pour la création (company_name, address_line1, zip_code, city)")
+        data.setdefault('country', 'Belgique')
+        row = BillingInfo(reservation_id=reservation_id, **data)
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        return BillingInfoRead(**row.model_dump())
+    upd = payload.model_dump(exclude_unset=True)
+    for k, v in upd.items():
+        setattr(row, k, v)
+    row.updated_at = datetime.utcnow()
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return BillingInfoRead(**row.model_dump())
+
+
+@router.get("/{reservation_id}/invoice-pdf")
+def export_invoice_pdf(reservation_id: uuid.UUID, session: Session = Depends(get_session)):
+    res = session.get(Reservation, reservation_id)
+    if not res:
+        raise HTTPException(404, "Reservation not found")
+    items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
+    billing = session.get(BillingInfo, reservation_id)
+    if not billing:
+        raise HTTPException(404, "Billing not found")
+    path = generate_invoice_pdf(res, items, billing)
     return FileResponse(path, filename=os.path.basename(path), media_type="application/pdf")
