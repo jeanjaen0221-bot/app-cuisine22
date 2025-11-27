@@ -215,7 +215,7 @@ def create_reservation(payload: ReservationCreateIn, session: Session = Depends(
         qty = int(it.quantity or 0)
         if not nm or qty <= 0:
             continue
-        rit = ReservationItem(type=it.type, name=nm, quantity=qty, reservation_id=res.id)
+        rit = ReservationItem(type=it.type, name=nm, quantity=qty, comment=(it.comment or None), reservation_id=res.id)
         session.add(rit)
     session.commit()
 
@@ -316,7 +316,7 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
             qty = int(it.quantity or 0)
             if not nm or qty <= 0:
                 continue
-            session.add(ReservationItem(type=it.type, name=nm, quantity=qty, reservation_id=res.id))
+            session.add(ReservationItem(type=it.type, name=nm, quantity=qty, comment=(it.comment or None), reservation_id=res.id))
     session.commit()
 
     session.refresh(res)
@@ -350,7 +350,7 @@ def duplicate_reservation(reservation_id: uuid.UUID, session: Session = Depends(
     session.refresh(new_res)
 
     for it in items:
-        session.add(ReservationItem(type=it.type, name=it.name, quantity=it.quantity, reservation_id=new_res.id))
+        session.add(ReservationItem(type=it.type, name=it.name, quantity=it.quantity, comment=(it.comment or None), reservation_id=new_res.id))
     session.commit()
 
     new_items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == new_res.id)).all()

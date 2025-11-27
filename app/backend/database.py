@@ -20,6 +20,7 @@ def init_db() -> None:
     ensure_final_version_column()
     ensure_allergens_column()
     ensure_notes_name_column()
+    ensure_reservation_item_comment_column()
 
 
 def run_startup_migrations() -> None:
@@ -182,6 +183,44 @@ def ensure_notes_name_column() -> None:
                 # Best-effort generic alter
                 try:
                     conn.execute(text("ALTER TABLE note ADD COLUMN name VARCHAR(255)"))
+                except Exception:
+                    pass
+    except Exception:
+        # Non-fatal
+        pass
+
+
+def ensure_reservation_item_comment_column() -> None:
+    """Ensure 'comment' column exists on reservationitem table (idempotent)."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                try:
+                    res = conn.exec_driver_sql("PRAGMA table_info(reservationitem);")
+                except Exception:
+                    return
+                cols = [row[1] for row in res.fetchall()]
+                if 'comment' not in cols:
+                    # SQLite can't add with type inference sometimes; use TEXT
+                    conn.exec_driver_sql("ALTER TABLE reservationitem ADD COLUMN comment TEXT;")
+            elif backend == 'postgresql':
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='reservationitem' AND column_name='comment'
+                      ) THEN
+                        ALTER TABLE reservationitem ADD COLUMN comment TEXT;
+                      END IF;
+                    END$$;
+                    """
+                ))
+            else:
+                try:
+                    conn.execute(text("ALTER TABLE reservationitem ADD COLUMN comment TEXT"))
                 except Exception:
                     pass
     except Exception:

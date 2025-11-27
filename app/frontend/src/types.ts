@@ -5,6 +5,7 @@ export type ReservationItem = {
   type: 'entrée' | 'plat' | 'dessert' | string
   name: string
   quantity: number
+  comment?: string
 }
 
 export type Reservation = {

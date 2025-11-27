@@ -315,6 +315,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
           type: it.type,
           name: it.name,
           quantity: it.quantity,
+          comment: (it.comment || '').trim() || undefined,
         }));
       await onSubmit({
         client_name: name,
@@ -805,6 +806,12 @@ const ItemRow = React.memo(function ItemRow({
         onBlur={() => { 
           if (qtyInput === '') setQtyInput('0'); 
         }}
+      />
+      <input
+        className="input col-span-12"
+        placeholder="Commentaire (facultatif)"
+        value={item.comment || ''}
+        onChange={(e) => onChange({ comment: e.target.value })}
       />
     </div>
   );

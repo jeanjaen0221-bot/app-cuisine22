@@ -147,7 +147,11 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
             data.append(["-", "-"])
         else:
             for it in collection:
-                data.append([str(it.quantity), it.name])
+                desc = it.name
+                if getattr(it, 'comment', None):
+                    safe_c = str(it.comment)
+                    desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
+                data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
         tbl = Table(data, colWidths=[40, None])
         tbl.setStyle(TableStyle([
             # Ligne d'en-tête colorée
@@ -298,6 +302,13 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
             for it in collection:
                 c.drawString(50, y, f"- {it.quantity}x {it.name}")
                 y -= 14
+                if getattr(it, 'comment', None):
+                    c.setFillColor(colors.HexColor('#6b7280'))
+                    c.setFont("Helvetica", 9)
+                    c.drawString(70, y, f"{it.comment}")
+                    c.setFillColor(colors.black)
+                    c.setFont("Helvetica", 10)
+                    y -= 12
             y -= 10
 
         draw_section("Entrées :", entrees)
@@ -463,7 +474,11 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
     # Items table (no pricing for now)
     data = [[Paragraph('<b>Qté</b>', styles['Meta']), Paragraph('<b>Description</b>', styles['Meta'])]]
     for it in items:
-        data.append([str(it.quantity), it.name])
+        desc = it.name
+        if getattr(it, 'comment', None):
+            safe_c = str(it.comment)
+            desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
+        data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
     items_tbl = Table(data, colWidths=[50, None])
     items_tbl.setStyle(TableStyle([
         ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),

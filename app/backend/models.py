@@ -44,6 +44,7 @@ class ReservationItemBase(SQLModel):
     type: str  # entrée / plat / dessert
     name: str
     quantity: int = 1
+    comment: Optional[str] = None
 
 
 class ReservationItem(ReservationItemBase, table=True):
@@ -52,6 +53,7 @@ class ReservationItem(ReservationItemBase, table=True):
     type: str
     name: str
     quantity: int = 0
+    comment: Optional[str] = None
 
 
 class ReservationItemCreate(ReservationItemBase):
