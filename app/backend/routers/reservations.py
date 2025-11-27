@@ -415,8 +415,10 @@ def update_billing(reservation_id: uuid.UUID, payload: BillingInfoUpdate, sessio
     row = session.get(BillingInfo, reservation_id)
     if not row:
         # upsert behavior: create when absent
-        data = BillingInfoCreate(**{k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}).model_dump()
-        if 'company_name' not in data or 'address_line1' not in data or 'zip_code' not in data or 'city' not in data:
+        data = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+        required = ['company_name', 'address_line1', 'zip_code', 'city']
+        missing = [k for k in required if not data.get(k)]
+        if missing:
             raise HTTPException(400, "Champs requis manquants pour la création (company_name, address_line1, zip_code, city)")
         data.setdefault('country', 'Belgique')
         row = BillingInfo(reservation_id=reservation_id, **data)

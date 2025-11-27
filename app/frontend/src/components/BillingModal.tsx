@@ -108,48 +108,52 @@ export default function BillingModal({ reservationId, open, onClose }: Props) {
         <div className="card-body space-y-3">
           {error && <div className="p-2 rounded bg-red-50 text-red-700 border border-red-200 text-sm">{error}</div>}
           {loading && <div className="text-gray-600 text-sm">Chargement…</div>}
-          <div className="grid grid-cols-12 gap-2">
-            <div className="col-span-12">
+          <div className="billing-grid">
+            <div>
               <label className="label">Raison sociale</label>
               <input className="input w-full" value={form.company_name} onChange={e=>set('company_name', e.target.value)} placeholder="Société / Nom du client"/>
             </div>
-            <div className="col-span-12">
+            <div>
               <label className="label">Adresse (ligne 1)</label>
               <input className="input w-full" value={form.address_line1} onChange={e=>set('address_line1', e.target.value)} placeholder="Rue et numéro"/>
             </div>
-            <div className="col-span-12">
+            <div>
               <label className="label">Adresse (ligne 2)</label>
               <input className="input w-full" value={form.address_line2||''} onChange={e=>set('address_line2', e.target.value)} placeholder="Complément (facultatif)"/>
             </div>
-            <div className="col-span-6 md:col-span-3">
-              <label className="label">Code postal</label>
-              <input className="input w-full" value={form.zip_code} onChange={e=>set('zip_code', e.target.value)} />
+            <div className="billing-row-3">
+              <div>
+                <label className="label">Code postal</label>
+                <input className="input w-full" value={form.zip_code} onChange={e=>set('zip_code', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Ville</label>
+                <input className="input w-full" value={form.city} onChange={e=>set('city', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Pays</label>
+                <input className="input w-full" value={form.country||''} onChange={e=>set('country', e.target.value)} />
+              </div>
             </div>
-            <div className="col-span-6 md:col-span-5">
-              <label className="label">Ville</label>
-              <input className="input w-full" value={form.city} onChange={e=>set('city', e.target.value)} />
+            <div className="billing-row-3">
+              <div>
+                <label className="label">N° TVA</label>
+                <input className="input w-full" value={form.vat_number||''} onChange={e=>set('vat_number', e.target.value)} placeholder="BE..., FR..., etc."/>
+              </div>
+              <div>
+                <label className="label">Email</label>
+                <input className="input w-full" value={form.email||''} onChange={e=>set('email', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Téléphone</label>
+                <input className="input w-full" value={form.phone||''} onChange={e=>set('phone', e.target.value)} />
+              </div>
             </div>
-            <div className="col-span-12 md:col-span-4">
-              <label className="label">Pays</label>
-              <input className="input w-full" value={form.country||''} onChange={e=>set('country', e.target.value)} />
-            </div>
-            <div className="col-span-12 md:col-span-4">
-              <label className="label">N° TVA</label>
-              <input className="input w-full" value={form.vat_number||''} onChange={e=>set('vat_number', e.target.value)} placeholder="BE..., FR..., etc."/>
-            </div>
-            <div className="col-span-12 md:col-span-4">
-              <label className="label">Email</label>
-              <input className="input w-full" value={form.email||''} onChange={e=>set('email', e.target.value)} />
-            </div>
-            <div className="col-span-12 md:col-span-4">
-              <label className="label">Téléphone</label>
-              <input className="input w-full" value={form.phone||''} onChange={e=>set('phone', e.target.value)} />
-            </div>
-            <div className="col-span-12">
+            <div>
               <label className="label">Conditions de paiement</label>
               <input className="input w-full" value={form.payment_terms||''} onChange={e=>set('payment_terms', e.target.value)} placeholder="Ex: Paiement à 30 jours"/>
             </div>
-            <div className="col-span-12">
+            <div>
               <label className="label">Notes</label>
               <textarea className="input w-full h-24" value={form.notes||''} onChange={e=>set('notes', e.target.value)} />
             </div>
