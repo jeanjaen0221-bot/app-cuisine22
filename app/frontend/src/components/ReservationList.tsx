@@ -51,6 +51,7 @@ export default function ReservationList() {
   const [months, setMonths] = useState<{ key: string; label: string }[]>([])
   const [selectedMonth, setSelectedMonth] = useState<string>('')
   const [expanded, setExpanded] = useState<Record<string, { entries?: boolean; mains?: boolean; desserts?: boolean; notes?: boolean; allergens?: boolean }>>({})
+  const [viewMode, setViewMode] = useState<'cards' | 'compact'>('cards')
 
   function toggle(resId: string, key: keyof NonNullable<(typeof expanded)[string]>) {
     setExpanded(prev => ({ ...prev, [resId]: { ...prev[resId], [key]: !prev[resId]?.[key] } }))
@@ -145,18 +146,72 @@ export default function ReservationList() {
             <button className="btn btn-sm btn-outline" onClick={load}><Filter className="h-4 w-4"/> Filtrer</button>
           </div>
           <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1" title="Mode d'affichage">
+              <button className={`btn btn-sm ${viewMode==='cards'?'btn-primary':'btn-outline'}`} onClick={()=>setViewMode('cards')}>Cartes</button>
+              <button className={`btn btn-sm ${viewMode==='compact'?'btn-primary':'btn-outline'}`} onClick={()=>setViewMode('compact')}>Liste</button>
+            </div>
             <Link to={date ? `/reservation/new?date=${encodeURIComponent(date)}` : "/reservation/new"} className="btn btn-sm"><Plus className="h-4 w-4"/> Nouvelle fiche</Link>
             <button className="btn btn-sm btn-outline" onClick={() => { if (!date) { alert('Sélectionnez une date'); return } fileDownload(`/api/reservations/day/${date}/pdf`) }}><Printer className="h-4 w-4"/> Export PDF du jour</button>
           </div>
         </div>
       </div>
 
-      {/* Grille des réservations */}
+      {/* Grille/Table des réservations */}
       {rows.length === 0 ? (
         <div className="card">
           <div className="text-center p-4 text-gray-700">Aucune réservation trouvée</div>
         </div>
       ) : (
+        viewMode === 'compact' ? (
+          <div className="card">
+            <div className="card-body overflow-auto">
+              <table className="table w-full">
+                <thead>
+                  <tr>
+                    <th>Client</th>
+                    <th>Date</th>
+                    <th>Heure</th>
+                    <th>Couverts</th>
+                    <th>Boisson</th>
+                    <th>Menu (résumé)</th>
+                    <th style={{width:120}}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => {
+                    const e = r.items.filter(i => (i.type||'').toLowerCase().startsWith('entrée')).length
+                    const p = r.items.filter(i => (i.type||'').toLowerCase() === 'plat').length
+                    const d = r.items.filter(i => (i.type||'').toLowerCase() === 'dessert').length
+                    const firstNames = r.items.map(i => `${i.quantity}× ${i.name}`).slice(0, 6).join(', ')
+                    return (
+                      <tr key={r.id}>
+                        <td className="capitalize">{r.client_name}</td>
+                        <td>{formatDate(r.service_date)}</td>
+                        <td>{formatTime(r.arrival_time)}</td>
+                        <td>{r.pax}</td>
+                        <td><span className="text-gray-700">{r.drink_formula || '-'}</span></td>
+                        <td>
+                          <div className="text-gray-800">
+                            <div className="text-sm">E {e} / P {p} / D {d}</div>
+                            {firstNames && (
+                              <div className="text-xs text-gray-600 line-clamp-2" title={firstNames}>{firstNames}</div>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <Link to={`/reservation/${r.id}`} className="btn btn-sm btn-outline"><Pencil className="w-4 h-4"/> Modifier</Link>
+                            <button onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)} className="btn btn-sm btn-outline"><Printer className="w-4 h-4"/> PDF</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {rows.map(r => (
             <div key={r.id} className="card card-hoverable reservation-card">
@@ -337,6 +392,7 @@ export default function ReservationList() {
             </div>
           ))}
         </div>
+        )
       )}
     </div>
   )
