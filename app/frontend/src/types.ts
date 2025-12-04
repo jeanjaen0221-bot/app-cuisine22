@@ -21,10 +21,11 @@ export type Reservation = {
   allergens?: string
   created_at: string
   updated_at: string
+  last_pdf_exported_at?: string | null
   items: ReservationItem[]
 }
 
-export type ReservationCreate = Omit<Reservation, 'id' | 'created_at' | 'updated_at'>
+export type ReservationCreate = Omit<Reservation, 'id' | 'created_at' | 'updated_at' | 'last_pdf_exported_at'>
 
 export type MenuItem = {
   id: UUID

@@ -107,6 +107,43 @@ def _find_allergen_icon(key: str) -> str | None:
     return p if os.path.isfile(p) else None
 
 
+def _drink_variant(label: str | None) -> str:
+    s = (label or "").lower()
+    if not s or s == 'sans formule':
+        return 'none'
+    if s in ('à la carte', 'a la carte'):
+        return 'a_la_carte'
+    if ('sans alcool' in s) and ('champ' in s):
+        return 'na_champ'
+    if ('avec alcool' in s) and ('champ' in s):
+        return 'alcool_champ'
+    if ('sans alcool' in s) and ('cava' in s):
+        return 'na_cava'
+    if ('avec alcool' in s) and ('cava' in s):
+        return 'alcool_cava'
+    if 'sans alcool' in s:
+        return 'na'
+    if 'avec alcool' in s:
+        return 'alcool'
+    return 'default'
+
+
+def _drink_palette(variant: str) -> tuple:
+    # returns (bg, text, border)
+    mapping = {
+        'na': (colors.HexColor('#eff6ff'), colors.HexColor('#1d4ed8'), colors.HexColor('#bfdbfe')),
+        'alcool': (colors.HexColor('#fff1f2'), colors.HexColor('#be123c'), colors.HexColor('#fecdd3')),
+        'na_cava': (colors.HexColor('#ecfeff'), colors.HexColor('#0e7490'), colors.HexColor('#a5f3fc')),
+        'alcool_cava': (colors.HexColor('#fdf4ff'), colors.HexColor('#6b21a8'), colors.HexColor('#e9d5ff')),
+        'na_champ': (colors.HexColor('#f0fdf4'), colors.HexColor('#047857'), colors.HexColor('#bbf7d0')),
+        'alcool_champ': (colors.HexColor('#fffbeb'), colors.HexColor('#b45309'), colors.HexColor('#fde68a')),
+        'a_la_carte': (colors.HexColor('#eef2ff'), colors.HexColor('#4338ca'), colors.HexColor('#c7d2fe')),
+        'none': (colors.HexColor('#f9fafb'), colors.HexColor('#374151'), colors.HexColor('#e5e7eb')),
+        'default': (colors.HexColor('#f3f4f6'), colors.HexColor('#111827'), colors.HexColor('#e5e7eb')),
+    }
+    return mapping.get(variant, mapping['default'])
+
+
 def generate_reservation_pdf(reservation: Reservation, items: List[ReservationItem]) -> str:
     filename = _reservation_filename(reservation)
 
@@ -175,9 +212,14 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
     section("Desserts :", desserts)
 
     story.append(Paragraph("<b>Formule boissons :</b>", styles['Section']))
-    fb_tbl = Table([[reservation.drink_formula or "-"]], colWidths=[None])
+    drink_text = reservation.drink_formula or "-"
+    variant = _drink_variant(drink_text)
+    bg, fg, bd = _drink_palette(variant)
+    fb_tbl = Table([[drink_text]], colWidths=[None])
     fb_tbl.setStyle(TableStyle([
-        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
+        ('BOX', (0,0), (-1,-1), 0.5, bd),
+        ('BACKGROUND', (0,0), (-1,-1), bg),
+        ('TEXTCOLOR', (0,0), (-1,-1), fg),
         ('LEFTPADDING', (0,0), (-1,-1), 6),
         ('RIGHTPADDING', (0,0), (-1,-1), 6),
         ('TOPPADDING', (0,0), (-1,-1), 4),

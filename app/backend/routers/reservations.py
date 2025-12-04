@@ -285,6 +285,11 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
         setattr(res, 'updated_at', datetime.utcnow())
     except Exception:
         pass
+    # Any change invalidates last exported PDF state
+    try:
+        res.last_pdf_exported_at = None
+    except Exception:
+        pass
     # Server-side guard: per-type totals must not exceed pax (using incoming items or existing ones)
     try:
         check_pax = update_data.get('pax', res.pax)
@@ -364,6 +369,13 @@ def export_reservation_pdf(reservation_id: uuid.UUID, session: Session = Depends
         raise HTTPException(404, "Reservation not found")
     items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
     path = generate_reservation_pdf(res, items)
+    # Mark as exported now
+    try:
+        res.last_pdf_exported_at = datetime.utcnow()
+        session.add(res)
+        session.commit()
+    except Exception:
+        pass
     return FileResponse(path, filename=os.path.basename(path), media_type="application/pdf")
 
 
@@ -375,6 +387,15 @@ def export_day_pdf(d: date, session: Session = Depends(get_session)):
         items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == r.id)).all()
         items_by_res[str(r.id)] = items
     path = generate_day_pdf(d, rows, items_by_res)
+    # Mark all as exported now
+    try:
+        now = datetime.utcnow()
+        for r in rows:
+            r.last_pdf_exported_at = now
+            session.add(r)
+        session.commit()
+    except Exception:
+        pass
     return FileResponse(path, filename=os.path.basename(path), media_type="application/pdf")
 
 

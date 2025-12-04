@@ -21,6 +21,7 @@ def init_db() -> None:
     ensure_allergens_column()
     ensure_notes_name_column()
     ensure_reservation_item_comment_column()
+    ensure_reservation_last_pdf_column()
 
 
 def run_startup_migrations() -> None:
@@ -122,6 +123,40 @@ def ensure_final_version_column() -> None:
                 # Best-effort: try generic alter
                 try:
                     conn.execute(text("ALTER TABLE reservation ADD COLUMN final_version BOOLEAN DEFAULT FALSE"))
+                except Exception:
+                    pass
+
+
+def ensure_reservation_last_pdf_column() -> None:
+    """Ensure 'last_pdf_exported_at' column exists on reservation table (idempotent)."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                try:
+                    res = conn.exec_driver_sql("PRAGMA table_info(reservation);")
+                except Exception:
+                    return
+                cols = [row[1] for row in res.fetchall()]
+                if 'last_pdf_exported_at' not in cols:
+                    conn.exec_driver_sql("ALTER TABLE reservation ADD COLUMN last_pdf_exported_at TIMESTAMP NULL;")
+            elif backend == 'postgresql':
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='reservation' AND column_name='last_pdf_exported_at'
+                      ) THEN
+                        ALTER TABLE reservation ADD COLUMN last_pdf_exported_at TIMESTAMP NULL;
+                      END IF;
+                    END$$;
+                    """
+                ))
+            else:
+                try:
+                    conn.execute(text("ALTER TABLE reservation ADD COLUMN last_pdf_exported_at TIMESTAMP"))
                 except Exception:
                     pass
     except Exception:

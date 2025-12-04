@@ -365,6 +365,30 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, pax]);
 
+  function drinkVariantOf(label?: string): string {
+    const s = (label || '').toLowerCase();
+    if (!s || s === 'sans formule') return 'is-none';
+    if (s === 'à la carte' || s === 'a la carte') return 'is-a-la-carte';
+    if (s.includes('sans alcool') && s.includes('champ')) return 'is-na-champ';
+    if (s.includes('avec alcool') && s.includes('champ')) return 'is-alcool-champ';
+    if (s.includes('sans alcool') && s.includes('cava')) return 'is-na-cava';
+    if (s.includes('avec alcool') && s.includes('cava')) return 'is-alcool-cava';
+    if (s.includes('sans alcool')) return 'is-na';
+    if (s.includes('avec alcool')) return 'is-alcool';
+    return 'is-default';
+  }
+
+  function DrinkBadge({ value }: { value?: string }) {
+    if (!value) return <span className="drink-badge is-none">—</span>;
+    const variant = drinkVariantOf(value);
+    return (
+      <span className={`drink-badge ${variant}`}>
+        <Wine />
+        <span className="drink-text">{value}</span>
+      </span>
+    );
+  }
+
   return (
     <div className="container py-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -488,6 +512,9 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                       <option key={drink} value={drink}>{drink}</option>
                     ))}
                   </select>
+                </div>
+                <div className="mt-2">
+                  <DrinkBadge value={drink_formula} />
                 </div>
               </div>
 

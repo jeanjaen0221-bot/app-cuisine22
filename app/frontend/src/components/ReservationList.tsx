@@ -35,6 +35,30 @@ const cleanNotesPreview = (s: string | undefined, max = 120) => {
 
 const splitAllergens = (csv?: string) => (csv ? csv.split(',').map(s=>s.trim()).filter(Boolean) : []);
 type AllergenMeta = { key: string; label: string; icon_url?: string }
+
+function drinkVariantOf(label?: string): string {
+  const s = (label || '').toLowerCase()
+  if (!s || s === 'sans formule') return 'is-none'
+  if (s === 'à la carte' || s === 'a la carte') return 'is-a-la-carte'
+  if (s.includes('sans alcool') && s.includes('champ')) return 'is-na-champ'
+  if (s.includes('avec alcool') && s.includes('champ')) return 'is-alcool-champ'
+  if (s.includes('sans alcool') && s.includes('cava')) return 'is-na-cava'
+  if (s.includes('avec alcool') && s.includes('cava')) return 'is-alcool-cava'
+  if (s.includes('sans alcool')) return 'is-na'
+  if (s.includes('avec alcool')) return 'is-alcool'
+  return 'is-default'
+}
+
+function DrinkBadge({ value }: { value?: string }) {
+  if (!value) return <span className="drink-badge is-none">—</span>
+  const variant = drinkVariantOf(value)
+  return (
+    <span className={`drink-badge ${variant}`}>
+      <Wine />
+      <span className="drink-text">{value}</span>
+    </span>
+  )
+}
 const monthKey = (s: string) => String(s).slice(0, 7)
 const monthLabel = (key: string) => {
   const [y, m] = key.split('-')
@@ -183,13 +207,14 @@ export default function ReservationList() {
                     const p = r.items.filter(i => (i.type||'').toLowerCase() === 'plat').length
                     const d = r.items.filter(i => (i.type||'').toLowerCase() === 'dessert').length
                     const firstNames = r.items.map(i => `${i.quantity}× ${i.name}`).slice(0, 6).join(', ')
+                    const pdfOk = r.last_pdf_exported_at && new Date(r.last_pdf_exported_at) >= new Date(r.updated_at)
                     return (
                       <tr key={r.id}>
                         <td className="capitalize">{r.client_name}</td>
                         <td>{formatDate(r.service_date)}</td>
                         <td>{formatTime(r.arrival_time)}</td>
                         <td>{r.pax}</td>
-                        <td><span className="text-gray-700">{r.drink_formula || '-'}</span></td>
+                        <td><DrinkBadge value={r.drink_formula} /></td>
                         <td>
                           <div className="text-gray-800">
                             <div className="text-sm">E {e} / P {p} / D {d}</div>
@@ -199,6 +224,9 @@ export default function ReservationList() {
                           </div>
                         </td>
                         <td>
+                          {pdfOk && (
+                            <div className="mb-1"><span className="pdf-badge ok" title={`Exporté le ${new Date(r.last_pdf_exported_at as string).toLocaleString('fr-FR')}`}>PDF à jour</span></div>
+                          )}
                           <div className="flex items-center gap-2">
                             <Link to={`/reservation/${r.id}`} className="btn btn-sm btn-outline"><Pencil className="w-4 h-4"/> Modifier</Link>
                             <button onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)} className="btn btn-sm btn-outline"><Printer className="w-4 h-4"/> PDF</button>
@@ -221,6 +249,9 @@ export default function ReservationList() {
                   {r.client_name}
                 </h3>
                 <div className="flex items-center gap-2">
+                  {r.last_pdf_exported_at && new Date(r.last_pdf_exported_at) >= new Date(r.updated_at) && (
+                    <span className="pdf-badge ok" title={`Exporté le ${new Date(r.last_pdf_exported_at).toLocaleString('fr-FR')}`}>PDF à jour</span>
+                  )}
                   <span className={`status-badge ${
                     r.status === 'confirmed' ? 'is-confirmed' :
                     r.status === 'printed' ? 'is-printed' :
@@ -320,12 +351,7 @@ export default function ReservationList() {
                   </div>
                   <div className="res-col res-col-aside">
                   {/* Formule boisson */}
-                  {r.drink_formula && (
-                    <div className="drink-callout" title="Formule boisson">
-                      <Wine className="w-4 h-4" />
-                      <span className="drink-text">{r.drink_formula}</span>
-                    </div>
-                  )}
+                  <DrinkBadge value={r.drink_formula} />
                   {/* Notes */}
                   {r.notes && (
                     <div className="text-gray-700">

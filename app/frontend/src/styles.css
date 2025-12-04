@@ -1222,9 +1222,9 @@ body {
 .relative { position: relative; }
 
 /* Text truncation (multi-line clamp) */
-.line-clamp-1 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
-.line-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.line-clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.line-clamp-1 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: hidden; }
+.line-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.line-clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .absolute { position: absolute; }
 .z-10 { z-index: 10; }
 .overflow-auto { overflow: auto; }
@@ -1272,6 +1272,15 @@ body {
 .status-badge.is-draft { background: var(--gray-100); color: var(--gray-800); }
 .status-badge.is-confirmed { background: #DCFCE7; color: #065F46; }
 .status-badge.is-printed { background: #DBEAFE; color: #1E40AF; }
+
+/* PDF freshness badge */
+.pdf-badge {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .20rem .45rem; border-radius: 999px; font-size: .72rem;
+  border: 1px solid rgba(0,0,0,0.06);
+}
+.pdf-badge.ok { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+.pdf-badge.neutral { background: #f3f4f6; color: #374151; }
 
 /* Inputs size variants */
 .input-sm {
@@ -1688,6 +1697,30 @@ body {
   .app-theme.app-theme-violet .billing-row-3 { grid-template-columns: 1fr 1fr 1fr; }
 }
 .app-theme.app-theme-violet .billing-grid .label { display: block; margin-bottom: .25rem; }
+
+/* ===== Drink formula badges ===== */
+.app-theme.app-theme-violet .drink-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  font-size: .75rem;
+  line-height: 1;
+  padding: .35rem .55rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: #f3f4f6;
+  color: #111827;
+}
+.app-theme.app-theme-violet .drink-badge svg { width: 14px; height: 14px; }
+.app-theme.app-theme-violet .drink-badge.is-na { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.app-theme.app-theme-violet .drink-badge.is-alcool { background: #fff1f2; color: #be123c; border-color: #fecdd3; }
+.app-theme.app-theme-violet .drink-badge.is-na-cava { background: #ecfeff; color: #0e7490; border-color: #a5f3fc; }
+.app-theme.app-theme-violet .drink-badge.is-alcool-cava { background: #fdf4ff; color: #6b21a8; border-color: #e9d5ff; }
+.app-theme.app-theme-violet .drink-badge.is-na-champ { background: #f0fdf4; color: #047857; border-color: #bbf7d0; }
+.app-theme.app-theme-violet .drink-badge.is-alcool-champ { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.app-theme.app-theme-violet .drink-badge.is-a-la-carte { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+.app-theme.app-theme-violet .drink-badge.is-none { background: #f9fafb; color: #374151; border-color: #e5e7eb; }
+.app-theme.app-theme-violet .drink-badge.is-default { background: #f3f4f6; color: #111827; border-color: #e5e7eb; }
 
 .notes-theme .notes-item { background: #fff; border: 1px solid rgba(105,51,129,.18); border-radius: 12px; padding: .8rem; box-shadow: 0 2px 10px rgba(66,32,82,.08); position: relative; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
 .notes-theme .notes-item:before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: linear-gradient(180deg, var(--notes-primary), var(--notes-accent)); border-top-left-radius: 12px; border-bottom-left-radius: 12px; opacity: .85; }

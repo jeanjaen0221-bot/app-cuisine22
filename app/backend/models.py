@@ -80,6 +80,7 @@ class Reservation(ReservationBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_pdf_exported_at: Optional[datetime] = None
     __table_args__ = (
         UniqueConstraint('service_date','arrival_time','client_name','pax', name='uq_reservation_slot'),
         CheckConstraint('pax >= 1', name='ck_reservation_pax_min'),
@@ -122,6 +123,7 @@ class ReservationRead(ReservationBase):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    last_pdf_exported_at: Optional[datetime] = None
     items: List[ReservationItemRead] = Field(default_factory=list)
 
 
