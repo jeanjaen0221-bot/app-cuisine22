@@ -2,7 +2,7 @@ from __future__ import annotations
 def _reservation_filename_variant(reservation: Reservation, variant: str) -> str:
     safe_client = str(reservation.client_name).replace(" ", "_")
     v = (variant or "").lower()
-    if v not in ("cuisine", "salle"):
+    if v not in ("cuisine", "salle", "both"):
         v = "cuisine"
     return os.path.join(PDF_DIR, f"fiche_{v}_{reservation.service_date}_{safe_client}_{reservation.id}.pdf")
 
@@ -313,6 +313,253 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
     story.append(note_tbl)
 
     # Build with onLaterPages to add stamp if needed by drawing after flowables
+    def on_page(canvas_obj, doc_obj):
+        if getattr(reservation, 'final_version', False):
+            _draw_final_stamp(canvas_obj, A4[0])
+
+    doc.build(story, onLaterPages=on_page, onFirstPage=on_page)
+    return filename
+
+
+def generate_reservation_pdf_both(reservation: Reservation, items: List[ReservationItem]) -> str:
+    """Build a single PDF with salle page first (no extra top margin), then cuisine page
+    (with 5cm top offset), and duplicate the cuisine page if desserts are present with
+    quantity > 0.
+    """
+    filename = _reservation_filename_variant(reservation, "both")
+    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=54)
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="Section", fontSize=12, leading=14, spaceBefore=6, spaceAfter=4, textColor=colors.HexColor("#111111")))
+    styles.add(ParagraphStyle(name="Meta", fontSize=10, leading=13))
+    styles.add(ParagraphStyle(name="TitleBar", parent=styles['Title'], textColor=colors.white, backColor=colors.HexColor('#111827'), leading=22, spaceAfter=6))
+
+    entrees, plats, desserts = _split_items(items)
+
+    def salle_page_story():
+        s: list = []
+        title = f"{reservation.client_name} – {_format_date_fr(reservation.service_date)}"
+        s.append(Paragraph(title, styles['TitleBar']))
+        s.append(Spacer(1, 6))
+        s.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#60a5fa')))
+        s.append(Spacer(1, 10))
+
+        meta_data = [
+            [Paragraph("Client", styles['Meta']), Paragraph(str(reservation.client_name), styles['Meta'])],
+            [Paragraph("Heure d’arrivée", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],
+            [Paragraph("Couverts", styles['Meta']), Paragraph(str(reservation.pax), styles['Meta'])],
+        ]
+        meta_tbl = Table(meta_data, colWidths=[110, None])
+        meta_tbl.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('TEXTCOLOR', (0,0), (0,-1), colors.HexColor('#374151')),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ]))
+        s.append(meta_tbl)
+        s.append(Spacer(1, 14))
+
+        def section(title: str, collection: List[ReservationItem]):
+            s.append(Paragraph(f"<b>{title}</b>", styles['Section']))
+            data = [[Paragraph("Qté", styles['Meta']), Paragraph("", styles['Meta'])]]
+            if not collection:
+                data.append(["-", "-"])
+            else:
+                for it in collection:
+                    desc = it.name
+                    if getattr(it, 'comment', None):
+                        safe_c = str(it.comment)
+                        desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
+                    data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
+            tbl = Table(data, colWidths=[40, None])
+            tbl.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#111827')),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('ALIGN', (0,1), (0,-1), 'CENTER'),
+                ('LEFTPADDING', (0,0), (-1,-1), 6),
+                ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                ('TOPPADDING', (0,0), (-1,-1), 4),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f9fafb')]),
+            ]))
+            s.append(tbl)
+            s.append(Spacer(1, 10))
+
+        section("Entrées :", entrees)
+        section("Plats :", plats)
+        section("Desserts :", desserts)
+
+        # Boissons (présent pour salle)
+        s.append(Paragraph("<b>Formule boissons :</b>", styles['Section']))
+        drink_text = reservation.drink_formula or "-"
+        variant = _drink_variant(drink_text)
+        bg, fg, bd = _drink_palette(variant)
+        fb_tbl = Table([[drink_text]], colWidths=[None])
+        fb_tbl.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 0.5, bd),
+            ('BACKGROUND', (0,0), (-1,-1), bg),
+            ('TEXTCOLOR', (0,0), (-1,-1), fg),
+            ('LEFTPADDING', (0,0), (-1,-1), 6),
+            ('RIGHTPADDING', (0,0), (-1,-1), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ]))
+        s.append(fb_tbl)
+        s.append(Spacer(1, 10))
+
+        # Allergènes
+        s.append(Paragraph("<b>Allergènes :</b>", styles['Section']))
+        alls = _parse_allergens(getattr(reservation, 'allergens', ''))
+        if not alls:
+            s.append(Paragraph("-", styles['Meta']))
+        else:
+            row = []
+            for key in alls:
+                icon = _find_allergen_icon(key)
+                if icon:
+                    try:
+                        row.append(RLImage(icon, width=20, height=20))
+                        row.append(Paragraph(key, styles['Meta']))
+                    except Exception:
+                        row.append(Paragraph(key, styles['Meta']))
+                else:
+                    row.append(Paragraph(key, styles['Meta']))
+            tbl = Table([row])
+            tbl.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 6),
+            ]))
+            s.append(tbl)
+        s.append(Spacer(1, 10))
+
+        # Notes (présent pour salle)
+        notes = reservation.notes or ""
+        s.append(Paragraph("<b>Notes :</b>", styles['Section']))
+        def format_text(text):
+            if not text:
+                return "-"
+            import re
+            text = text.replace('*', '<b>', 1).replace('*', '</b>', 1)
+            text = text.replace('_', '<i>', 1).replace('_', '</i>', 1)
+            text = re.sub(r'\[color=([^\]]+)\](.*?)\[/color\]', r'<font color="\1">\2</font>', text)
+            text = text.replace('\n- ', '<br/>• ')
+            return text
+        note_style = ParagraphStyle('NoteStyle', parent=styles['Normal'], leading=14, spaceBefore=4, spaceAfter=4)
+        formatted_notes = format_text(notes)
+        note_para = Paragraph(formatted_notes, note_style)
+        note_tbl = Table([[note_para]], colWidths=[doc.width])
+        note_tbl.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
+            ('INNERGRID', (0,0), (-1,-1), 0.25, colors.HexColor('#bfdbfe')),
+            ('LEFTPADDING', (0,0), (-1,-1), 10),
+            ('RIGHTPADDING', (0,0), (-1,-1), 10),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ]))
+        s.append(note_tbl)
+        return s
+
+    def cuisine_page_story():
+        s: list = []
+        # Simuler une marge haute +5cm pour la cuisine dans un seul document
+        s.append(Spacer(1, 5*cm))
+        title = f"{reservation.client_name} – {_format_date_fr(reservation.service_date)}"
+        s.append(Paragraph(title, styles['TitleBar']))
+        s.append(Spacer(1, 6))
+        s.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#60a5fa')))
+        s.append(Spacer(1, 10))
+
+        meta_data = [
+            [Paragraph("Client", styles['Meta']), Paragraph(str(reservation.client_name), styles['Meta'])],
+            [Paragraph("Heure d’arrivée", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],
+            [Paragraph("Couverts", styles['Meta']), Paragraph(str(reservation.pax), styles['Meta'])],
+        ]
+        meta_tbl = Table(meta_data, colWidths=[110, None])
+        meta_tbl.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('TEXTCOLOR', (0,0), (0,-1), colors.HexColor('#374151')),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ]))
+        s.append(meta_tbl)
+        s.append(Spacer(1, 14))
+
+        def section(title: str, collection: List[ReservationItem]):
+            s.append(Paragraph(f"<b>{title}</b>", styles['Section']))
+            data = [[Paragraph("Qté", styles['Meta']), Paragraph("", styles['Meta'])]]
+            if not collection:
+                data.append(["-", "-"])
+            else:
+                for it in collection:
+                    desc = it.name
+                    if getattr(it, 'comment', None):
+                        safe_c = str(it.comment)
+                        desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
+                    data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
+            tbl = Table(data, colWidths=[40, None])
+            tbl.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#111827')),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('ALIGN', (0,1), (0,-1), 'CENTER'),
+                ('LEFTPADDING', (0,0), (-1,-1), 6),
+                ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                ('TOPPADDING', (0,0), (-1,-1), 4),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f9fafb')]),
+            ]))
+            s.append(tbl)
+            s.append(Spacer(1, 10))
+
+        section("Entrées :", entrees)
+        section("Plats :", plats)
+        section("Desserts :", desserts)
+
+        # Allergènes seulement (pas de boisson ni notes pour cuisine)
+        s.append(Paragraph("<b>Allergènes :</b>", styles['Section']))
+        alls = _parse_allergens(getattr(reservation, 'allergens', ''))
+        if not alls:
+            s.append(Paragraph("-", styles['Meta']))
+        else:
+            row = []
+            for key in alls:
+                icon = _find_allergen_icon(key)
+                if icon:
+                    try:
+                        row.append(RLImage(icon, width=20, height=20))
+                        row.append(Paragraph(key, styles['Meta']))
+                    except Exception:
+                        row.append(Paragraph(key, styles['Meta']))
+                else:
+                    row.append(Paragraph(key, styles['Meta']))
+            tbl = Table([row])
+            tbl.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 6),
+            ]))
+            s.append(tbl)
+        s.append(Spacer(1, 10))
+        return s
+
+    story: list = []
+    # Page 1: salle
+    story.extend(salle_page_story())
+    # Page 2: cuisine
+    story.append(PageBreak())
+    story.extend(cuisine_page_story())
+    # Page 3: cuisine (si desserts avec quantité)
+    has_dessert_qty = False
+    try:
+        has_dessert_qty = any((int(getattr(it, 'quantity', 0) or 0) > 0) for it in desserts)
+    except Exception:
+        has_dessert_qty = bool(desserts)
+    if has_dessert_qty:
+        story.append(PageBreak())
+        story.extend(cuisine_page_story())
+
     def on_page(canvas_obj, doc_obj):
         if getattr(reservation, 'final_version', False):
             _draw_final_stamp(canvas_obj, A4[0])

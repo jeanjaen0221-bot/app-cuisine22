@@ -29,6 +29,7 @@ from ..pdf_service import (
     generate_reservation_pdf,
     generate_reservation_pdf_cuisine,
     generate_reservation_pdf_salle,
+    generate_reservation_pdf_both,
     generate_day_pdf,
     generate_invoice_pdf,
 )
@@ -383,9 +384,11 @@ def export_reservation_pdf(
         path = generate_reservation_pdf_salle(res, items)
     elif v == "cuisine":
         path = generate_reservation_pdf_cuisine(res, items)
+    elif v == "both":
+        path = generate_reservation_pdf_both(res, items)
     else:
-        # Backward compatibility: default to cuisine-style if not specified
-        path = generate_reservation_pdf_cuisine(res, items)
+        # Default to a single PDF containing salle then cuisine (and extra cuisine if desserts)
+        path = generate_reservation_pdf_both(res, items)
     # Mark as exported now
     try:
         res.last_pdf_exported_at = datetime.utcnow()
