@@ -415,7 +415,7 @@ def generate_reservation_pdf_cuisine(reservation: Reservation, items: List[Reser
     # Assemble story (duplicate if desserts exist)
     story = make_page_story()
     if desserts:
-        story = story + [PageBreak] + make_page_story()
+        story = story + [PageBreak()] + make_page_story()
 
     def on_page(canvas_obj, doc_obj):
         if getattr(reservation, 'final_version', False):
