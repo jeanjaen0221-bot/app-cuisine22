@@ -1,3 +1,4 @@
+from __future__ import annotations
 def _reservation_filename_variant(reservation: Reservation, variant: str) -> str:
     safe_client = str(reservation.client_name).replace(" ", "_")
     v = (variant or "").lower()
