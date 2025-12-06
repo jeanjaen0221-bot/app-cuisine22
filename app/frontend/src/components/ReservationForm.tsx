@@ -263,20 +263,24 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
     
     setErrs(errs);
     
-    // Vérifier les erreurs sur les articles
-    if (items.length === 0) {
+    // Vérifier les erreurs sur les articles (ignorer les lignes vides)
+    const effective = items.filter(it => (it.name || '').trim() !== '' || (it.quantity || 0) > 0);
+    if (effective.length === 0) {
       setItemsError('Veuillez ajouter au moins un plat');
       return false;
-    } else if (items.some(item => !item.name.trim())) {
-      setItemsError('Tous les plats doivent avoir un nom');
+    }
+    // Pour chaque ligne non vide: exiger nom et quantité > 0
+    if (effective.some(item => !(item.name || '').trim())) {
+      setItemsError('Chaque plat renseigné doit avoir un nom');
       return false;
-    } else if (items.some(item => (item.quantity || 0) < 1)) {
-      setItemsError('La quantité doit être supérieure à 0 pour tous les plats');
+    }
+    if (effective.some(item => (item.quantity || 0) < 1)) {
+      setItemsError('Chaque plat renseigné doit avoir une quantité > 0');
       return false;
     }
     // Garde-fou: les totaux par type ne doivent pas dépasser le nombre de couverts (pax)
     const totals: Record<string, number> = { 'entrée': 0, 'plat': 0, 'dessert': 0 };
-    for (const it of items) {
+    for (const it of effective) {
       const t = (it.type || '').toLowerCase();
       const isEntree = t.startsWith('entrée') || t.startsWith('entree');
       if (isEntree) totals['entrée'] += Number(it.quantity || 0);
@@ -345,8 +349,9 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   // Feedback visuel en direct si dépassement pendant la saisie
   useEffect(() => {
     // Ne pas écraser un message d'erreur différent pendant la soumission
+    const effective = items.filter(it => (it.name || '').trim() !== '' || (it.quantity || 0) > 0);
     const totals: Record<string, number> = { 'entrée': 0, 'plat': 0, 'dessert': 0 };
-    for (const it of items) {
+    for (const it of effective) {
       const t = (it.type || '').toLowerCase();
       const isEntree = t.startsWith('entrée') || t.startsWith('entree');
       if (isEntree) totals['entrée'] += Number(it.quantity || 0);

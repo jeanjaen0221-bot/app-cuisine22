@@ -8,6 +8,7 @@ from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.platypus.flowables import HRFlowable
+from reportlab.lib.units import cm
 
 from .models import Reservation, ReservationItem, BillingInfo
 
@@ -144,17 +145,22 @@ def _drink_palette(variant: str) -> tuple:
     return mapping.get(variant, mapping['default'])
 
 
+def _format_date_fr(d: date) -> str:
+    jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+    return f"{jours[d.weekday()]} {d.day:02d}/{d.month:02d}/{d.year}"
+
+
 def generate_reservation_pdf(reservation: Reservation, items: List[ReservationItem]) -> str:
     filename = _reservation_filename(reservation)
 
-    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=54)
+    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36 + 5*cm, bottomMargin=54)
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="Section", fontSize=12, leading=14, spaceBefore=6, spaceAfter=4, textColor=colors.HexColor("#111111")))
     styles.add(ParagraphStyle(name="Meta", fontSize=10, leading=13))
     styles.add(ParagraphStyle(name="TitleBar", parent=styles['Title'], textColor=colors.white, backColor=colors.HexColor('#111827'), leading=22, spaceAfter=6))
     story = []
 
-    title = f"FICHE CUISINE – {reservation.service_date}"
+    title = f"{reservation.client_name} – {_format_date_fr(reservation.service_date)}"
     story.append(Paragraph(title, styles['TitleBar']))
     story.append(Spacer(1, 6))
     story.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#60a5fa')))
@@ -311,13 +317,14 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
     filename = _day_filename(d)
     c = canvas.Canvas(filename, pagesize=A4)
     width, height = A4
+    offset = 5 * cm
 
     for idx, res in enumerate(reservations):
         if idx > 0:
             c.showPage()
-        y = height - 40
+        y = height - 40 - offset
         c.setFont("Helvetica-Bold", 16)
-        c.drawString(40, y, f"FICHE CUISINE – {res.service_date}")
+        c.drawString(40, y, f"{res.client_name} – {_format_date_fr(res.service_date)}")
         c.setStrokeColorRGB(0.9, 0.9, 0.9)
         c.setLineWidth(1)
         c.line(40, y-6, width-40, y-6)
@@ -432,7 +439,7 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
                 y -= 14
                 if y < 40:  # Nouvelle page si on arrive en bas
                     c.showPage()
-                    y = height - 40
+                    y = height - 40 - offset
                     c.setFont("Helvetica-Bold", 12)
                     c.drawString(40, y, "Notes (suite) :")
                     y -= 20
@@ -452,7 +459,7 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
 def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem], billing: BillingInfo) -> str:
     filename = _invoice_filename(reservation)
 
-    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=48, bottomMargin=48)
+    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=48 + 5*cm, bottomMargin=48)
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="H1", fontSize=18, leading=22, spaceAfter=10))
     styles.add(ParagraphStyle(name="H2", fontSize=12, leading=16, spaceAfter=6, textColor=colors.HexColor('#374151')))
@@ -460,9 +467,9 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
 
     story: list = []
 
-    # Header: Restaurant (left) / Invoice title (right)
+    # Header: Internal billing sheet
     title_tbl = Table([
-        [Paragraph("<b>FACTURE</b>", styles['H1']), Paragraph(f"Date: {reservation.service_date}<br/>Réservation: {reservation.id}", styles['Meta'])]
+        [Paragraph("<b>FEUILLE DE FACTURATION (INTERNE)</b>", styles['H1']), Paragraph(f"Date: {_format_date_fr(reservation.service_date)}<br/>Réservation: {reservation.id}", styles['Meta'])]
     ], colWidths=[None, 220])
     title_tbl.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
@@ -500,7 +507,7 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
 
     # Reservation meta
     meta_rows = [
-        [Paragraph("Date du service", styles['Meta']), Paragraph(str(reservation.service_date), styles['Meta'])],
+        [Paragraph("Date du service", styles['Meta']), Paragraph(_format_date_fr(reservation.service_date), styles['Meta'])],
         [Paragraph("Heure d’arrivée", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],
         [Paragraph("Couverts", styles['Meta']), Paragraph(str(reservation.pax), styles['Meta'])],
         [Paragraph("Formule boisson", styles['Meta']), Paragraph(str(reservation.drink_formula or '-'), styles['Meta'])],
@@ -513,20 +520,28 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
     story.append(meta_tbl)
     story.append(Spacer(1, 14))
 
-    # Items table (no pricing for now)
-    data = [[Paragraph('<b>Qté</b>', styles['Meta']), Paragraph('<b>Description</b>', styles['Meta'])]]
+    # Items table with pricing placeholders for office use
+    data = [[
+        Paragraph('<b>Qté</b>', styles['Meta']),
+        Paragraph('<b>Description</b>', styles['Meta']),
+        Paragraph('<b>PU HT</b>', styles['Meta']),
+        Paragraph('<b>TVA %</b>', styles['Meta']),
+        Paragraph('<b>Total HT</b>', styles['Meta']),
+        Paragraph('<b>Total TVAC</b>', styles['Meta']),
+    ]]
     for it in items:
         desc = it.name
         if getattr(it, 'comment', None):
             safe_c = str(it.comment)
             desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
-        data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
-    items_tbl = Table(data, colWidths=[50, None])
+        data.append([str(it.quantity), Paragraph(desc, styles['Meta']), "", "", "", ""])
+    items_tbl = Table(data, colWidths=[50, None, 60, 50, 70, 80])
     items_tbl.setStyle(TableStyle([
         ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#111827')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.white),
         ('ALIGN', (0,1), (0,-1), 'CENTER'),
+        ('ALIGN', (2,1), (5,-1), 'RIGHT'),
         ('LEFTPADDING', (0,0), (-1,-1), 6),
         ('RIGHTPADDING', (0,0), (-1,-1), 6),
         ('TOPPADDING', (0,0), (-1,-1), 4),
@@ -535,6 +550,23 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
     ]))
     story.append(items_tbl)
     story.append(Spacer(1, 14))
+
+    # Totals summary (to be filled by accounting)
+    totals = [
+        [Paragraph('<b>Sous-total HT</b>', styles['Meta']), Paragraph(' ', styles['Meta'])],
+        [Paragraph('<b>TVA</b>', styles['Meta']), Paragraph(' ', styles['Meta'])],
+        [Paragraph('<b>Total TVAC</b>', styles['Meta']), Paragraph(' ', styles['Meta'])],
+    ]
+    tot_tbl = Table(totals, colWidths=[120, None])
+    tot_tbl.setStyle(TableStyle([
+        ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 6),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    story.append(tot_tbl)
+    story.append(Spacer(1, 12))
 
     # Notes / Payment terms
     if billing.payment_terms or billing.notes:
