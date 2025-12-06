@@ -42,10 +42,10 @@ def _invoice_filename(reservation: Reservation) -> str:
 
 def _split_items(items: List[ReservationItem]):
     def norm(s: str) -> str:
-        return s.lower().replace("é", "e")
+        return s.lower().strip().replace("é", "e")
     entrees = [i for i in items if norm(i.type) in ["entree", "entrees"]]
-    plats = [i for i in items if norm(i.type) == "plat"]
-    desserts = [i for i in items if norm(i.type) == "dessert"]
+    plats = [i for i in items if norm(i.type) in ["plat", "plats"]]
+    desserts = [i for i in items if norm(i.type) in ["dessert", "desserts"]]
     return entrees, plats, desserts
 
 
@@ -414,7 +414,12 @@ def generate_reservation_pdf_cuisine(reservation: Reservation, items: List[Reser
 
     # Assemble story (duplicate if desserts exist)
     story = make_page_story()
-    if desserts:
+    has_dessert_qty = False
+    try:
+        has_dessert_qty = any((int(getattr(it, 'quantity', 0) or 0) > 0) for it in desserts)
+    except Exception:
+        has_dessert_qty = bool(desserts)
+    if has_dessert_qty:
         story = story + [PageBreak()] + make_page_story()
 
     def on_page(canvas_obj, doc_obj):
