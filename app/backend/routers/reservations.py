@@ -25,7 +25,13 @@ from ..models import (
     BillingInfoRead,
     BillingInfoUpdate,
 )
-from ..pdf_service import generate_reservation_pdf, generate_day_pdf, generate_invoice_pdf
+from ..pdf_service import (
+    generate_reservation_pdf,
+    generate_reservation_pdf_cuisine,
+    generate_reservation_pdf_salle,
+    generate_day_pdf,
+    generate_invoice_pdf,
+)
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
 
@@ -363,12 +369,23 @@ def duplicate_reservation(reservation_id: uuid.UUID, session: Session = Depends(
 
 
 @router.get("/{reservation_id}/pdf")
-def export_reservation_pdf(reservation_id: uuid.UUID, session: Session = Depends(get_session)):
+def export_reservation_pdf(
+    reservation_id: uuid.UUID,
+    variant: str | None = None,
+    session: Session = Depends(get_session),
+):
     res = session.get(Reservation, reservation_id)
     if not res:
         raise HTTPException(404, "Reservation not found")
     items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
-    path = generate_reservation_pdf(res, items)
+    v = (variant or "").lower().strip()
+    if v == "salle":
+        path = generate_reservation_pdf_salle(res, items)
+    elif v == "cuisine":
+        path = generate_reservation_pdf_cuisine(res, items)
+    else:
+        # Backward compatibility: default to cuisine-style if not specified
+        path = generate_reservation_pdf_cuisine(res, items)
     # Mark as exported now
     try:
         res.last_pdf_exported_at = datetime.utcnow()
