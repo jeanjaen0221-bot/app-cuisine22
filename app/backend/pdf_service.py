@@ -974,7 +974,7 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
 
     # Header: Internal billing sheet
     title_tbl = Table([
-        [Paragraph("<b>FEUILLE DE FACTURATION (INTERNE)</b>", styles['H1']), Paragraph(f"Date: {_format_date_fr(reservation.service_date)}<br/>Réservation: {reservation.id}", styles['Meta'])]
+        [Paragraph("<b>FEUILLE DE FACTURATION (INTERNE)</b>", styles['H1']), Paragraph(f"Date: {_format_date_fr(reservation.service_date)}<br/>N° facture: <br/>Réservation: {reservation.id}", styles['Meta'])]
     ], colWidths=[None, 220])
     title_tbl.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
@@ -1025,28 +1025,23 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
     story.append(meta_tbl)
     story.append(Spacer(1, 14))
 
-    # Items table with pricing placeholders for office use
+    # Items table listing (no prices or VAT)
     data = [[
         Paragraph('<b>Qté</b>', styles['Meta']),
         Paragraph('<b>Description</b>', styles['Meta']),
-        Paragraph('<b>PU HT</b>', styles['Meta']),
-        Paragraph('<b>TVA %</b>', styles['Meta']),
-        Paragraph('<b>Total HT</b>', styles['Meta']),
-        Paragraph('<b>Total TVAC</b>', styles['Meta']),
     ]]
     for it in items:
         desc = it.name
         if getattr(it, 'comment', None):
             safe_c = str(it.comment)
             desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
-        data.append([str(it.quantity), Paragraph(desc, styles['Meta']), "", "", "", ""])
-    items_tbl = Table(data, colWidths=[50, None, 60, 50, 70, 80])
+        data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
+    items_tbl = Table(data, colWidths=[50, None])
     items_tbl.setStyle(TableStyle([
         ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#111827')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.white),
         ('ALIGN', (0,1), (0,-1), 'CENTER'),
-        ('ALIGN', (2,1), (5,-1), 'RIGHT'),
         ('LEFTPADDING', (0,0), (-1,-1), 6),
         ('RIGHTPADDING', (0,0), (-1,-1), 6),
         ('TOPPADDING', (0,0), (-1,-1), 4),
@@ -1055,23 +1050,6 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
     ]))
     story.append(items_tbl)
     story.append(Spacer(1, 14))
-
-    # Totals summary (to be filled by accounting)
-    totals = [
-        [Paragraph('<b>Sous-total HT</b>', styles['Meta']), Paragraph(' ', styles['Meta'])],
-        [Paragraph('<b>TVA</b>', styles['Meta']), Paragraph(' ', styles['Meta'])],
-        [Paragraph('<b>Total TVAC</b>', styles['Meta']), Paragraph(' ', styles['Meta'])],
-    ]
-    tot_tbl = Table(totals, colWidths=[120, None])
-    tot_tbl.setStyle(TableStyle([
-        ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
-        ('LEFTPADDING', (0,0), (-1,-1), 6),
-        ('RIGHTPADDING', (0,0), (-1,-1), 6),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-    ]))
-    story.append(tot_tbl)
-    story.append(Spacer(1, 12))
 
     # Notes / Payment terms
     if billing.payment_terms or billing.notes:
