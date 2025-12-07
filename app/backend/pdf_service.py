@@ -974,7 +974,7 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
 
     # Header: Internal billing sheet
     title_tbl = Table([
-        [Paragraph("<b>FEUILLE DE FACTURATION (INTERNE)</b>", styles['H1']), Paragraph(f"Date: {_format_date_fr(reservation.service_date)}<br/>N° facture: <br/>Réservation: {reservation.id}", styles['Meta'])]
+        [Paragraph("<b>FEUILLE DE FACTURATION (INTERNE)</b>", styles['H1']), Paragraph(f"Date: {_format_date_fr(reservation.service_date)}<br/>N° facture: ", styles['Meta'])]
     ], colWidths=[None, 220])
     title_tbl.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
