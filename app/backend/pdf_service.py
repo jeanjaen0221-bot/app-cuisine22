@@ -465,7 +465,7 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
         s: list = []
         # Simuler une marge haute +5cm pour la cuisine dans un seul document
         s.append(Spacer(1, 5*cm))
-        title = f"{reservation.client_name} – {_format_date_fr(reservation.service_date)}"
+        title = f"{_format_date_fr(reservation.service_date)} – {reservation.client_name}"
         s.append(Paragraph(title, styles['TitleBar']))
         s.append(Spacer(1, 6))
         s.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#60a5fa')))
@@ -581,7 +581,7 @@ def generate_reservation_pdf_cuisine(reservation: Reservation, items: List[Reser
 
     def make_page_story():
         page_story: list = []
-        title = f"{reservation.client_name} – {_format_date_fr(reservation.service_date)}"
+        title = f"{_format_date_fr(reservation.service_date)} – {reservation.client_name}"
         page_story.append(Paragraph(title, styles['TitleBar']))
         page_story.append(Spacer(1, 6))
         page_story.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#60a5fa')))
