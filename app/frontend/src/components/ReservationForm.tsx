@@ -250,7 +250,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
 
   const addItem = () => {
     setItems(prev => {
-      const next = [...prev, { name: '', type: 'plat', quantity: 1 }];
+      const next = [...prev, { name: '', type: 'entrée', quantity: 1 }];
       setOpenRow(next.length - 1);
       return next;
     });
@@ -858,6 +858,9 @@ const ItemRow = React.memo(function ItemRow({
         value={item.comment || ''}
         onChange={(e) => onChange({ comment: e.target.value })}
       />
+      <div className="col-span-12 flex justify-end">
+        <button type="button" className="btn btn-outline btn-sm" onClick={onRemove}>Supprimer la ligne</button>
+      </div>
     </div>
   );
 });
