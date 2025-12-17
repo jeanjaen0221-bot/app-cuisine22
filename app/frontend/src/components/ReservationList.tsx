@@ -77,6 +77,31 @@ export default function ReservationList() {
   const [expanded, setExpanded] = useState<Record<string, { entries?: boolean; mains?: boolean; desserts?: boolean; notes?: boolean; allergens?: boolean }>>({})
   const [viewMode, setViewMode] = useState<'cards' | 'compact'>('cards')
 
+  // Initialize view mode from URL (?view=cards|compact) or localStorage; fallback to cards on small screens
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const view = params.get('view')
+      if (view === 'cards' || view === 'compact') {
+        setViewMode(view)
+        return
+      }
+      const saved = localStorage.getItem('reservation_view_mode')
+      if (saved === 'cards' || saved === 'compact') {
+        setViewMode(saved as 'cards' | 'compact')
+        return
+      }
+      if (window.matchMedia && window.matchMedia('(max-width: 640px)').matches) {
+        setViewMode('cards')
+      }
+    } catch {}
+  }, [])
+
+  // Persist preference on change
+  useEffect(() => {
+    try { localStorage.setItem('reservation_view_mode', viewMode) } catch {}
+  }, [viewMode])
+
   function toggle(resId: string, key: keyof NonNullable<(typeof expanded)[string]>) {
     setExpanded(prev => ({ ...prev, [resId]: { ...prev[resId], [key]: !prev[resId]?.[key] } }))
   }
