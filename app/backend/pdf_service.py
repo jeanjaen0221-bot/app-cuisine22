@@ -348,6 +348,8 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
             [Paragraph("Heure d’arrivée", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],
             [Paragraph("Couverts", styles['Meta']), Paragraph(str(reservation.pax), styles['Meta'])],
         ]
+        if getattr(reservation, 'on_invoice', False):
+            meta_data.append([Paragraph("Sur facture", styles['Meta']), Paragraph("Oui", styles['Meta'])])
         meta_tbl = Table(meta_data, colWidths=[110, None])
         meta_tbl.setStyle(TableStyle([
             ('VALIGN', (0,0), (-1,-1), 'TOP'),
@@ -698,6 +700,8 @@ def generate_reservation_pdf_salle(reservation: Reservation, items: List[Reserva
         [Paragraph("Heure d’arrivée", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],
         [Paragraph("Couverts", styles['Meta']), Paragraph(str(reservation.pax), styles['Meta'])],
     ]
+    if getattr(reservation, 'on_invoice', False):
+        meta_data.append([Paragraph("Sur facture", styles['Meta']), Paragraph("Oui", styles['Meta'])])
     meta_tbl = Table(meta_data, colWidths=[110, None])
     meta_tbl.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
@@ -820,144 +824,149 @@ def generate_reservation_pdf_salle(reservation: Reservation, items: List[Reserva
     return filename
 def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dict) -> str:
     filename = _day_filename(d)
-    c = canvas.Canvas(filename, pagesize=A4)
-    width, height = A4
-    offset = 5 * cm
+    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=54)
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="Section", fontSize=12, leading=14, spaceBefore=6, spaceAfter=4, textColor=colors.HexColor("#111111")))
+    styles.add(ParagraphStyle(name="Meta", fontSize=10, leading=13))
+    styles.add(ParagraphStyle(name="TitleBar", parent=styles['Title'], textColor=colors.white, backColor=colors.HexColor('#111827'), leading=22, spaceAfter=6))
+
+    story: list = []
+
+    def section_builder(container: list, title: str, collection: List[ReservationItem]):
+        container.append(Paragraph(f"<b>{title}</b>", styles['Section']))
+        data = [[Paragraph("Qté", styles['Meta']), Paragraph("", styles['Meta'])]]
+        if not collection:
+            data.append(["-", "-"])
+        else:
+            for it in collection:
+                desc = it.name
+                if getattr(it, 'comment', None):
+                    safe_c = str(it.comment)
+                    desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
+                data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
+        tbl = Table(data, colWidths=[40, None])
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#111827')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('ALIGN', (0,1), (0,-1), 'CENTER'),
+            ('LEFTPADDING', (0,0), (-1,-1), 6),
+            ('RIGHTPADDING', (0,0), (-1,-1), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f9fafb')]),
+        ]))
+        container.append(tbl)
+        container.append(Spacer(1, 10))
 
     for idx, res in enumerate(reservations):
-        if idx > 0:
-            c.showPage()
-        y = height - 40 - offset
-        c.setFont("Helvetica-Bold", 16)
-        c.drawString(40, y, f"{res.client_name} – {_format_date_fr(res.service_date)}")
-        c.setStrokeColorRGB(0.9, 0.9, 0.9)
-        c.setLineWidth(1)
-        c.line(40, y-6, width-40, y-6)
-        y -= 30
-        c.setFont("Helvetica", 11)
-        c.drawString(40, y, f"Client : {res.client_name}")
-        y -= 16
-        c.drawString(40, y, f"Heure d’arrivée : {res.arrival_time}")
-        y -= 16
-        c.drawString(40, y, f"Couverts : {res.pax}")
-        y -= 24
+        # Title
+        title = f"{res.client_name} – {_format_date_fr(res.service_date)}"
+        story.append(Paragraph(title, styles['TitleBar']))
+        story.append(Spacer(1, 6))
+        story.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#60a5fa')))
+        story.append(Spacer(1, 10))
+
+        # Meta
+        meta_data = [
+            [Paragraph("Client", styles['Meta']), Paragraph(str(res.client_name), styles['Meta'])],
+            [Paragraph("Heure d’arrivée", styles['Meta']), Paragraph(str(res.arrival_time), styles['Meta'])],
+            [Paragraph("Couverts", styles['Meta']), Paragraph(str(res.pax), styles['Meta'])],
+        ]
+        if getattr(res, 'on_invoice', False):
+            meta_data.append([Paragraph("Sur facture", styles['Meta']), Paragraph("Oui", styles['Meta'])])
+        meta_tbl = Table(meta_data, colWidths=[110, None])
+        meta_tbl.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('TEXTCOLOR', (0,0), (0,-1), colors.HexColor('#374151')),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ]))
+        story.append(meta_tbl)
+        story.append(Spacer(1, 14))
 
         entrees, plats, desserts = _split_items(items_by_res.get(str(res.id), []))
+        section_builder(story, "Entrées :", entrees)
+        section_builder(story, "Plats :", plats)
+        section_builder(story, "Desserts :", desserts)
 
-        def draw_section(title: str, collection: List[ReservationItem]):
-            nonlocal y
-            c.setFont("Helvetica-Bold", 12)
-            c.drawString(40, y, title)
-            y -= 16
-            c.setFont("Helvetica", 11)
-            if not collection:
-                c.drawString(50, y, "-")
-                y -= 14
-            for it in collection:
-                c.drawString(50, y, f"- {it.quantity}x {it.name}")
-                y -= 14
-                if getattr(it, 'comment', None):
-                    c.setFillColor(colors.HexColor('#6b7280'))
-                    c.setFont("Helvetica", 9)
-                    c.drawString(70, y, f"{it.comment}")
-                    c.setFillColor(colors.black)
-                    c.setFont("Helvetica", 10)
-                    y -= 12
-            y -= 10
+        # Drink formula (same badge style as salle)
+        story.append(Paragraph("<b>Formule boissons :</b>", styles['Section']))
+        drink_text = res.drink_formula or "-"
+        variant = _drink_variant(drink_text)
+        bg, fg, bd = _drink_palette(variant)
+        fb_tbl = Table([[drink_text]], colWidths=[None])
+        fb_tbl.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 0.5, bd),
+            ('BACKGROUND', (0,0), (-1,-1), bg),
+            ('TEXTCOLOR', (0,0), (-1,-1), fg),
+            ('LEFTPADDING', (0,0), (-1,-1), 6),
+            ('RIGHTPADDING', (0,0), (-1,-1), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ]))
+        story.append(fb_tbl)
+        story.append(Spacer(1, 10))
 
-        draw_section("Entrées :", entrees)
-        draw_section("Plats :", plats)
-        draw_section("Desserts :", desserts)
-
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(40, y, "Formule boissons :")
-        y -= 14
-        c.setFont("Helvetica", 11)
-        c.drawString(50, y, f"{res.drink_formula}")
-        y -= 16
-
-        # Allergens (icons if available)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(40, y, "Allergènes :")
-        y -= 16
+        # Allergènes (même présentation que salle)
+        story.append(Paragraph("<b>Allergènes :</b>", styles['Section']))
         alls = _parse_allergens(getattr(res, 'allergens', ''))
         if not alls:
-            c.setFont("Helvetica", 11)
-            c.drawString(50, y, "-")
-            y -= 16
+            story.append(Paragraph("-", styles['Meta']))
         else:
-            x = 50
-            size = 20
+            row = []
             for key in alls:
                 icon = _find_allergen_icon(key)
                 if icon:
                     try:
-                        c.drawImage(icon, x, y - size + 4, width=size, height=size, mask='auto', preserveAspectRatio=True, anchor='sw')
-                        # Afficher aussi le libellé à droite de l'icône
-                        c.setFont("Helvetica", 10)
-                        c.drawString(x + size + 4, y, key)
-                        x += size + 8 + 60
+                        row.append(RLImage(icon, width=20, height=20))
+                        row.append(Paragraph(key, styles['Meta']))
                     except Exception:
-                        c.setFont("Helvetica", 10)
-                        c.drawString(x, y, key)
-                        x += 60
+                        row.append(Paragraph(key, styles['Meta']))
                 else:
-                    c.setFont("Helvetica", 10)
-                    c.drawString(x, y, key)
-                    x += 60
-            y -= size + 8
+                    row.append(Paragraph(key, styles['Meta']))
+            tbl = Table([row])
+            tbl.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 6),
+            ]))
+            story.append(tbl)
+        story.append(Spacer(1, 10))
 
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(40, y, "Notes :")
-        y -= 14
-        c.setFont("Helvetica", 11)
-        
-        def draw_formatted_text(text, x, y, max_width):
-            if not text:
-                c.drawString(x, y, "-")
-                return y - 14
-                
-            # Découper le texte en lignes tout en préservant le formatage
-            import re
-            from reportlab.pdfbase import pdfmetrics
-            from reportlab.pdfbase.ttfonts import TTFont
-            
-            # Essayer de charger une police à largeur fixe
-            try:
-                pdfmetrics.registerFont(TTFont('Courier', 'Courier'))
-                c.setFont("Courier", 10)
-            except:
-                c.setFont("Helvetica", 10)
-            
-            # Simplifier le formatage pour la version PDF simple
-            lines = []
-            for line in text.split('\n'):
-                # Supprimer les marqueurs de formatage pour la version simple
-                clean_line = re.sub(r'\[color=[^\]]+\]|\[/color\]|\*|_', '', line)
-                if clean_line.startswith('- '):
-                    clean_line = '• ' + clean_line[2:]
-                lines.append(clean_line)
-            
-            # Dessiner chaque ligne
-            for line in lines or ["-"]:
-                c.drawString(x, y, line)
-                y -= 14
-                if y < 40:  # Nouvelle page si on arrive en bas
-                    c.showPage()
-                    y = height - 40 - offset
-                    c.setFont("Helvetica-Bold", 12)
-                    c.drawString(40, y, "Notes (suite) :")
-                    y -= 20
-                    c.setFont("Courier" if 'Courier' in c.getAvailableFonts() else "Helvetica", 10)
-            
-            return y
-        
-        y = draw_formatted_text(res.notes, 50, y, width - 90)
-        # Final stamp at bottom
-        if getattr(res, 'final_version', False):
-            _draw_final_stamp(c, width)
+        # Notes (bloc style salle)
+        notes = res.notes or ""
+        story.append(Paragraph("<b>Notes :</b>", styles['Section']))
+        note_style = ParagraphStyle('NoteStyle', parent=styles['Normal'], leading=14, spaceBefore=4, spaceAfter=4)
+        # Simple conversion des marqueurs de formatage custom
+        import re as _re
+        txt = notes
+        if txt:
+            txt = txt.replace('*', '<b>', 1).replace('*', '</b>', 1)
+            txt = txt.replace('_', '<i>', 1).replace('_', '</i>', 1)
+            txt = _re.sub(r'\[color=([^\]]+)\](.*?)\[/color\]', r'<font color="\1">\2</font>', txt)
+            txt = txt.replace('\n- ', '<br/>• ')
+        else:
+            txt = "-"
+        note_para = Paragraph(txt, note_style)
+        note_tbl = Table([[note_para]], colWidths=[doc.width])
+        note_tbl.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
+            ('INNERGRID', (0,0), (-1,-1), 0.25, colors.HexColor('#bfdbfe')),
+            ('LEFTPADDING', (0,0), (-1,-1), 10),
+            ('RIGHTPADDING', (0,0), (-1,-1), 10),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ]))
+        story.append(note_tbl)
 
-    c.save()
+        # Saut de page entre les réservations
+        if idx < len(reservations) - 1:
+            story.append(PageBreak())
+
+    # Build (pas de tampon par-réservation pour le PDF jour)
+    doc.build(story)
     return filename
 
 

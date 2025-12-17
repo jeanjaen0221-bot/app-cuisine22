@@ -57,6 +57,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   const [notes, setNotes] = useState(initial?.notes || '')
   const [status, setStatus] = useState<Reservation['status']>(initial?.status || 'draft')
   const [finalVersion, setFinalVersion] = useState<boolean>(Boolean(initial?.final_version))
+  const [onInvoice, setOnInvoice] = useState<boolean>(Boolean((initial as any)?.on_invoice))
   const [allergens, setAllergens] = useState<string[]>(initial?.allergens ? String(initial.allergens).split(',').map(s=>s.trim()).filter(Boolean) : [])
   const [items, setItems] = useState<ReservationItem[]>(initial?.items || [])
   const [openRow, setOpenRow] = useState<number | null>(null)
@@ -208,6 +209,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
     setStatus(initial.status || 'draft');
     setItems(initial.items || []);
     setFinalVersion(Boolean(initial.final_version));
+    setOnInvoice(Boolean((initial as any).on_invoice));
     setAllergens(initial.allergens ? String(initial.allergens).split(',').map(s=>s.trim()).filter(Boolean) : []);
   }, [initial]);
 
@@ -331,6 +333,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
         status,
         allergens: allergens.join(','),
         final_version: finalVersion,
+        on_invoice: onInvoice,
         items: validItems,
       });
     } catch (error) {
@@ -573,6 +576,16 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
                     onChange={e => setFinalVersion(e.target.checked)}
                   />
                   <label htmlFor="finalVersionInline" className="form-check-label text-sm">Tampon PDF: Version finale</label>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    id="onInvoiceInline"
+                    type="checkbox"
+                    className="form-check-input"
+                    checked={onInvoice}
+                    onChange={e => setOnInvoice(e.target.checked)}
+                  />
+                  <label htmlFor="onInvoiceInline" className="form-check-label text-sm">Sur facture</label>
                 </div>
               </div>
               <div className="form-group">

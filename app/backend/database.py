@@ -22,6 +22,7 @@ def init_db() -> None:
     ensure_notes_name_column()
     ensure_reservation_item_comment_column()
     ensure_reservation_last_pdf_column()
+    ensure_on_invoice_column()
 
 
 def run_startup_migrations() -> None:
@@ -123,6 +124,43 @@ def ensure_final_version_column() -> None:
                 # Best-effort: try generic alter
                 try:
                     conn.execute(text("ALTER TABLE reservation ADD COLUMN final_version BOOLEAN DEFAULT FALSE"))
+                except Exception:
+                    pass
+    except Exception:
+        # Non-fatal
+        pass
+
+
+def ensure_on_invoice_column() -> None:
+    """Ensure 'on_invoice' column exists on reservation table (idempotent)."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                try:
+                    res = conn.exec_driver_sql("PRAGMA table_info(reservation);")
+                except Exception:
+                    return
+                cols = [row[1] for row in res.fetchall()]
+                if 'on_invoice' not in cols:
+                    conn.exec_driver_sql("ALTER TABLE reservation ADD COLUMN on_invoice BOOLEAN DEFAULT 0;")
+            elif backend == 'postgresql':
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='reservation' AND column_name='on_invoice'
+                      ) THEN
+                        ALTER TABLE reservation ADD COLUMN on_invoice BOOLEAN DEFAULT FALSE;
+                      END IF;
+                    END$$;
+                    """
+                ))
+            else:
+                try:
+                    conn.execute(text("ALTER TABLE reservation ADD COLUMN on_invoice BOOLEAN"))
                 except Exception:
                     pass
     except Exception:

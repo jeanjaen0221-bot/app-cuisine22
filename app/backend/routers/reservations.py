@@ -173,6 +173,7 @@ def create_reservation(payload: ReservationCreateIn, session: Session = Depends(
     client_name = str(data.get("client_name", "")).strip() or "Client"
     drink_formula = str(data.get("drink_formula", "")).strip() or ""
     notes = str(data.get("notes", "")).strip()
+    on_invoice = bool(data.get("on_invoice") or False)
     if len(client_name) > 200:
         client_name = client_name[:200]
     if len(drink_formula) > 200:
@@ -190,6 +191,7 @@ def create_reservation(payload: ReservationCreateIn, session: Session = Depends(
         "drink_formula": drink_formula,
         "notes": notes,
         "pax": pax,
+        "on_invoice": on_invoice,
     })
     # Allergens sanitize
     allergens = str(data.get("allergens", "") or "").strip()
@@ -273,6 +275,8 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
         update_data["notes"] = (str(update_data["notes"]) or "").strip()
         if len(update_data["notes"]) > 4000:
             update_data["notes"] = update_data["notes"][:4000]
+    if "on_invoice" in update_data and update_data["on_invoice"] is not None:
+        update_data["on_invoice"] = bool(update_data["on_invoice"]) 
     if "allergens" in update_data:
         update_data["allergens"] = (str(update_data["allergens"]) or "").strip()
         if len(update_data["allergens"]) > 1024:

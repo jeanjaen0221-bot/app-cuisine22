@@ -31,6 +31,7 @@ export default function EditReservation() {
         notes: '',
         status: 'draft',
         final_version: false,
+        on_invoice: false,
         allergens: '',
         created_at: '' as any,
         updated_at: '' as any,
