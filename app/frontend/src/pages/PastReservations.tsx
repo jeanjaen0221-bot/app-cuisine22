@@ -24,10 +24,10 @@ export default function PastReservations() {
   return (
     <div className="space-y-6">
       <div className="card">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <input className="input" placeholder="Rechercher un client" value={q} onChange={e=>setQ(e.target.value)} />
-            <button className="btn btn-sm" onClick={load}><Filter className="h-4 w-4"/> Filtrer</button>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input className="input w-full sm:w-64" placeholder="Rechercher un client" value={q} onChange={e=>setQ(e.target.value)} />
+            <button className="btn btn-sm btn-outline w-full sm:w-auto" onClick={load}><Filter className="h-4 w-4"/> Filtrer</button>
           </div>
           <div className="text-sm text-gray-500">Réservations passées</div>
         </div>
@@ -72,9 +72,9 @@ export default function PastReservations() {
                     </div>
                   </td>
                   <td>
-                    <div className="flex items-center gap-2">
-                      <Link className="btn btn-sm" to={`/reservation/${r.id}`}><Pencil className="h-4 w-4"/> Modifier</Link>
-                      <button className="btn btn-sm" onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)}><Printer className="h-4 w-4"/> PDF</button>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Link className="btn btn-sm btn-outline w-full sm:w-auto" to={`/reservation/${r.id}`}><Pencil className="h-4 w-4"/> Modifier</Link>
+                      <button className="btn btn-sm btn-outline w-full sm:w-auto" onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)}><Printer className="h-4 w-4"/> PDF</button>
                     </div>
                   </td>
                 </tr>

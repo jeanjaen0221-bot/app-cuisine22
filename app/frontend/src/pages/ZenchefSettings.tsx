@@ -89,8 +89,8 @@ export default function ZenchefSettings() {
             <label className="label">Restaurant ID</label>
             <input className="input w-full" value={restaurantId} onChange={e=>setRestaurantId(e.target.value)} />
           </div>
-          <div className="flex gap-2">
-            <button className="btn flex items-center gap-2" onClick={save} disabled={saving}>{saving ? <><RefreshCw className="h-4 w-4 animate-spin"/> Sauvegarde…</> : <><Save className="h-4 w-4"/> Sauvegarder</>}</button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button className="btn w-full sm:w-auto flex items-center justify-center gap-2" onClick={save} disabled={saving}>{saving ? <><RefreshCw className="h-4 w-4 animate-spin"/> Sauvegarde…</> : <><Save className="h-4 w-4"/> Sauvegarder</>}</button>
           </div>
         </div>
       </div>
@@ -178,8 +178,10 @@ export default function ZenchefSettings() {
                     </div>
                   </td>
                   <td className="actions-cell">
-                    <button className="btn btn-sm btn-outline inline-flex items-center gap-1" onClick={()=>upsertAllergen(a.key, a.label)}><Save className="w-4 h-4"/> Sauver</button>
-                    <button className="btn btn-sm btn-outline inline-flex items-center gap-1" onClick={()=>removeAllergen(a.key)}><Trash2 className="w-4 h-4"/> Supprimer</button>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button className="btn btn-sm btn-outline inline-flex items-center gap-1 w-full sm:w-auto" onClick={()=>upsertAllergen(a.key, a.label)}><Save className="w-4 h-4"/> Sauver</button>
+                      <button className="btn btn-sm btn-outline inline-flex items-center gap-1 w-full sm:w-auto" onClick={()=>removeAllergen(a.key)}><Trash2 className="w-4 h-4"/> Supprimer</button>
+                    </div>
                   </td>
                 </tr>
               ))}

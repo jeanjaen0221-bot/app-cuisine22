@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { api } from '../lib/api';
 import { Reservation, ReservationCreate, ReservationItem } from '../types';
 import { 
@@ -46,9 +46,10 @@ const DEFAULT_ALLERGENS: AllergenOption[] = [
 type Props = {
   initial?: Partial<Reservation>
   onSubmit: (payload: Partial<ReservationCreate>) => Promise<void>
+  formId?: string
 }
 
-export default function ReservationForm({ initial, onSubmit }: Props) {
+export default function ReservationForm({ initial, onSubmit, formId }: Props) {
   const [client_name, setClient] = useState(initial?.client_name || '')
   const [service_date, setDate] = useState(initial?.service_date || '')
   const [arrival_time, setTime] = useState(initial?.arrival_time || '')
@@ -65,9 +66,22 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
   const [errs, setErrs] = useState<{client?:string,date?:string,pax?:string,time?:string}>({})
   const [itemsError, setItemsError] = useState<string | null>(null)
   const [allergenOptions, setAllergenOptions] = useState<AllergenOption[]>(DEFAULT_ALLERGENS)
+  const [allergenQuery, setAllergenQuery] = useState('')
 
   // État pour la taille de police
   const [fontSize, setFontSize] = useState('text-base');
+
+  const filteredAllergens = useMemo(() => {
+    const ql = allergenQuery.trim().toLowerCase();
+    const arr = [...allergenOptions];
+    arr.sort((a, b) => {
+      const ai = allergens.includes(a.key) ? 0 : 1;
+      const bi = allergens.includes(b.key) ? 0 : 1;
+      if (ai !== bi) return ai - bi;
+      return String(a.label || a.key).localeCompare(String(b.label || b.key));
+    });
+    return arr.filter(a => !ql || a.key.toLowerCase().includes(ql) || String(a.label || '').toLowerCase().includes(ql));
+  }, [allergenOptions, allergens, allergenQuery]);
 
   // Options de taille de police
   const fontSizes = [
@@ -399,7 +413,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
 
   return (
     <div className="container py-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-gray-900">
           {initial?.id ? 'Modifier la réservation' : 'Nouvelle réservation'}
         </h1>
@@ -415,7 +429,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <form id={formId || 'reservation-form'} onSubmit={handleSubmit} className="space-y-8">
         <div className="card">
           <div className="card-header">
             <h2 className="text-lg font-medium">Informations générales</h2>
@@ -528,8 +542,24 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
 
               <div className="form-group">
                 <label className="label">Allergènes</label>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                  <input
+                    className="input w-full sm:w-64"
+                    placeholder="Rechercher un allergène"
+                    value={allergenQuery}
+                    onChange={e=>setAllergenQuery(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline w-full sm:w-auto"
+                    onClick={()=>setAllergens([])}
+                    disabled={allergens.length===0}
+                  >
+                    Effacer tout
+                  </button>
+                </div>
                 <div className="allergens-grid">
-                  {allergenOptions.map(a => {
+                  {filteredAllergens.map(a => {
                     const active = allergens.includes(a.key)
                     const toggle = () => setAllergens(prev => active ? prev.filter(k => k !== a.key) : [...prev, a.key])
                     return (
@@ -688,9 +718,9 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-lg font-semibold text-primary">Plats</h3>
-          <button type="button" className="btn" onClick={addItem}>+ Ajouter un plat</button>
+          <button type="button" className="btn w-full sm:w-auto" onClick={addItem}>+ Ajouter un plat</button>
         </div>
         {itemsError && (
           <div className="mt-2 text-xs text-red-600">{itemsError}</div>
@@ -712,7 +742,7 @@ export default function ReservationForm({ initial, onSubmit }: Props) {
           ))}
         </div>
         <div className="card-footer">
-          <button type="submit" className="btn btn-primary disabled:opacity-60" disabled={submitting}>
+          <button type="submit" className="btn btn-primary disabled:opacity-60 w-full sm:w-auto" disabled={submitting}>
             {submitting ? 'Sauvegarde…' : 'Sauvegarder'}
           </button>
         </div>
@@ -770,7 +800,7 @@ const ItemRow = React.memo(function ItemRow({
       }}
     >
       <select 
-        className="input col-span-2" 
+        className="input col-span-12 sm:col-span-2" 
         value={item.type} 
         onChange={(e) => { 
           onChange({ type: e.target.value }); 
@@ -781,7 +811,7 @@ const ItemRow = React.memo(function ItemRow({
         <option>plat</option>
         <option>dessert</option>
       </select>
-      <div className="col-span-8 relative">
+      <div className="col-span-12 sm:col-span-8 relative">
         <input 
           className="input w-full" 
           placeholder="Nom du plat" 
@@ -839,7 +869,7 @@ const ItemRow = React.memo(function ItemRow({
       <input
         type="number"
         min={0}
-        className="input col-span-2"
+        className="input col-span-12 sm:col-span-2"
         value={qtyInput}
         onChange={(e) => {
           const v = e.target.value;
@@ -859,7 +889,7 @@ const ItemRow = React.memo(function ItemRow({
         onChange={(e) => onChange({ comment: e.target.value })}
       />
       <div className="col-span-12 flex justify-end">
-        <button type="button" className="btn btn-outline btn-sm" onClick={onRemove}>Supprimer la ligne</button>
+        <button type="button" className="btn btn-outline btn-sm w-full sm:w-auto" onClick={onRemove}>Supprimer la ligne</button>
       </div>
     </div>
   );

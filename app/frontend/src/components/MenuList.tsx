@@ -106,14 +106,14 @@ export default function MenuList() {
     <div className="card menu-list-page">
       <div className="card-header">
         <h3 className="text-lg font-semibold">Base de plats</h3>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600">
             <span>Total: <b>{counts.total}</b></span>
             <span>Entrées: <b>{counts.entree}</b></span>
             <span>Plats: <b>{counts.plat}</b></span>
             <span>Desserts: <b>{counts.dessert}</b></span>
           </div>
-          <button className="btn btn-sm btn-danger" onClick={clearAll}>Tout supprimer</button>
+          <button className="btn btn-sm btn-danger w-full sm:w-auto" onClick={clearAll}>Tout supprimer</button>
         </div>
       </div>
 

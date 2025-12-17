@@ -98,11 +98,11 @@ export default function BillingModal({ reservationId, open, onClose }: Props) {
       <div className="card modal-card">
         <div className="card-header">
           <h3 className="text-lg font-semibold">Facturation</h3>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             {exists && (
-              <button className="btn btn-outline" onClick={downloadInvoice}>PDF Facture</button>
+              <button className="btn btn-outline w-full sm:w-auto" onClick={downloadInvoice}>PDF Facture</button>
             )}
-            <button className="btn" onClick={onClose}>Fermer</button>
+            <button className="btn w-full sm:w-auto" onClick={onClose}>Fermer</button>
           </div>
         </div>
         <div className="card-body space-y-3">
@@ -159,9 +159,9 @@ export default function BillingModal({ reservationId, open, onClose }: Props) {
             </div>
           </div>
         </div>
-        <div className="card-footer flex items-center justify-end gap-2">
-          {exists && <button className="btn btn-outline" onClick={downloadInvoice}>PDF Facture</button>}
-          <button className="btn btn-primary" onClick={save} disabled={loading}>Enregistrer</button>
+        <div className="card-footer flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2">
+          {exists && <button className="btn btn-outline w-full sm:w-auto" onClick={downloadInvoice}>PDF Facture</button>}
+          <button className="btn btn-primary w-full sm:w-auto" onClick={save} disabled={loading}>Enregistrer</button>
         </div>
       </div>
     </div>

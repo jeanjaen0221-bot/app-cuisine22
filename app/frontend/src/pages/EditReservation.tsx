@@ -83,14 +83,14 @@ export default function EditReservation() {
       <div className="card">
         <div className="card-header">
           <h2 className="text-lg font-medium">{id && id !== 'new' ? 'Modifier la réservation' : 'Nouvelle réservation'}</h2>
-          <div className="flex items-center gap-2">
-            <button className="btn" onClick={()=>navigate(-1)}>Retour</button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button className="btn w-full sm:w-auto" onClick={()=>navigate(-1)}>Retour</button>
             {id && id !== 'new' && (
               <>
-                <button className="btn" onClick={duplicate}>Dupliquer</button>
-                <button className="btn" onClick={()=>fileDownload(`/api/reservations/${id}/pdf`)}>PDF</button>
-                <button className="btn" onClick={()=>setBillingOpen(true)}>Facturation</button>
-                <button className="btn btn-outline" onClick={()=>fileDownload(`/api/reservations/${id}/invoice-pdf`)}>PDF Facture</button>
+                <button className="btn w-full sm:w-auto" onClick={duplicate}>Dupliquer</button>
+                <button className="btn w-full sm:w-auto" onClick={()=>fileDownload(`/api/reservations/${id}/pdf`)}>PDF</button>
+                <button className="btn w-full sm:w-auto" onClick={()=>setBillingOpen(true)}>Facturation</button>
+                <button className="btn btn-outline w-full sm:w-auto" onClick={()=>fileDownload(`/api/reservations/${id}/invoice-pdf`)}>PDF Facture</button>
               </>
             )}
           </div>
@@ -100,12 +100,36 @@ export default function EditReservation() {
         <div className="card"><div className="card-body text-gray-600">Chargement…</div></div>
       ) : (
         <div key={(data && (data as any).id) || (!isExisting ? 'new' : id)}>
-          <ReservationForm initial={data || undefined} onSubmit={save} />
+          <ReservationForm initial={data || undefined} onSubmit={save} formId="reservation-form" />
         </div>
       )}
       {id && id !== 'new' && (
         <BillingModal reservationId={id} open={billingOpen} onClose={()=>setBillingOpen(false)} />
       )}
+      {/* Spacer to avoid sticky bar overlap on mobile */}
+      <div className="h-20 md:hidden" />
+      {/* Mobile sticky action bar */}
+      <div className="fixed bottom-0 inset-x-0 z-40 md:hidden bg-white border-t shadow mobile-sticky">
+        <div className="container p-2">
+          <div className="grid grid-cols-3 gap-2">
+            <button type="submit" form="reservation-form" className="btn btn-primary w-full">Sauvegarder</button>
+            <button
+              className="btn btn-outline w-full"
+              disabled={!isExisting}
+              onClick={() => { if (isExisting && id) fileDownload(`/api/reservations/${id}/pdf`) }}
+            >
+              PDF
+            </button>
+            <button
+              className="btn btn-outline w-full"
+              disabled={!isExisting}
+              onClick={() => { if (isExisting) setBillingOpen(true) }}
+            >
+              Facturation
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

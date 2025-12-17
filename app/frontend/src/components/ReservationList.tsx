@@ -163,19 +163,19 @@ export default function ReservationList() {
       </div>
       {/* Barre de filtres */}
       <div className="card">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <input className="input" placeholder="Rechercher un client" value={q} onChange={e=>setQ(e.target.value)} />
-            <input type="date" className="input" value={date} onChange={e=>setDate(e.target.value)} />
-            <button className="btn btn-sm btn-outline" onClick={load}><Filter className="h-4 w-4"/> Filtrer</button>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input className="input w-full sm:w-64" placeholder="Rechercher un client" value={q} onChange={e=>setQ(e.target.value)} />
+            <input type="date" className="input w-full sm:w-48" value={date} onChange={e=>setDate(e.target.value)} />
+            <button className="btn btn-sm btn-outline w-full sm:w-auto" onClick={load}><Filter className="h-4 w-4"/> Filtrer</button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="flex items-center gap-1" title="Mode d'affichage">
-              <button className={`btn btn-sm ${viewMode==='cards'?'btn-primary':'btn-outline'}`} onClick={()=>setViewMode('cards')}>Cartes</button>
-              <button className={`btn btn-sm ${viewMode==='compact'?'btn-primary':'btn-outline'}`} onClick={()=>setViewMode('compact')}>Liste</button>
+              <button className={`btn btn-sm ${viewMode==='cards'?'btn-primary':'btn-outline'} w-full sm:w-auto`} onClick={()=>setViewMode('cards')}>Cartes</button>
+              <button className={`btn btn-sm ${viewMode==='compact'?'btn-primary':'btn-outline'} w-full sm:w-auto`} onClick={()=>setViewMode('compact')}>Liste</button>
             </div>
-            <Link to={date ? `/reservation/new?date=${encodeURIComponent(date)}` : "/reservation/new"} className="btn btn-sm"><Plus className="h-4 w-4"/> Nouvelle fiche</Link>
-            <button className="btn btn-sm btn-outline" onClick={() => { if (!date) { alert('Sélectionnez une date'); return } fileDownload(`/api/reservations/day/${date}/pdf`) }}><Printer className="h-4 w-4"/> Export PDF du jour</button>
+            <Link to={date ? `/reservation/new?date=${encodeURIComponent(date)}` : "/reservation/new"} className="btn btn-sm w-full sm:w-auto"><Plus className="h-4 w-4"/> Nouvelle fiche</Link>
+            <button className="btn btn-sm btn-outline w-full sm:w-auto" onClick={() => { if (!date) { alert('Sélectionnez une date'); return } fileDownload(`/api/reservations/day/${date}/pdf`) }}><Printer className="h-4 w-4"/> Export PDF du jour</button>
           </div>
         </div>
       </div>
@@ -410,9 +410,9 @@ export default function ReservationList() {
                 </div>
               </div>
               <div className="card-footer">
-                <div className="flex items-center gap-2">
-                  <Link to={`/reservation/${r.id}`} className="btn btn-sm btn-outline"><Pencil className="w-4 h-4"/> Modifier</Link>
-                  <button onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)} className="btn btn-sm btn-outline"><Printer className="w-4 h-4"/> PDF</button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Link to={`/reservation/${r.id}`} className="btn btn-sm btn-outline w-full sm:w-auto"><Pencil className="w-4 h-4"/> Modifier</Link>
+                  <button onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)} className="btn btn-sm btn-outline w-full sm:w-auto"><Printer className="w-4 h-4"/> PDF</button>
                 </div>
               </div>
             </div>
