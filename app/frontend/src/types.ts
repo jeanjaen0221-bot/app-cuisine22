@@ -42,3 +42,11 @@ export type Note = {
   created_at: string
   updated_at: string
 }
+
+export type Drink = {
+  id: UUID
+  name: string
+  category?: string
+  unit?: string
+  active: boolean
+}

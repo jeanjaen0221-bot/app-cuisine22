@@ -40,6 +40,36 @@ class MenuItemUpdate(SQLModel):
     active: Optional[bool] = None
 
 
+class DrinkBase(SQLModel):
+    name: str
+    category: Optional[str] = None
+    unit: Optional[str] = None
+    active: bool = True
+
+
+class Drink(DrinkBase, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    name: str
+    category: Optional[str] = None
+    unit: Optional[str] = None
+    active: bool = True
+
+
+class DrinkCreate(DrinkBase):
+    pass
+
+
+class DrinkRead(DrinkBase):
+    id: uuid.UUID
+
+
+class DrinkUpdate(SQLModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    unit: Optional[str] = None
+    active: Optional[bool] = None
+
+
 class ReservationItemBase(SQLModel):
     type: str  # entrée / plat / dessert
     name: str
