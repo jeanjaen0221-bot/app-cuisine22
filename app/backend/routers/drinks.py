@@ -139,3 +139,112 @@ def import_from_pdf(payload: DrinksImportPdfIn, session: Session = Depends(get_s
         added += 1
     session.commit()
     return {"added": added}
+
+
+class DrinksImportTextIn(BaseModel):
+    text: str
+    default_category: Optional[str] = None
+    unit: Optional[str] = None
+
+
+@router.post("/import/text")
+def import_from_text(payload: DrinksImportTextIn, session: Session = Depends(get_session)):
+    raw = payload.text or ""
+    if not raw.strip():
+        raise HTTPException(400, "Empty text")
+
+    def norm_spaces(s: str) -> str:
+        s = s.replace("\u00a0", " ")
+        s = re.sub(r"\s+", " ", s)
+        return s.strip()
+
+    def remove_prices_units(s: str) -> str:
+        t = s
+        # Remove spaced units like '2 5 c l' or '3 3 c l'
+        t = re.sub(r"(?:\d\s*)+(c\s*l|m\s*l|l)\b", "", t, flags=re.I)
+        # Remove compact units like '25 cl', '33cl'
+        t = re.sub(r"\b\d+\s*(cl|ml|l)\b", "", t, flags=re.I)
+        # Remove trailing prices (with , or .) and currency words
+        t = re.sub(r"\s*[€$]?(?:\d+[\.,]\d+|\d+)(?:\s*(eur|€))?\s*$", "", t, flags=re.I)
+        # Remove inline price columns like '2.5 / 5 / 7.5'
+        t = re.sub(r"\b\d+(?:[\.,]\d+)?\b(?:\s*/\s*\d+(?:[\.,]\d+)?\b)+", "", t)
+        return norm_spaces(t)
+
+    def join_letter_spans(s: str) -> str:
+        toks = s.split(" ")
+        out: list[str] = []
+        buf: list[str] = []
+        for t in toks:
+            if len(t) == 1 and t.isalpha():
+                buf.append(t)
+            else:
+                if buf:
+                    out.append("".join(buf))
+                    buf = []
+                if t:
+                    out.append(t)
+        if buf:
+            out.append("".join(buf))
+        return " ".join([x for x in out if x])
+
+    def is_heading(s: str) -> bool:
+        k = s.lower()
+        return any(x in k for x in [
+            "drink", "bier", "bière", "beer", "aperitif", "aperitief", "digestif",
+            "non-alcoholic", "fris", "soda", "soft", "warm", "chaud", "hot",
+            "low-alcoholic", "wild"
+        ]) and len(k) <= 64
+
+    def detect_category(s: str) -> Optional[str]:
+        k = s.lower()
+        if any(x in k for x in ["bier", "bière", "beer"]):
+            return "bière"
+        if any(x in k for x in ["aperitif", "aperitief", "apéritif"]):
+            return "apéritif"
+        if "digestif" in k:
+            return "digestif"
+        if any(x in k for x in ["non-alcoholic", "sans alcool"]):
+            return "sans alcool"
+        if any(x in k for x in ["fris", "soda", "soft"]):
+            return "soft"
+        if any(x in k for x in ["warm", "hot", "chaud"]):
+            return "chaud"
+        if any(x in k for x in ["low-alcoholic", "wild"]):
+            return "low-alcoholic"
+        return None
+
+    lines = [norm_spaces(l) for l in raw.splitlines()]
+    existing = { (r.name or "").strip().lower() for r in session.exec(select(Drink)).all() }
+
+    current_cat: Optional[str] = None
+    added = 0
+    seen = set()
+    for ln in lines:
+        if not ln:
+            continue
+        # Ignore purely decorative or navigation lines
+        if re.fullmatch(r"[-=*\s]+", ln):
+            continue
+        # If looks like a section heading, update category and continue
+        src = join_letter_spans(ln)
+        if is_heading(src):
+            cat = detect_category(src)
+            if cat:
+                current_cat = cat
+            continue
+        clean = remove_prices_units(src)
+        # Drop lines that became empty or obviously non-items
+        if not clean or len(clean) < 2:
+            continue
+        low = clean.lower()
+        if any(t in low for t in ["page", "automatic zoom", "actual size", "page fit", "width"]):
+            continue
+        key = low
+        if key in seen or key in existing:
+            continue
+        row = Drink(name=clean, category=(current_cat or payload.default_category), unit=payload.unit, active=True)
+        session.add(row)
+        seen.add(key)
+        added += 1
+    session.commit()
+    return {"added": added}

@@ -23,6 +23,7 @@ def init_db() -> None:
     ensure_reservation_item_comment_column()
     ensure_reservation_last_pdf_column()
     ensure_on_invoice_column()
+    ensure_drink_unique_index()
 
 
 def run_startup_migrations() -> None:
@@ -297,6 +298,55 @@ def ensure_reservation_item_comment_column() -> None:
             else:
                 try:
                     conn.execute(text("ALTER TABLE reservationitem ADD COLUMN comment TEXT"))
+                except Exception:
+                    pass
+    except Exception:
+        # Non-fatal
+        pass
+
+
+def ensure_drink_unique_index() -> None:
+    """Ensure uniqueness on drink.name (idempotent), across backends.
+    - SQLite: create unique index if not exists
+    - PostgreSQL: add UNIQUE constraint if missing and create index if not exists
+    """
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                try:
+                    res = conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table' AND name='drink';")
+                    if not list(res.fetchall()):
+                        return
+                except Exception:
+                    return
+                try:
+                    conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_drink_name ON drink (name);")
+                except Exception:
+                    pass
+                try:
+                    conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_drink_name ON drink (name);")
+                except Exception:
+                    pass
+            elif backend == 'postgresql':
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'uq_drink_name'
+                      ) THEN
+                        ALTER TABLE drink ADD CONSTRAINT uq_drink_name UNIQUE (name);
+                      END IF;
+                    END$$;
+                    """
+                ))
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_drink_name ON drink (name);"
+                ))
+            else:
+                try:
+                    conn.execute(text("CREATE UNIQUE INDEX uq_drink_name ON drink (name)"))
                 except Exception:
                     pass
     except Exception:

@@ -53,6 +53,10 @@ class Drink(DrinkBase, table=True):
     category: Optional[str] = None
     unit: Optional[str] = None
     active: bool = True
+    __table_args__ = (
+        UniqueConstraint('name', name='uq_drink_name'),
+        Index('ix_drink_name', 'name'),
+    )
 
 
 class DrinkCreate(DrinkBase):
