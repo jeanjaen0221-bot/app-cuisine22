@@ -9,6 +9,12 @@ export default function DrinksOrder() {
   const [name, setName] = useState('')
   const [category, setCategory] = useState('')
   const [unit, setUnit] = useState('')
+  const [uploadCategory, setUploadCategory] = useState('')
+  const [uploadUnit, setUploadUnit] = useState('')
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [lastImportAdded, setLastImportAdded] = useState<number | null>(null)
+  const [fileKey, setFileKey] = useState(0)
   const [counts, setCounts] = useState<Record<string, number>>(() => {
     try {
       const raw = localStorage.getItem('drinks-order')
@@ -70,6 +76,28 @@ export default function DrinksOrder() {
     await load()
   }
 
+  async function handleUpload() {
+    if (!uploadFile) return
+    setImporting(true)
+    setLastImportAdded(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', uploadFile)
+      if (uploadCategory) fd.append('default_category', uploadCategory)
+      if (uploadUnit) fd.append('unit', uploadUnit)
+      const res = await api.post('/api/drinks/import/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      const added = Number((res.data as any)?.added ?? 0)
+      setLastImportAdded(Number.isFinite(added) ? added : 0)
+      setUploadFile(null)
+      setFileKey(k => k + 1)
+      await load()
+    } catch (e: any) {
+      alert(e?.userMessage || 'Import échoué')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   return (
     <div className="card">
       <div className="card-header">
@@ -109,6 +137,23 @@ export default function DrinksOrder() {
               <label className="filter-label" htmlFor="add-unit">Unité</label>
               <input id="add-unit" className="input" placeholder="ex: bouteille, carton" value={unit} onChange={e=>setUnit(e.target.value)} />
               <button className="btn btn-primary" onClick={quickAdd}>Ajouter</button>
+            </div>
+          </div>
+          <div className="controls-divider" />
+          <div className="controls-hint">Importer un fichier (.csv, .txt)</div>
+          <div className="add-stack add-row">
+            <div className="add-top">
+              <input key={fileKey} type="file" accept=".csv,.txt" className="input" onChange={e=>setUploadFile(e.target.files?.[0] || null)} />
+            </div>
+            <div className="add-controls">
+              <label className="filter-label" htmlFor="imp-cat">Catégorie par défaut</label>
+              <input id="imp-cat" className="input" placeholder="ex: bière, soft, chaud" value={uploadCategory} onChange={e=>setUploadCategory(e.target.value)} />
+              <label className="filter-label" htmlFor="imp-unit">Unité par défaut</label>
+              <input id="imp-unit" className="input" placeholder="ex: bouteille, canette" value={uploadUnit} onChange={e=>setUploadUnit(e.target.value)} />
+              <button className="btn btn-primary" onClick={handleUpload} disabled={!uploadFile || importing}>{importing ? 'Import...' : 'Importer'}</button>
+              {lastImportAdded !== null && (
+                <span className="text-sm text-gray-600">Ajoutés: {lastImportAdded}</span>
+              )}
             </div>
           </div>
         </div>

@@ -3,8 +3,9 @@ import uuid
 from typing import List, Optional
 import re
 from pathlib import Path
+import csv
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlmodel import Session, select, delete
 
@@ -139,6 +140,65 @@ def import_from_pdf(payload: DrinksImportPdfIn, session: Session = Depends(get_s
         added += 1
     session.commit()
     return {"added": added}
+
+
+@router.post("/import/upload")
+async def import_from_upload(
+    file: UploadFile = File(...),
+    default_category: Optional[str] = Form(None),
+    unit: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
+):
+    fname = file.filename or ""
+    ext = fname.lower().rsplit(".", 1)[-1] if "." in fname else ""
+    raw = await file.read()
+    text = raw.decode("utf-8", errors="ignore")
+    if ext in {"txt"} or (file.content_type or "").startswith("text/"):
+        payload = DrinksImportTextIn(text=text, default_category=default_category, unit=unit)
+        return import_from_text(payload, session)
+    if ext in {"csv"}:
+        reader = csv.DictReader(text.splitlines())
+        rows = list(reader)
+        if not rows:
+            r2 = csv.reader(text.splitlines())
+            simple = list(r2)
+            added = 0
+            existing = { (r.name or "").strip().lower() for r in session.exec(select(Drink)).all() }
+            seen = set()
+            for row in simple:
+                if not row:
+                    continue
+                name = (row[0] or "").strip()
+                if not name:
+                    continue
+                key = name.lower()
+                if key in seen or key in existing:
+                    continue
+                session.add(Drink(name=name, category=default_category, unit=unit, active=True))
+                seen.add(key)
+                added += 1
+            session.commit()
+            return {"added": added}
+        added = 0
+        existing = { (r.name or "").strip().lower() for r in session.exec(select(Drink)).all() }
+        seen = set()
+        for row in rows:
+            name = (row.get("name") or row.get("Name") or "").strip()
+            if not name:
+                continue
+            cat = (row.get("category") or row.get("Category") or default_category or None)
+            un = (row.get("unit") or row.get("Unit") or unit or None)
+            act_raw = str(row.get("active") or row.get("Active") or "true").strip().lower()
+            act = False if act_raw in {"0","false","no","non"} else True
+            key = name.lower()
+            if key in seen or key in existing:
+                continue
+            session.add(Drink(name=name, category=cat, unit=un, active=act))
+            seen.add(key)
+            added += 1
+        session.commit()
+        return {"added": added}
+    raise HTTPException(400, "Unsupported file type")
 
 
 class DrinksImportTextIn(BaseModel):
