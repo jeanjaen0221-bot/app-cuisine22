@@ -109,6 +109,12 @@ export default function DrinksOrder() {
     return () => clearTimeout(t)
   }, [remaining, stock, opts, activeTab, autoCalc])
 
+  // Aide: panneau fixe à droite
+  const [helpOpen, setHelpOpen] = useState<boolean>(() => {
+    try { const raw = localStorage.getItem('drinks-help-open'); return raw ? JSON.parse(raw) : true } catch { return true }
+  })
+  useEffect(() => { try { localStorage.setItem('drinks-help-open', JSON.stringify(helpOpen)) } catch {} }, [helpOpen])
+
   async function load() {
     const res = await api.get('/api/drinks')
     setDrinks(res.data)
@@ -420,6 +426,7 @@ export default function DrinksOrder() {
                 </select>
                 <label className="form-check"><input className="form-check-input" type="checkbox" checked={autoCalc} onChange={e=>setAutoCalc(e.target.checked)} /> auto</label>
                 <button className="btn btn-primary" onClick={computeReplenishment} disabled={recalcPending || loadingStock}>{recalcPending? 'Calcul...' : 'Calculer'}</button>
+                <button className="btn btn-outline" style={{marginLeft:'auto'}} onClick={()=>setHelpOpen(o=>!o)}>{helpOpen? 'Masquer aide' : 'Aide'}</button>
               </div>
               <div className="drinks-controls" style={{marginTop: '.25rem'}}>
                 <button className="btn btn-sm btn-outline" onClick={bulkResetRemaining}>Restants = 0 (filtrés)</button>
@@ -491,7 +498,7 @@ export default function DrinksOrder() {
         </div>
 
         {activeTab==='reassort' ? (
-          <div className="drinks-main" style={{display:'grid', gridTemplateColumns:'1fr 320px', gap:'1rem', alignItems:'start'}}>
+          <div className="drinks-main" style={{display:'grid', gridTemplateColumns:'1fr', gap:'1rem', alignItems:'start'}}>
             <div className="drinks-table-container">
               <table className="table drinks-table">
                 <thead>
@@ -611,9 +618,13 @@ export default function DrinksOrder() {
                 </tbody>
               </table>
             </div>
-            <aside className="help-panel" style={{position:'sticky', top: '1rem'}}>
+            {helpOpen && (
+            <aside className="help-panel" style={{position:'fixed', right:'24px', top:'120px', width:'320px', maxHeight:'70vh', overflow:'auto', zIndex:50}}>
               <div className="card" style={{padding:'0.75rem'}}>
-                <h4 className="text-md font-semibold" style={{marginBottom:'.5rem'}}>Mode d'emploi</h4>
+                <div className="flex items-center justify-between" style={{marginBottom:'.5rem'}}>
+                  <h4 className="text-md font-semibold">Mode d'emploi</h4>
+                  <button className="btn btn-sm btn-outline" onClick={()=>setHelpOpen(false)}>Fermer</button>
+                </div>
                 <ol className="text-sm space-y-1" style={{paddingLeft:'1rem', listStyle:'decimal'}}>
                   <li>Filtrez par catégorie et recherchez une boisson.</li>
                   <li>Choisissez la cible (Max/Min) et l'arrondi (Colis/Aucun).</li>
@@ -635,6 +646,7 @@ export default function DrinksOrder() {
                 </div>
               </div>
             </aside>
+            )}
           </div>
         ) : (
           <div className="drinks-table-container">
