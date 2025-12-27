@@ -490,105 +490,84 @@ export default function DrinksOrder() {
           </datalist>
         </div>
 
-        <div className="drinks-table-container">
-          <table className="table drinks-table">
-            <thead>
-              <tr>
-                {activeTab==='mass' && (
-                  <th><input type="checkbox" checked={sorted.length>0 && sorted.every(d=>selected.has(d.id))} onChange={toggleSelectAll} /></th>
-                )}
-                <th>Boisson</th>
-                <th>Catégorie</th>
-                <th>Unité</th>
-                {activeTab!=='reassort' && (<th>Quantité</th>)}
-                {activeTab==='reassort' && (
-                  reassortTab==='saisie' ? (
-                    <>
-                      <th>Restant</th>
-                      <th>État</th>
-                      <th>Suggestion</th>
-                    </>
-                  ) : (
-                    <>
-                      <th>Min</th>
-                      <th>Max</th>
-                      <th>Colis</th>
-                      <th>Actif</th>
-                    </>
-                  )
-                )}
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map(d => (
-                <tr key={d.id}>
-                  {activeTab==='mass' && (
-                    <td><input type="checkbox" checked={selected.has(d.id)} onChange={()=>toggleSelect(d.id)} /></td>
-                  )}
-                  <td className="font-medium text-gray-900 name-cell" title={d.name}>
-                    {editingId===d.id ? (
-                      <input className="input" value={eName} onChange={e=>setEName(e.target.value)} />
-                    ) : (
-                      d.name
-                    )}
-                  </td>
-                  <td>
-                    {editingId===d.id ? (
-                      <input className="input" list="drink-categories" value={eCategory} onChange={e=>setECategory(e.target.value)} />
-                    ) : (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700">{d.category || '-'}</span>
-                    )}
-                  </td>
-                  <td>
-                    {editingId===d.id ? (
-                      <div className="drinks-grid" style={{gridTemplateColumns:'1fr auto'}}>
-                        <input className="input" list="drink-units" value={eUnit} onChange={e=>setEUnit(e.target.value)} />
-                        <label className="form-check"><input className="form-check-input" type="checkbox" checked={eActive} onChange={e=>setEActive(e.target.checked)} /> actif</label>
-                      </div>
-                    ) : (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-emerald-50 text-emerald-700">{d.unit || '-'}</span>
-                    )}
-                  </td>
-                  {activeTab!=='reassort' && (
-                    <td>
-                      <div className="qty-group">
-                        <button className="btn btn-sm btn-outline qty-btn" onClick={()=>inc(d.id, -1)}>-</button>
-                        <input className="input qty-input" value={counts[d.id] || 0} onChange={e=>{
-                          const v = Math.max(0, parseInt(e.target.value||'0')||0)
-                          setCounts(prev => ({ ...prev, [d.id]: v }))
-                        }} />
-                        <button className="btn btn-sm btn-outline qty-btn" onClick={()=>inc(d.id, +1)}>+</button>
-                      </div>
-                    </td>
-                  )}
-                  {activeTab==='reassort' && (
-                    reassortTab==='saisie' ? (
-                      <>
+        {activeTab==='reassort' ? (
+          <div className="drinks-main" style={{display:'grid', gridTemplateColumns:'1fr 320px', gap:'1rem', alignItems:'start'}}>
+            <div className="drinks-table-container">
+              <table className="table drinks-table">
+                <thead>
+                  <tr>
+                    <th>Boisson</th>
+                    <th>Catégorie</th>
+                    <th>Unité</th>
+                    {reassortTab!=='param' && (<th>Restant</th>)}
+                    {reassortTab==='saisie' && (<th>État</th>)}
+                    {reassortTab==='saisie' && (<th>Suggestion</th>)}
+                    {reassortTab==='param' && (<th>Min</th>)}
+                    {reassortTab==='param' && (<th>Max</th>)}
+                    {reassortTab==='param' && (<th>Colis</th>)}
+                    {reassortTab==='param' && (<th>Actif</th>)}
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map(d => (
+                    <tr key={d.id}>
+                      <td className="font-medium text-gray-900 name-cell" title={d.name}>
+                        {editingId===d.id ? (
+                          <input className="input" value={eName} onChange={e=>setEName(e.target.value)} />
+                        ) : (
+                          d.name
+                        )}
+                      </td>
+                      <td>
+                        {editingId===d.id ? (
+                          <input className="input" list="drink-categories" value={eCategory} onChange={e=>setECategory(e.target.value)} />
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700">{d.category || '-'}</span>
+                        )}
+                      </td>
+                      <td>
+                        {editingId===d.id ? (
+                          <div className="drinks-grid" style={{gridTemplateColumns:'1fr auto'}}>
+                            <input className="input" list="drink-units" value={eUnit} onChange={e=>setEUnit(e.target.value)} />
+                            <label className="form-check"><input className="form-check-input" type="checkbox" checked={eActive} onChange={e=>setEActive(e.target.checked)} /> actif</label>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-emerald-50 text-emerald-700">{d.unit || '-'}</span>
+                        )}
+                      </td>
+                      {reassortTab!=='param' && (
                         <td>
                           <input className="input" type="number" value={remaining[d.id] || 0} onChange={e=>setRem(d.id, parseInt(e.target.value||'0')||0)} />
                         </td>
+                      )}
+                      {reassortTab==='saisie' && (
                         <td>
                           {renderStatusBadge(getStatus(d.id))}
                         </td>
+                      )}
+                      {reassortTab==='saisie' && (
                         <td>
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${((repl[d.id]?.suggest||0)>0)?'bg-amber-50 text-amber-700':'bg-emerald-50 text-emerald-700'}`}>{repl[d.id]?.suggest ?? '-'}</span>
                         </td>
-                      </>
-                    ) : (
-                      <>
+                      )}
+                      {reassortTab==='param' && (
                         <td>
                           <input className="input" type="number" value={(stock[d.id]?.min_qty ?? 0)} onChange={e=>{
                             const mv = parseInt(e.target.value||'0')||0
                             setStock(prev=>({ ...prev, [d.id]: { ...(prev[d.id]||{drink_id:d.id,min_qty:0,max_qty:0,pack_size:null,reorder_enabled:true}), min_qty: mv }}))
                           }} onBlur={e=>updateStockField(d.id, { min_qty: parseInt(e.target.value||'0')||0 })} />
                         </td>
+                      )}
+                      {reassortTab==='param' && (
                         <td>
                           <input className="input" type="number" value={(stock[d.id]?.max_qty ?? 0)} onChange={e=>{
                             const mv = parseInt(e.target.value||'0')||0
                             setStock(prev=>({ ...prev, [d.id]: { ...(prev[d.id]||{drink_id:d.id,min_qty:0,max_qty:0,pack_size:null,reorder_enabled:true}), max_qty: mv }}))
                           }} onBlur={e=>updateStockField(d.id, { max_qty: parseInt(e.target.value||'0')||0 })} />
                         </td>
+                      )}
+                      {reassortTab==='param' && (
                         <td>
                           <input className="input" type="number" placeholder="—" value={(stock[d.id]?.pack_size ?? '') as any} onChange={e=>{
                             const pv = parseInt(e.target.value||'')
@@ -599,6 +578,8 @@ export default function DrinksOrder() {
                             updateStockField(d.id, { pack_size: pv>0? pv : null as any })
                           }} />
                         </td>
+                      )}
+                      {reassortTab==='param' && (
                         <td>
                           <label className="form-check"><input className="form-check-input" type="checkbox" checked={(stock[d.id]?.reorder_enabled ?? true)} onChange={e=>{
                             const val = e.target.checked
@@ -606,32 +587,134 @@ export default function DrinksOrder() {
                             updateStockField(d.id, { reorder_enabled: val })
                           }} /> actif</label>
                         </td>
-                      </>
-                    )
+                      )}
+                      <td>
+                        {editingId===d.id ? (
+                          <div className="btn-group">
+                            <button className="btn btn-sm btn-primary" onClick={()=>saveEdit(d.id)}>Enregistrer</button>
+                            <button className="btn btn-sm btn-outline" onClick={cancelEdit}>Annuler</button>
+                          </div>
+                        ) : (
+                          <div className="btn-group">
+                            {activeTab!=='reassort' && (<button className="btn btn-sm btn-outline" onClick={()=>startEdit(d)}>Modifier</button>)}
+                            <button className="btn btn-sm btn-outline" onClick={()=>removeDrink(d.id)}>Supprimer</button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td className="p-4 text-gray-500" colSpan={reassortTab==='saisie'? 7 : 8}>Aucune boisson.</td>
+                    </tr>
                   )}
-                  <td>
-                    {editingId===d.id ? (
-                      <div className="btn-group">
-                        <button className="btn btn-sm btn-primary" onClick={()=>saveEdit(d.id)}>Enregistrer</button>
-                        <button className="btn btn-sm btn-outline" onClick={cancelEdit}>Annuler</button>
-                      </div>
-                    ) : (
-                      <div className="btn-group">
-                        {activeTab!=='reassort' && (<button className="btn btn-sm btn-outline" onClick={()=>startEdit(d)}>Modifier</button>)}
-                        <button className="btn btn-sm btn-outline" onClick={()=>removeDrink(d.id)}>Supprimer</button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
+                </tbody>
+              </table>
+            </div>
+            <aside className="help-panel" style={{position:'sticky', top: '1rem'}}>
+              <div className="card" style={{padding:'0.75rem'}}>
+                <h4 className="text-md font-semibold" style={{marginBottom:'.5rem'}}>Mode d'emploi</h4>
+                <ol className="text-sm space-y-1" style={{paddingLeft:'1rem', listStyle:'decimal'}}>
+                  <li>Filtrez par catégorie et recherchez une boisson.</li>
+                  <li>Choisissez la cible (Max/Min) et l'arrondi (Colis/Aucun).</li>
+                  <li>Activez l'option <b>auto</b> pour recalculer automatiquement.</li>
+                  <li>En sous-onglet <b>Saisie</b>, renseignez les <b>Restants</b> par boisson.</li>
+                  <li>En sous-onglet <b>Paramètres</b>, réglez <b>Min/Max/Colis</b> et l'état <b>Actif</b>.</li>
+                  <li>Cliquez <b>Calculer</b> si l'auto n'est pas activé.</li>
+                  <li>Utilisez les <b>actions groupées</b> (réinitialiser, activer/désactiver, copier Min/Max).</li>
+                </ol>
+                <div className="text-sm" style={{marginTop:'.75rem'}}>
+                  <div className="font-semibold" style={{marginBottom:'.25rem'}}>Légende</div>
+                  <div className="space-y-1">
+                    <div>État: {renderStatusBadge('critique')} <span className="text-gray-600">Restant &lt; Min</span></div>
+                    <div>État: {renderStatusBadge('a_completer')} <span className="text-gray-600">Restant &lt; Max</span></div>
+                    <div>État: {renderStatusBadge('ok')} <span className="text-gray-600">Restant ≥ Max</span></div>
+                  </div>
+                  <div className="font-semibold" style={{marginTop:'.5rem', marginBottom:'.25rem'}}>Astuce</div>
+                  <div className="text-gray-700">Renseignez <b>Colis</b> pour arrondir automatiquement la suggestion au multiple du colis.</div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        ) : (
+          <div className="drinks-table-container">
+            <table className="table drinks-table">
+              <thead>
                 <tr>
-                  <td className="p-4 text-gray-500" colSpan={activeTab==='reassort'? (reassortTab==='saisie'? 7 : 8) : 6}>Aucune boisson.</td>
+                  {activeTab==='mass' && (
+                    <th><input type="checkbox" checked={sorted.length>0 && sorted.every(d=>selected.has(d.id))} onChange={toggleSelectAll} /></th>
+                  )}
+                  <th>Boisson</th>
+                  <th>Catégorie</th>
+                  <th>Unité</th>
+                  <th>Quantité</th>
+                  <th>Actions</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {sorted.map(d => (
+                  <tr key={d.id}>
+                    {activeTab==='mass' && (
+                      <td><input type="checkbox" checked={selected.has(d.id)} onChange={()=>toggleSelect(d.id)} /></td>
+                    )}
+                    <td className="font-medium text-gray-900 name-cell" title={d.name}>
+                      {editingId===d.id ? (
+                        <input className="input" value={eName} onChange={e=>setEName(e.target.value)} />
+                      ) : (
+                        d.name
+                      )}
+                    </td>
+                    <td>
+                      {editingId===d.id ? (
+                        <input className="input" list="drink-categories" value={eCategory} onChange={e=>setECategory(e.target.value)} />
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700">{d.category || '-'}</span>
+                      )}
+                    </td>
+                    <td>
+                      {editingId===d.id ? (
+                        <div className="drinks-grid" style={{gridTemplateColumns:'1fr auto'}}>
+                          <input className="input" list="drink-units" value={eUnit} onChange={e=>setEUnit(e.target.value)} />
+                          <label className="form-check"><input className="form-check-input" type="checkbox" checked={eActive} onChange={e=>setEActive(e.target.checked)} /> actif</label>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-emerald-50 text-emerald-700">{d.unit || '-'}</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="qty-group">
+                        <button className="btn btn-sm btn-outline qty-btn" onClick={()=>inc(d.id, -1)}>-</button>
+                        <input className="input qty-input" value={counts[d.id] || 0} onChange={e=>{
+                          const v = Math.max(0, parseInt(e.target.value||'0')||0)
+                          setCounts(prev => ({ ...prev, [d.id]: v }))
+                        }} />
+                        <button className="btn btn-sm btn-outline qty-btn" onClick={()=>inc(d.id, +1)}>+</button>
+                      </div>
+                    </td>
+                    <td>
+                      {editingId===d.id ? (
+                        <div className="btn-group">
+                          <button className="btn btn-sm btn-primary" onClick={()=>saveEdit(d.id)}>Enregistrer</button>
+                          <button className="btn btn-sm btn-outline" onClick={cancelEdit}>Annuler</button>
+                        </div>
+                      ) : (
+                        <div className="btn-group">
+                          <button className="btn btn-sm btn-outline" onClick={()=>startEdit(d)}>Modifier</button>
+                          <button className="btn btn-sm btn-outline" onClick={()=>removeDrink(d.id)}>Supprimer</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td className="p-4 text-gray-500" colSpan={6}>Aucune boisson.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
