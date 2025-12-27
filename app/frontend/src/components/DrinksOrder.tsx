@@ -15,6 +15,17 @@ export default function DrinksOrder() {
   const [importing, setImporting] = useState(false)
   const [lastImportAdded, setLastImportAdded] = useState<number | null>(null)
   const [fileKey, setFileKey] = useState(0)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [eName, setEName] = useState('')
+  const [eCategory, setECategory] = useState('')
+  const [eUnit, setEUnit] = useState('')
+  const [eActive, setEActive] = useState(true)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkCategory, setBulkCategory] = useState('')
+  const [bulkUnit, setBulkUnit] = useState('')
+  const [bulkActive, setBulkActive] = useState('')
+  const [sortBy, setSortBy] = useState<'name'|'category'|'unit'|'active'|'qty'>('name')
+  const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc')
   const [counts, setCounts] = useState<Record<string, number>>(() => {
     try {
       const raw = localStorage.getItem('drinks-order')
@@ -40,6 +51,14 @@ export default function DrinksOrder() {
     return Array.from(s).sort()
   }, [drinks])
 
+  const unitsList = useMemo(() => {
+    const s = new Set<string>()
+    drinks.forEach(d => { if (d.unit) s.add(d.unit) })
+    return Array.from(s).sort()
+  }, [drinks])
+
+  const collator = useMemo(() => new Intl.Collator('fr', { sensitivity: 'base' }), [])
+
   const filtered = useMemo(() => {
     const ql = q.trim().toLowerCase()
     return drinks.filter(d => {
@@ -49,6 +68,29 @@ export default function DrinksOrder() {
       return true
     })
   }, [drinks, q, cat])
+
+  const sorted = useMemo(() => {
+    const arr = [...filtered]
+    arr.sort((a, b) => {
+      let cmp = 0
+      if (sortBy === 'name') {
+        cmp = collator.compare(a.name, b.name)
+      } else if (sortBy === 'category') {
+        cmp = collator.compare(a.category || '', b.category || '')
+      } else if (sortBy === 'unit') {
+        cmp = collator.compare(a.unit || '', b.unit || '')
+      } else if (sortBy === 'active') {
+        cmp = (a.active ? 1 : 0) - (b.active ? 1 : 0)
+      } else if (sortBy === 'qty') {
+        const qa = counts[a.id] || 0
+        const qb = counts[b.id] || 0
+        cmp = qa - qb
+      }
+      if (cmp === 0) cmp = collator.compare(a.name, b.name)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return arr
+  }, [filtered, counts, sortBy, sortDir, collator])
 
   const summary = useMemo(() => {
     let lines = 0
@@ -109,6 +151,65 @@ export default function DrinksOrder() {
     await load()
   }
 
+  function startEdit(d: Drink) {
+    setEditingId(d.id)
+    setEName(d.name)
+    setECategory(d.category || '')
+    setEUnit(d.unit || '')
+    setEActive(!!d.active)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+  }
+
+  async function saveEdit(id: string) {
+    const payload: any = {
+      name: eName.trim(),
+      category: eCategory.trim() || null,
+      unit: eUnit.trim() || null,
+      active: !!eActive,
+    }
+    await api.put(`/api/drinks/${id}`, payload)
+    setEditingId(null)
+    await load()
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    setSelected(prev => {
+      const allIds = filtered.map(d => d.id)
+      const allSelected = allIds.every(id => prev.has(id))
+      return allSelected ? new Set() : new Set(allIds)
+    })
+  }
+
+  async function applyBulk() {
+    const ids = Array.from(selected)
+    if (ids.length === 0) { alert('Sélectionnez au moins une boisson.'); return }
+    const hasCat = !!bulkCategory.trim()
+    const hasUnit = !!bulkUnit.trim()
+    const hasActive = bulkActive === 'true' || bulkActive === 'false'
+    if (!hasCat && !hasUnit && !hasActive) { alert('Renseignez au moins un champ à appliquer.'); return }
+    const payloadBase: any = {}
+    if (hasCat) payloadBase.category = bulkCategory.trim()
+    if (hasUnit) payloadBase.unit = bulkUnit.trim()
+    if (hasActive) payloadBase.active = (bulkActive === 'true')
+    await Promise.allSettled(ids.map(id => api.put(`/api/drinks/${id}`, payloadBase)))
+    setSelected(new Set())
+    setBulkCategory('')
+    setBulkUnit('')
+    setBulkActive('')
+    await load()
+  }
+
   return (
     <div className="card">
       <div className="card-header">
@@ -130,14 +231,45 @@ export default function DrinksOrder() {
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
+            <select className="input" value={sortBy} onChange={e=>setSortBy(e.target.value as any)} aria-label="Trier par">
+              <option value="name">Nom</option>
+              <option value="category">Catégorie</option>
+              <option value="unit">Unité</option>
+              <option value="active">Actif</option>
+              <option value="qty">Quantité</option>
+            </select>
+            <select className="input" value={sortDir} onChange={e=>setSortDir(e.target.value as any)} aria-label="Ordre">
+              <option value="asc">Ascendant</option>
+              <option value="desc">Descendant</option>
+            </select>
           </div>
+          <datalist id="drink-categories">
+            {categories.map(c => (<option key={c} value={c} />))}
+          </datalist>
+          <datalist id="drink-units">
+            {unitsList.map(u => (<option key={u} value={u} />))}
+          </datalist>
           <div className="controls-divider" />
           <div className="controls-hint">Ajout rapide</div>
           <div className="drinks-grid">
             <input className="input" placeholder="Nom de la boisson" value={name} onChange={e=>setName(e.target.value)} />
-            <input className="input" placeholder="Catégorie (ex: vin, bière)" value={category} onChange={e=>setCategory(e.target.value)} />
-            <input className="input" placeholder="Unité (ex: bouteille, carton)" value={unit} onChange={e=>setUnit(e.target.value)} />
+            <input className="input" list="drink-categories" placeholder="Catégorie (ex: vin, bière)" value={category} onChange={e=>setCategory(e.target.value)} />
+            <input className="input" list="drink-units" placeholder="Unité (ex: bouteille, carton)" value={unit} onChange={e=>setUnit(e.target.value)} />
             <button className="btn btn-primary" onClick={quickAdd}>Ajouter</button>
+          </div>
+          <div className="controls-divider" />
+          <div className="controls-hint">Catégoriser / Modifier en masse (sélection)</div>
+          <div className="upload-grid">
+            <input className="input" list="drink-categories" placeholder="Catégorie" value={bulkCategory} onChange={e=>setBulkCategory(e.target.value)} />
+            <input className="input" list="drink-units" placeholder="Unité" value={bulkUnit} onChange={e=>setBulkUnit(e.target.value)} />
+            <select className="input" value={bulkActive} onChange={e=>setBulkActive(e.target.value)}>
+              <option value="">Statut (inchangé)</option>
+              <option value="true">Activer</option>
+              <option value="false">Désactiver</option>
+            </select>
+            <div className="upload-actions">
+              <button className="btn btn-primary" onClick={applyBulk} disabled={selected.size===0}>Appliquer ({selected.size})</button>
+            </div>
           </div>
           <div className="controls-divider" />
           <div className="controls-hint">Importer un fichier (.csv, .txt)</div>
@@ -158,6 +290,7 @@ export default function DrinksOrder() {
           <table className="table drinks-table">
             <thead>
               <tr>
+                <th><input type="checkbox" checked={filtered.length>0 && filtered.every(d=>selected.has(d.id))} onChange={toggleSelectAll} /></th>
                 <th>Boisson</th>
                 <th>Catégorie</th>
                 <th>Unité</th>
@@ -166,11 +299,33 @@ export default function DrinksOrder() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(d => (
+              {sorted.map(d => (
                 <tr key={d.id}>
-                  <td className="font-medium text-gray-900 name-cell" title={d.name}>{d.name}</td>
-                  <td><span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700">{d.category || '-'}</span></td>
-                  <td><span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-emerald-50 text-emerald-700">{d.unit || '-'}</span></td>
+                  <td><input type="checkbox" checked={selected.has(d.id)} onChange={()=>toggleSelect(d.id)} /></td>
+                  <td className="font-medium text-gray-900 name-cell" title={d.name}>
+                    {editingId===d.id ? (
+                      <input className="input" value={eName} onChange={e=>setEName(e.target.value)} />
+                    ) : (
+                      d.name
+                    )}
+                  </td>
+                  <td>
+                    {editingId===d.id ? (
+                      <input className="input" list="drink-categories" value={eCategory} onChange={e=>setECategory(e.target.value)} />
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700">{d.category || '-'}</span>
+                    )}
+                  </td>
+                  <td>
+                    {editingId===d.id ? (
+                      <div className="drinks-grid" style={{gridTemplateColumns:'1fr auto'}}>
+                        <input className="input" list="drink-units" value={eUnit} onChange={e=>setEUnit(e.target.value)} />
+                        <label className="form-check"><input className="form-check-input" type="checkbox" checked={eActive} onChange={e=>setEActive(e.target.checked)} /> actif</label>
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-emerald-50 text-emerald-700">{d.unit || '-'}</span>
+                    )}
+                  </td>
                   <td>
                     <div className="qty-group">
                       <button className="btn btn-sm btn-outline qty-btn" onClick={()=>inc(d.id, -1)}>-</button>
@@ -182,7 +337,17 @@ export default function DrinksOrder() {
                     </div>
                   </td>
                   <td>
-                    <button className="btn btn-sm btn-outline" onClick={()=>removeDrink(d.id)}>Supprimer</button>
+                    {editingId===d.id ? (
+                      <div className="btn-group">
+                        <button className="btn btn-sm btn-primary" onClick={()=>saveEdit(d.id)}>Enregistrer</button>
+                        <button className="btn btn-sm btn-outline" onClick={cancelEdit}>Annuler</button>
+                      </div>
+                    ) : (
+                      <div className="btn-group">
+                        <button className="btn btn-sm btn-outline" onClick={()=>startEdit(d)}>Modifier</button>
+                        <button className="btn btn-sm btn-outline" onClick={()=>removeDrink(d.id)}>Supprimer</button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
