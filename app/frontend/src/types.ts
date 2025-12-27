@@ -50,3 +50,33 @@ export type Drink = {
   unit?: string
   active: boolean
 }
+
+export type DrinkStock = {
+  drink_id: UUID
+  min_qty: number
+  max_qty: number
+  pack_size?: number | null
+  reorder_enabled: boolean
+}
+
+export type ReplenishOptions = {
+  target: 'max' | 'min'
+  rounding: 'pack' | 'none'
+}
+
+export type ReplenishItem = {
+  drink_id: UUID
+  name: string
+  unit?: string
+  remaining: number
+  min_qty: number
+  max_qty: number
+  pack_size?: number | null
+  reorder_enabled: boolean
+  target: number
+  suggest: number
+}
+
+export type ReplenishResponse = {
+  items: ReplenishItem[]
+}

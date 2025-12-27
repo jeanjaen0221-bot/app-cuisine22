@@ -74,6 +74,30 @@ class DrinkUpdate(SQLModel):
     active: Optional[bool] = None
 
 
+# Per-drink stock settings for replenishment
+class DrinkStock(SQLModel, table=True):
+    drink_id: uuid.UUID = Field(primary_key=True, foreign_key="drink.id")
+    min_qty: int = 0
+    max_qty: int = 0
+    pack_size: Optional[int] = None
+    reorder_enabled: bool = True
+
+
+class DrinkStockRead(SQLModel):
+    drink_id: uuid.UUID
+    min_qty: int
+    max_qty: int
+    pack_size: Optional[int] = None
+    reorder_enabled: bool
+
+
+class DrinkStockUpdate(SQLModel):
+    min_qty: Optional[int] = None
+    max_qty: Optional[int] = None
+    pack_size: Optional[int] = None
+    reorder_enabled: Optional[bool] = None
+
+
 class ReservationItemBase(SQLModel):
     type: str  # entrée / plat / dessert
     name: str

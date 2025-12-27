@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
-import type { Drink } from '../types'
+import type { Drink, DrinkStock, ReplenishItem, ReplenishOptions, ReplenishResponse } from '../types'
 
 export default function DrinksOrder() {
   const [drinks, setDrinks] = useState<Drink[]>([])
@@ -26,7 +26,7 @@ export default function DrinksOrder() {
   const [bulkActive, setBulkActive] = useState('')
   const [sortBy, setSortBy] = useState<'name'|'category'|'unit'|'active'|'qty'>('name')
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc')
-  const [activeTab, setActiveTab] = useState<'liste'|'ajout'|'import'|'mass'>('liste')
+  const [activeTab, setActiveTab] = useState<'liste'|'ajout'|'import'|'mass'|'reassort'>('liste')
   const [showInactive, setShowInactive] = useState(false)
   const [counts, setCounts] = useState<Record<string, number>>(() => {
     try {
@@ -36,6 +36,53 @@ export default function DrinksOrder() {
       return {}
     }
   })
+
+  // Réassort: remaining qty per drink (persist locally)
+  const [remaining, setRemaining] = useState<Record<string, number>>(() => {
+    try {
+      const raw = localStorage.getItem('drinks-remaining')
+      return raw ? JSON.parse(raw) : {}
+    } catch {
+      return {}
+    }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('drinks-remaining', JSON.stringify(remaining)) } catch {}
+  }, [remaining])
+
+  // Réassort: stock settings loaded from backend
+  const [stock, setStock] = useState<Record<string, DrinkStock>>({})
+  const [loadingStock, setLoadingStock] = useState(false)
+  async function loadStock() {
+    setLoadingStock(true)
+    try {
+      const res = await api.get('/api/drinks/stock')
+      const arr: DrinkStock[] = res.data
+      const map: Record<string, DrinkStock> = {}
+      arr.forEach(s => { map[s.drink_id] = s })
+      setStock(map)
+    } finally {
+      setLoadingStock(false)
+    }
+  }
+  useEffect(() => { loadStock() }, [])
+
+  // Réassort: compute suggestions
+  const [opts, setOpts] = useState<ReplenishOptions>({ target: 'max', rounding: 'pack' })
+  const [repl, setRepl] = useState<Record<string, ReplenishItem>>({})
+  const [recalcPending, setRecalcPending] = useState(false)
+  async function computeReplenishment() {
+    setRecalcPending(true)
+    try {
+      const payload = { remaining, options: opts }
+      const res = await api.post<ReplenishResponse>('/api/drinks/replenishment', payload)
+      const map: Record<string, ReplenishItem> = {}
+      res.data.items.forEach(it => { map[it.drink_id] = it })
+      setRepl(map)
+    } finally {
+      setRecalcPending(false)
+    }
+  }
 
   async function load() {
     const res = await api.get('/api/drinks')
@@ -93,6 +140,22 @@ export default function DrinksOrder() {
     })
     return arr
   }, [filtered, counts, sortBy, sortDir, collator])
+
+  // Helpers for reassort
+  function setRem(id: string, v: number) {
+    setRemaining(prev => ({ ...prev, [id]: Math.max(0, v) }))
+  }
+  async function updateStockField(id: string, patch: Partial<DrinkStock>) {
+    const current: DrinkStock = stock[id] || { drink_id: id, min_qty: 0, max_qty: 0, pack_size: null, reorder_enabled: true }
+    const payload: any = {}
+    if (patch.min_qty !== undefined) payload.min_qty = Math.max(0, Number(patch.min_qty||0))
+    if (patch.max_qty !== undefined) payload.max_qty = Math.max(0, Number(patch.max_qty||0))
+    if (patch.pack_size !== undefined) payload.pack_size = patch.pack_size ? Math.max(1, Number(patch.pack_size||0)) : null
+    if (patch.reorder_enabled !== undefined) payload.reorder_enabled = !!patch.reorder_enabled
+    const res = await api.put(`/api/drinks/${id}/stock`, payload)
+    const updated: DrinkStock = res.data
+    setStock(prev => ({ ...prev, [id]: updated }))
+  }
 
   const summary = useMemo(() => {
     let lines = 0
@@ -230,6 +293,7 @@ export default function DrinksOrder() {
             <button className={`btn btn-sm ${activeTab==='ajout'?'btn-primary':'btn-outline'}`} onClick={()=>setActiveTab('ajout')}>Ajouter</button>
             <button className={`btn btn-sm ${activeTab==='import'?'btn-primary':'btn-outline'}`} onClick={()=>setActiveTab('import')}>Importer</button>
             <button className={`btn btn-sm ${activeTab==='mass'?'btn-primary':'btn-outline'}`} onClick={()=>setActiveTab('mass')}>Modifier en masse</button>
+            <button className={`btn btn-sm ${activeTab==='reassort'?'btn-primary':'btn-outline'}`} onClick={()=>setActiveTab('reassort')}>Réassort</button>
           </div>
 
           {activeTab === 'liste' && (
@@ -254,6 +318,30 @@ export default function DrinksOrder() {
                   <option value="desc">Descendant</option>
                 </select>
                 <label className="form-check"><input className="form-check-input" type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)} /> Afficher inactives</label>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'reassort' && (
+            <>
+              <div className="controls-hint">Saisir les quantités restantes et calculer les suggestions de réassort</div>
+              <div className="drinks-controls">
+                <input className="input" placeholder="Rechercher une boisson" value={q} onChange={e=>setQ(e.target.value)} />
+                <select className="input" value={cat} onChange={e=>setCat(e.target.value)} aria-label="Filtrer par catégorie">
+                  <option value="all">Toutes</option>
+                  {categories.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <select className="input" value={opts.target} onChange={e=>setOpts(o=>({ ...o, target: e.target.value as any }))}>
+                  <option value="max">Cible: maximum</option>
+                  <option value="min">Cible: minimum</option>
+                </select>
+                <select className="input" value={opts.rounding} onChange={e=>setOpts(o=>({ ...o, rounding: e.target.value as any }))}>
+                  <option value="pack">Arrondi: colis</option>
+                  <option value="none">Arrondi: aucun</option>
+                </select>
+                <button className="btn btn-primary" onClick={computeReplenishment} disabled={recalcPending || loadingStock}>{recalcPending? 'Calcul...' : 'Calculer'}</button>
               </div>
             </>
           )}
@@ -323,7 +411,17 @@ export default function DrinksOrder() {
                 <th>Boisson</th>
                 <th>Catégorie</th>
                 <th>Unité</th>
-                <th>Quantité</th>
+                {activeTab!=='reassort' && (<th>Quantité</th>)}
+                {activeTab==='reassort' && (
+                  <>
+                    <th>Restant</th>
+                    <th>Min</th>
+                    <th>Max</th>
+                    <th>Colis</th>
+                    <th>Actif</th>
+                    <th>Suggestion</th>
+                  </>
+                )}
                 <th>Actions</th>
               </tr>
             </thead>
@@ -357,16 +455,57 @@ export default function DrinksOrder() {
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-emerald-50 text-emerald-700">{d.unit || '-'}</span>
                     )}
                   </td>
-                  <td>
-                    <div className="qty-group">
-                      <button className="btn btn-sm btn-outline qty-btn" onClick={()=>inc(d.id, -1)}>-</button>
-                      <input className="input qty-input" value={counts[d.id] || 0} onChange={e=>{
-                        const v = Math.max(0, parseInt(e.target.value||'0')||0)
-                        setCounts(prev => ({ ...prev, [d.id]: v }))
-                      }} />
-                      <button className="btn btn-sm btn-outline qty-btn" onClick={()=>inc(d.id, +1)}>+</button>
-                    </div>
-                  </td>
+                  {activeTab!=='reassort' && (
+                    <td>
+                      <div className="qty-group">
+                        <button className="btn btn-sm btn-outline qty-btn" onClick={()=>inc(d.id, -1)}>-</button>
+                        <input className="input qty-input" value={counts[d.id] || 0} onChange={e=>{
+                          const v = Math.max(0, parseInt(e.target.value||'0')||0)
+                          setCounts(prev => ({ ...prev, [d.id]: v }))
+                        }} />
+                        <button className="btn btn-sm btn-outline qty-btn" onClick={()=>inc(d.id, +1)}>+</button>
+                      </div>
+                    </td>
+                  )}
+                  {activeTab==='reassort' && (
+                    <>
+                      <td>
+                        <input className="input" type="number" value={remaining[d.id] || 0} onChange={e=>setRem(d.id, parseInt(e.target.value||'0')||0)} />
+                      </td>
+                      <td>
+                        <input className="input" type="number" value={(stock[d.id]?.min_qty ?? 0)} onChange={e=>{
+                          const mv = parseInt(e.target.value||'0')||0
+                          setStock(prev=>({ ...prev, [d.id]: { ...(prev[d.id]||{drink_id:d.id,min_qty:0,max_qty:0,pack_size:null,reorder_enabled:true}), min_qty: mv }}))
+                        }} onBlur={e=>updateStockField(d.id, { min_qty: parseInt(e.target.value||'0')||0 })} />
+                      </td>
+                      <td>
+                        <input className="input" type="number" value={(stock[d.id]?.max_qty ?? 0)} onChange={e=>{
+                          const mv = parseInt(e.target.value||'0')||0
+                          setStock(prev=>({ ...prev, [d.id]: { ...(prev[d.id]||{drink_id:d.id,min_qty:0,max_qty:0,pack_size:null,reorder_enabled:true}), max_qty: mv }}))
+                        }} onBlur={e=>updateStockField(d.id, { max_qty: parseInt(e.target.value||'0')||0 })} />
+                      </td>
+                      <td>
+                        <input className="input" type="number" placeholder="—" value={(stock[d.id]?.pack_size ?? '') as any} onChange={e=>{
+                          const pv = parseInt(e.target.value||'')
+                          const val = Number.isFinite(pv) ? pv : undefined
+                          setStock(prev=>({ ...prev, [d.id]: { ...(prev[d.id]||{drink_id:d.id,min_qty:0,max_qty:0,pack_size:null,reorder_enabled:true}), pack_size: (val||undefined) as any }}))
+                        }} onBlur={e=>{
+                          const pv = parseInt(e.target.value||'0')||0
+                          updateStockField(d.id, { pack_size: pv>0? pv : null as any })
+                        }} />
+                      </td>
+                      <td>
+                        <label className="form-check"><input className="form-check-input" type="checkbox" checked={(stock[d.id]?.reorder_enabled ?? true)} onChange={e=>{
+                          const val = e.target.checked
+                          setStock(prev=>({ ...prev, [d.id]: { ...(prev[d.id]||{drink_id:d.id,min_qty:0,max_qty:0,pack_size:null,reorder_enabled:true}), reorder_enabled: val }}))
+                          updateStockField(d.id, { reorder_enabled: val })
+                        }} /> actif</label>
+                      </td>
+                      <td>
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-amber-50 text-amber-700">{repl[d.id]?.suggest ?? '-'}</span>
+                      </td>
+                    </>
+                  )}
                   <td>
                     {editingId===d.id ? (
                       <div className="btn-group">
@@ -375,7 +514,7 @@ export default function DrinksOrder() {
                       </div>
                     ) : (
                       <div className="btn-group">
-                        <button className="btn btn-sm btn-outline" onClick={()=>startEdit(d)}>Modifier</button>
+                        {activeTab!=='reassort' && (<button className="btn btn-sm btn-outline" onClick={()=>startEdit(d)}>Modifier</button>)}
                         <button className="btn btn-sm btn-outline" onClick={()=>removeDrink(d.id)}>Supprimer</button>
                       </div>
                     )}
@@ -384,7 +523,7 @@ export default function DrinksOrder() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td className="p-4 text-gray-500" colSpan={5}>Aucune boisson.</td>
+                  <td className="p-4 text-gray-500" colSpan={activeTab==='reassort'? 10 : 6}>Aucune boisson.</td>
                 </tr>
               )}
             </tbody>

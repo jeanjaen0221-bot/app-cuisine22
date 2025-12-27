@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select, delete
 
 from ..database import get_session
-from ..models import Drink, DrinkCreate, DrinkRead, DrinkUpdate
+from ..models import Drink, DrinkCreate, DrinkRead, DrinkUpdate, DrinkStock, DrinkStockRead, DrinkStockUpdate
 
 router = APIRouter(prefix="/api/drinks", tags=["drinks"])
 
@@ -140,6 +140,112 @@ def import_from_pdf(payload: DrinksImportPdfIn, session: Session = Depends(get_s
         added += 1
     session.commit()
     return {"added": added}
+
+
+# ===== Stock settings & replenishment =====
+class ReplenishOptions(BaseModel):
+    target: str = "max"  # "max" or "min"
+    rounding: str = "pack"  # "pack" or "none"
+
+
+class ReplenishRequest(BaseModel):
+    remaining: dict[str, int]
+    options: Optional[ReplenishOptions] = None
+
+
+@router.get("/stock", response_model=List[DrinkStockRead])
+def list_stock(session: Session = Depends(get_session)):
+    rows = session.exec(select(Drink)).all()
+    existing = { s.drink_id: s for s in session.exec(select(DrinkStock)).all() }
+    out: list[DrinkStockRead] = []
+    for d in rows:
+        s = existing.get(d.id)
+        if not s:
+            out.append(DrinkStockRead(drink_id=d.id, min_qty=0, max_qty=0, pack_size=None, reorder_enabled=True))
+        else:
+            out.append(DrinkStockRead(**s.model_dump()))
+    return out
+
+
+@router.get("/{drink_id}/stock", response_model=DrinkStockRead)
+def get_stock(drink_id: uuid.UUID, session: Session = Depends(get_session)):
+    d = session.get(Drink, drink_id)
+    if not d:
+        raise HTTPException(404, "Drink not found")
+    s = session.get(DrinkStock, drink_id)
+    if not s:
+        return DrinkStockRead(drink_id=drink_id, min_qty=0, max_qty=0, pack_size=None, reorder_enabled=True)
+    return DrinkStockRead(**s.model_dump())
+
+
+@router.put("/{drink_id}/stock", response_model=DrinkStockRead)
+def update_stock(drink_id: uuid.UUID, payload: DrinkStockUpdate, session: Session = Depends(get_session)):
+    d = session.get(Drink, drink_id)
+    if not d:
+        raise HTTPException(404, "Drink not found")
+    s = session.get(DrinkStock, drink_id)
+    if not s:
+        s = DrinkStock(drink_id=drink_id)
+    upd = payload.model_dump(exclude_unset=True)
+    if 'min_qty' in upd and upd['min_qty'] is not None:
+        upd['min_qty'] = max(0, int(upd['min_qty']))
+    if 'max_qty' in upd and upd['max_qty'] is not None:
+        upd['max_qty'] = max(0, int(upd['max_qty']))
+    if 'pack_size' in upd and upd['pack_size'] is not None:
+        v = int(upd['pack_size'])
+        upd['pack_size'] = v if v > 0 else None
+    for k, v in upd.items():
+        setattr(s, k, v)
+    if s.max_qty < s.min_qty:
+        s.max_qty = s.min_qty
+    session.add(s)
+    session.commit()
+    session.refresh(s)
+    return DrinkStockRead(**s.model_dump())
+
+
+@router.post("/replenishment")
+def compute_replenishment(payload: ReplenishRequest, session: Session = Depends(get_session)):
+    opts = payload.options or ReplenishOptions()
+    target_mode = (opts.target or "max").lower()
+    rounding = (opts.rounding or "pack").lower()
+    rows = session.exec(select(Drink)).all()
+    stocks = { s.drink_id: s for s in session.exec(select(DrinkStock)).all() }
+    result = []
+    rem = { str(k): int(v or 0) for k, v in (payload.remaining or {}).items() }
+    for d in rows:
+        s = stocks.get(d.id)
+        min_q = getattr(s, 'min_qty', 0) if s else 0
+        max_q = getattr(s, 'max_qty', 0) if s else 0
+        pack = getattr(s, 'pack_size', None) if s else None
+        enabled = getattr(s, 'reorder_enabled', True) if s else True
+        remaining = int(rem.get(str(d.id), 0))
+        tgt = max_q if target_mode == 'max' else min_q
+        if not enabled:
+            suggest = 0
+        else:
+            base = max(0, tgt - remaining)
+            if base <= 0:
+                suggest = 0
+            else:
+                if rounding == 'pack' and pack and pack > 1:
+                    import math
+                    suggest = int(math.ceil(base / pack) * pack)
+                else:
+                    suggest = base
+        result.append({
+            'drink_id': str(d.id),
+            'name': d.name,
+            'unit': d.unit,
+            'remaining': remaining,
+            'min_qty': min_q,
+            'max_qty': max_q,
+            'pack_size': pack,
+            'reorder_enabled': enabled,
+            'target': tgt,
+            'suggest': suggest,
+        })
+    return { 'items': result }
 
 
 @router.post("/import/upload")
