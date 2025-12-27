@@ -111,45 +111,30 @@ export default function DrinksOrder() {
 
       <div className="card-body space-y-4">
         <div className="controls-panel">
-          <div className="controls-stack controls-row">
-            <div className="controls-top">
-              <input className="input" placeholder="Rechercher une boisson" value={q} onChange={e=>setQ(e.target.value)} />
-            </div>
-            <div className="controls-filters">
-              <div className="filter-group" aria-label="Filtrer par catégorie">
-                <span className="filter-label">Catégorie</span>
-                <button className={`filter-chip ${cat==='all'?'is-active':''}`} onClick={()=>setCat('all')}>Toutes</button>
-                {categories.map(c => (
-                  <button key={c} className={`filter-chip ${cat===c?'is-active':''}`} onClick={()=>setCat(c)}>{c}</button>
-                ))}
-              </div>
-            </div>
+          <div className="drinks-controls">
+            <input className="input" placeholder="Rechercher une boisson" value={q} onChange={e=>setQ(e.target.value)} />
+            <select className="input" value={cat} onChange={e=>setCat(e.target.value)} aria-label="Filtrer par catégorie">
+              <option value="all">Toutes</option>
+              {categories.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
           <div className="controls-divider" />
           <div className="controls-hint">Ajout rapide</div>
-          <div className="add-stack add-row">
-            <div className="add-top">
-              <input className="input input-large" placeholder="Nom de la boisson" value={name} onChange={e=>setName(e.target.value)} />
-            </div>
-            <div className="add-controls">
-              <label className="filter-label" htmlFor="add-cat">Catégorie</label>
-              <input id="add-cat" className="input" placeholder="ex: vin, bière" value={category} onChange={e=>setCategory(e.target.value)} />
-              <label className="filter-label" htmlFor="add-unit">Unité</label>
-              <input id="add-unit" className="input" placeholder="ex: bouteille, carton" value={unit} onChange={e=>setUnit(e.target.value)} />
-              <button className="btn btn-primary" onClick={quickAdd}>Ajouter</button>
-            </div>
+          <div className="drinks-grid">
+            <input className="input" placeholder="Nom de la boisson" value={name} onChange={e=>setName(e.target.value)} />
+            <input className="input" placeholder="Catégorie (ex: vin, bière)" value={category} onChange={e=>setCategory(e.target.value)} />
+            <input className="input" placeholder="Unité (ex: bouteille, carton)" value={unit} onChange={e=>setUnit(e.target.value)} />
+            <button className="btn btn-primary" onClick={quickAdd}>Ajouter</button>
           </div>
           <div className="controls-divider" />
           <div className="controls-hint">Importer un fichier (.csv, .txt)</div>
-          <div className="add-stack add-row">
-            <div className="add-top">
-              <input key={fileKey} type="file" accept=".csv,.txt" className="input" onChange={e=>setUploadFile(e.target.files?.[0] || null)} />
-            </div>
-            <div className="add-controls">
-              <label className="filter-label" htmlFor="imp-cat">Catégorie par défaut</label>
-              <input id="imp-cat" className="input" placeholder="ex: bière, soft, chaud" value={uploadCategory} onChange={e=>setUploadCategory(e.target.value)} />
-              <label className="filter-label" htmlFor="imp-unit">Unité par défaut</label>
-              <input id="imp-unit" className="input" placeholder="ex: bouteille, canette" value={uploadUnit} onChange={e=>setUploadUnit(e.target.value)} />
+          <div className="upload-grid">
+            <input key={fileKey} type="file" accept=".csv,.txt" className="input" onChange={e=>setUploadFile(e.target.files?.[0] || null)} />
+            <input className="input" placeholder="Catégorie par défaut" value={uploadCategory} onChange={e=>setUploadCategory(e.target.value)} />
+            <input className="input" placeholder="Unité par défaut" value={uploadUnit} onChange={e=>setUploadUnit(e.target.value)} />
+            <div className="upload-actions">
               <button className="btn btn-primary" onClick={handleUpload} disabled={!uploadFile || importing}>{importing ? 'Import...' : 'Importer'}</button>
               {lastImportAdded !== null && (
                 <span className="text-sm text-gray-600">Ajoutés: {lastImportAdded}</span>
@@ -158,8 +143,8 @@ export default function DrinksOrder() {
           </div>
         </div>
 
-        <div className="table-container">
-          <table className="table menu-table">
+        <div className="drinks-table-container">
+          <table className="table drinks-table">
             <thead>
               <tr>
                 <th>Boisson</th>
@@ -175,13 +160,13 @@ export default function DrinksOrder() {
                   <td><span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700">{d.category || '-'}</span></td>
                   <td><span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-emerald-50 text-emerald-700">{d.unit || '-'}</span></td>
                   <td>
-                    <div className="flex items-center gap-2">
-                      <button className="btn btn-sm btn-outline" onClick={()=>inc(d.id, -1)}>-</button>
-                      <input className="input w-16 text-center" value={counts[d.id] || 0} onChange={e=>{
+                    <div className="qty-group">
+                      <button className="btn btn-sm btn-outline qty-btn" onClick={()=>inc(d.id, -1)}>-</button>
+                      <input className="input qty-input" value={counts[d.id] || 0} onChange={e=>{
                         const v = Math.max(0, parseInt(e.target.value||'0')||0)
                         setCounts(prev => ({ ...prev, [d.id]: v }))
                       }} />
-                      <button className="btn btn-sm btn-outline" onClick={()=>inc(d.id, +1)}>+</button>
+                      <button className="btn btn-sm btn-outline qty-btn" onClick={()=>inc(d.id, +1)}>+</button>
                     </div>
                   </td>
                 </tr>
