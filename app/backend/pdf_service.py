@@ -242,6 +242,39 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
     story.append(fb_tbl)
     story.append(Spacer(1, 10))
 
+    # Billing information (only for salle)
+    if billing is not None:
+        story.append(Paragraph("<b>Informations de facturation :</b>", styles['Section']))
+        addr = billing.address_line1
+        if getattr(billing, 'address_line2', None):
+            addr += f"\n{billing.address_line2}"
+        rows2 = [
+            [Paragraph("Société", styles['Meta']), Paragraph(str(billing.company_name), styles['Meta'])],
+            [Paragraph("Adresse", styles['Meta']), Paragraph(addr, styles['Meta'])],
+            [Paragraph("Code postal / Ville", styles['Meta']), Paragraph(f"{billing.zip_code} {billing.city}", styles['Meta'])],
+            [Paragraph("Pays", styles['Meta']), Paragraph(str(getattr(billing, 'country', '') or ''), styles['Meta'])],
+        ]
+        if getattr(billing, 'vat_number', None):
+            rows2.append([Paragraph("TVA", styles['Meta']), Paragraph(str(billing.vat_number), styles['Meta'])])
+        if getattr(billing, 'email', None):
+            rows2.append([Paragraph("Email", styles['Meta']), Paragraph(str(billing.email), styles['Meta'])])
+        if getattr(billing, 'phone', None):
+            rows2.append([Paragraph("Téléphone", styles['Meta']), Paragraph(str(billing.phone), styles['Meta'])])
+        if getattr(billing, 'payment_terms', None):
+            rows2.append([Paragraph("Conditions de paiement", styles['Meta']), Paragraph(str(billing.payment_terms), styles['Meta'])])
+        bill_tbl = Table(rows2, colWidths=[160, None])
+        bill_tbl.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f9fafb')),
+            ('LEFTPADDING', (0,0), (-1,-1), 6),
+            ('RIGHTPADDING', (0,0), (-1,-1), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ]))
+        story.append(bill_tbl)
+        story.append(Spacer(1, 10))
+
     # Allergens section
     story.append(Paragraph("<b>Allergènes :</b>", styles['Section']))
     alls = _parse_allergens(getattr(reservation, 'allergens', ''))
@@ -321,7 +354,7 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
     return filename
 
 
-def generate_reservation_pdf_both(reservation: Reservation, items: List[ReservationItem]) -> str:
+def generate_reservation_pdf_both(reservation: Reservation, items: List[ReservationItem], billing: BillingInfo | None = None) -> str:
     """Build a single PDF with salle page first (no extra top margin), then cuisine page
     (with 5cm top offset), and duplicate the cuisine page if desserts are present with
     quantity > 0.
@@ -408,6 +441,39 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
         ]))
         s.append(fb_tbl)
         s.append(Spacer(1, 10))
+
+        # Billing details (only on salle page)
+        if billing is not None:
+            s.append(Paragraph("<b>Informations de facturation :</b>", styles['Section']))
+            addr = billing.address_line1
+            if getattr(billing, 'address_line2', None):
+                addr += f"\n{billing.address_line2}"
+            rows_b = [
+                [Paragraph("Société", styles['Meta']), Paragraph(str(billing.company_name), styles['Meta'])],
+                [Paragraph("Adresse", styles['Meta']), Paragraph(addr, styles['Meta'])],
+                [Paragraph("Code postal / Ville", styles['Meta']), Paragraph(f"{billing.zip_code} {billing.city}", styles['Meta'])],
+                [Paragraph("Pays", styles['Meta']), Paragraph(str(getattr(billing, 'country', '') or ''), styles['Meta'])],
+            ]
+            if getattr(billing, 'vat_number', None):
+                rows_b.append([Paragraph("TVA", styles['Meta']), Paragraph(str(billing.vat_number), styles['Meta'])])
+            if getattr(billing, 'email', None):
+                rows_b.append([Paragraph("Email", styles['Meta']), Paragraph(str(billing.email), styles['Meta'])])
+            if getattr(billing, 'phone', None):
+                rows_b.append([Paragraph("Téléphone", styles['Meta']), Paragraph(str(billing.phone), styles['Meta'])])
+            if getattr(billing, 'payment_terms', None):
+                rows_b.append([Paragraph("Conditions de paiement", styles['Meta']), Paragraph(str(billing.payment_terms), styles['Meta'])])
+            bill_tbl = Table(rows_b, colWidths=[160, None])
+            bill_tbl.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f9fafb')),
+                ('LEFTPADDING', (0,0), (-1,-1), 6),
+                ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                ('TOPPADDING', (0,0), (-1,-1), 4),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ]))
+            s.append(bill_tbl)
+            s.append(Spacer(1, 10))
 
         # Allergènes
         s.append(Paragraph("<b>Allergènes :</b>", styles['Section']))
@@ -679,7 +745,7 @@ def generate_reservation_pdf_cuisine(reservation: Reservation, items: List[Reser
     return filename
 
 
-def generate_reservation_pdf_salle(reservation: Reservation, items: List[ReservationItem]) -> str:
+def generate_reservation_pdf_salle(reservation: Reservation, items: List[ReservationItem], billing: BillingInfo | None = None) -> str:
     filename = _reservation_filename_variant(reservation, "salle")
 
     doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=54)

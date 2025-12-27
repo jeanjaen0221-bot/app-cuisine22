@@ -383,16 +383,17 @@ def export_reservation_pdf(
     if not res:
         raise HTTPException(404, "Reservation not found")
     items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
+    billing = session.get(BillingInfo, reservation_id)
     v = (variant or "").lower().strip()
     if v == "salle":
-        path = generate_reservation_pdf_salle(res, items)
+        path = generate_reservation_pdf_salle(res, items, billing)
     elif v == "cuisine":
         path = generate_reservation_pdf_cuisine(res, items)
     elif v == "both":
-        path = generate_reservation_pdf_both(res, items)
+        path = generate_reservation_pdf_both(res, items, billing)
     else:
         # Default to a single PDF containing salle then cuisine (and extra cuisine if desserts)
-        path = generate_reservation_pdf_both(res, items)
+        path = generate_reservation_pdf_both(res, items, billing)
     # Mark as exported now
     try:
         res.last_pdf_exported_at = datetime.utcnow()
@@ -447,6 +448,12 @@ def create_billing(reservation_id: uuid.UUID, payload: BillingInfoCreate, sessio
     data.setdefault('country', 'Belgique')
     row = BillingInfo(reservation_id=reservation_id, **data)
     session.add(row)
+    # Ensure the reservation is marked as on-invoice when billing exists
+    try:
+        res.on_invoice = True
+        session.add(res)
+    except Exception:
+        pass
     session.commit()
     session.refresh(row)
     return BillingInfoRead(**row.model_dump())
@@ -468,6 +475,12 @@ def update_billing(reservation_id: uuid.UUID, payload: BillingInfoUpdate, sessio
         data.setdefault('country', 'Belgique')
         row = BillingInfo(reservation_id=reservation_id, **data)
         session.add(row)
+        # Mark reservation as on-invoice when creating billing via upsert
+        try:
+            res.on_invoice = True
+            session.add(res)
+        except Exception:
+            pass
         session.commit()
         session.refresh(row)
         return BillingInfoRead(**row.model_dump())
@@ -476,6 +489,12 @@ def update_billing(reservation_id: uuid.UUID, payload: BillingInfoUpdate, sessio
         setattr(row, k, v)
     row.updated_at = datetime.utcnow()
     session.add(row)
+    # Ensure reservation is kept on-invoice once billing exists
+    try:
+        res.on_invoice = True
+        session.add(res)
+    except Exception:
+        pass
     session.commit()
     session.refresh(row)
     return BillingInfoRead(**row.model_dump())
