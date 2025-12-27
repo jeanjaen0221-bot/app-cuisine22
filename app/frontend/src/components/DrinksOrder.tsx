@@ -68,9 +68,18 @@ export default function DrinksOrder() {
   useEffect(() => { loadStock() }, [])
 
   // Réassort: compute suggestions
-  const [opts, setOpts] = useState<ReplenishOptions>({ target: 'max', rounding: 'pack' })
+  const [opts, setOpts] = useState<ReplenishOptions>(() => {
+    try {
+      const raw = localStorage.getItem('drinks-replenish-opts')
+      if (raw) return JSON.parse(raw)
+    } catch {}
+    return { target: 'max', rounding: 'pack' }
+  })
   const [repl, setRepl] = useState<Record<string, ReplenishItem>>({})
   const [recalcPending, setRecalcPending] = useState(false)
+  useEffect(() => {
+    try { localStorage.setItem('drinks-replenish-opts', JSON.stringify(opts)) } catch {}
+  }, [opts])
   async function computeReplenishment() {
     setRecalcPending(true)
     try {
