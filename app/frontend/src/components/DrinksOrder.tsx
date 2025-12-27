@@ -498,8 +498,9 @@ export default function DrinksOrder() {
         </div>
 
         {activeTab==='reassort' ? (
-          <div className="drinks-main" style={{display:'grid', gridTemplateColumns: helpOpen ? 'minmax(0,1fr) 320px' : '1fr', gap:'1rem', alignItems:'start'}}>
-            <div className="drinks-table-container">
+          <>
+            <div className="drinks-main" style={{display:'grid', gridTemplateColumns: helpOpen ? 'minmax(0,1fr) 320px' : '1fr', gap:'1rem', alignItems:'start'}}>
+              <div className="drinks-table-container">
               <table className="table drinks-table">
                 <thead>
                   <tr>
@@ -647,7 +648,17 @@ export default function DrinksOrder() {
               </div>
             </aside>
             )}
-          </div>
+            {!helpOpen && (
+              <button
+                className="btn btn-primary"
+                aria-label="Afficher l'aide"
+                onClick={()=>setHelpOpen(true)}
+                style={{position:'fixed', right:'20px', bottom:'20px', borderRadius:'9999px', width:'44px', height:'44px', zIndex:1000}}
+              >
+                ?
+              </button>
+            )}
+          </>
         ) : (
           <div className="drinks-table-container">
             <table className="table drinks-table">
