@@ -172,6 +172,8 @@ export default function DrinksOrder() {
     return arr
   }, [filtered, counts, sortBy, sortDir, collator])
 
+  const isMass = activeTab === 'mass'
+
   // Helpers for reassort
   function setRem(id: string, v: number) {
     setRemaining(prev => ({ ...prev, [id]: Math.max(0, v) }))
@@ -655,7 +657,7 @@ export default function DrinksOrder() {
                 onClick={()=>setHelpOpen(true)}
                 style={{position:'fixed', right:'20px', bottom:'20px', borderRadius:'9999px', width:'44px', height:'44px', zIndex:1000}}
               >
-                ?
+                <span aria-hidden="true">?</span>
               </button>
             )}
           </>
@@ -664,7 +666,7 @@ export default function DrinksOrder() {
             <table className="table drinks-table">
               <thead>
                 <tr>
-                  {activeTab==='mass' && (
+                  {isMass && (
                     <th><input type="checkbox" checked={sorted.length>0 && sorted.every(d=>selected.has(d.id))} onChange={toggleSelectAll} /></th>
                   )}
                   <th>Boisson</th>
@@ -677,7 +679,7 @@ export default function DrinksOrder() {
               <tbody>
                 {sorted.map(d => (
                   <tr key={d.id}>
-                    {activeTab==='mass' && (
+                    {isMass && (
                       <td><input type="checkbox" checked={selected.has(d.id)} onChange={()=>toggleSelect(d.id)} /></td>
                     )}
                     <td className="font-medium text-gray-900 name-cell" title={d.name}>
