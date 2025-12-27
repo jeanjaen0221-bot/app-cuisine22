@@ -68,7 +68,7 @@ def _find_stamp_path() -> str | None:
     return None
 
 
-def _draw_final_stamp(c: canvas.Canvas, page_width: float):
+def _draw_final_stamp(c: canvas.Canvas, page_width: float, position: str = 'top_right'):
     c.saveState()
     # Try PNG first
     try:
@@ -81,15 +81,19 @@ def _draw_final_stamp(c: canvas.Canvas, page_width: float):
                 w, h = im.size
                 ratio = target_w / float(w)
                 target_h = h * ratio
-            # Place at top-right within page white margins
+            # Compute placement per position
             try:
                 page_w, page_h = c._pagesize  # type: ignore[attr-defined]
             except Exception:
                 from reportlab.lib.pagesizes import A4
                 page_w, page_h = A4
             margin = 36  # same as document margins
-            x = page_w - margin - target_w
-            y = page_h - margin - target_h
+            if position == 'top_right':
+                x = page_w - margin - target_w
+                y = page_h - margin - target_h
+            else:  # bottom_center
+                x = (page_w - target_w) / 2
+                y = 18
             c.drawImage(img_path, x, y, width=target_w, height=target_h, mask='auto', preserveAspectRatio=True, anchor='sw')
             c.restoreState()
             return
@@ -112,8 +116,12 @@ def _draw_final_stamp(c: canvas.Canvas, page_width: float):
         from reportlab.lib.pagesizes import A4
         page_w, page_h = A4
     margin = 36
-    x = page_w - margin - w
-    y = page_h - margin - 14
+    if position == 'top_right':
+        x = page_w - margin - w
+        y = page_h - margin - 14
+    else:
+        x = (page_w - w) / 2
+        y = 20
     c.drawString(x, y, text)
     c.restoreState()
 
@@ -361,7 +369,7 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
     # Build with onLaterPages to add stamp if needed by drawing after flowables
     def on_page(canvas_obj, doc_obj):
         if getattr(reservation, 'final_version', False):
-            _draw_final_stamp(canvas_obj, A4[0])
+            _draw_final_stamp(canvas_obj, A4[0], position='bottom_center')
 
     doc.build(story, onLaterPages=on_page, onFirstPage=on_page)
     return filename
@@ -643,7 +651,12 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
 
     def on_page(canvas_obj, doc_obj):
         if getattr(reservation, 'final_version', False):
-            _draw_final_stamp(canvas_obj, A4[0])
+            try:
+                page_no = canvas_obj.getPageNumber()
+            except Exception:
+                page_no = 1
+            pos = 'top_right' if page_no == 1 else 'bottom_center'
+            _draw_final_stamp(canvas_obj, A4[0], position=pos)
 
     doc.build(story, onLaterPages=on_page, onFirstPage=on_page)
     return filename
@@ -752,7 +765,7 @@ def generate_reservation_pdf_cuisine(reservation: Reservation, items: List[Reser
 
     def on_page(canvas_obj, doc_obj):
         if getattr(reservation, 'final_version', False):
-            _draw_final_stamp(canvas_obj, A4[0])
+            _draw_final_stamp(canvas_obj, A4[0], position='bottom_center')
 
     doc.build(story, onLaterPages=on_page, onFirstPage=on_page)
     return filename
@@ -897,7 +910,7 @@ def generate_reservation_pdf_salle(reservation: Reservation, items: List[Reserva
 
     def on_page(canvas_obj, doc_obj):
         if getattr(reservation, 'final_version', False):
-            _draw_final_stamp(canvas_obj, A4[0])
+            _draw_final_stamp(canvas_obj, A4[0], position='top_right')
 
     doc.build(story, onLaterPages=on_page, onFirstPage=on_page)
     return filename
