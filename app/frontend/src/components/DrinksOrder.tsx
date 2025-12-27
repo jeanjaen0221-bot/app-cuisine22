@@ -26,6 +26,8 @@ export default function DrinksOrder() {
   const [bulkActive, setBulkActive] = useState('')
   const [sortBy, setSortBy] = useState<'name'|'category'|'unit'|'active'|'qty'>('name')
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc')
+  const [activeTab, setActiveTab] = useState<'liste'|'ajout'|'import'|'mass'>('liste')
+  const [showInactive, setShowInactive] = useState(false)
   const [counts, setCounts] = useState<Record<string, number>>(() => {
     try {
       const raw = localStorage.getItem('drinks-order')
@@ -62,12 +64,12 @@ export default function DrinksOrder() {
   const filtered = useMemo(() => {
     const ql = q.trim().toLowerCase()
     return drinks.filter(d => {
-      if (!d.active) return false
+      if (!showInactive && !d.active) return false
       if (cat !== 'all' && (d.category || '') !== cat) return false
       if (ql && !d.name.toLowerCase().includes(ql)) return false
       return true
     })
-  }, [drinks, q, cat])
+  }, [drinks, q, cat, showInactive])
 
   const sorted = useMemo(() => {
     const arr = [...filtered]
@@ -223,74 +225,101 @@ export default function DrinksOrder() {
 
       <div className="card-body space-y-4">
         <div className="controls-panel">
-          <div className="drinks-controls">
-            <input className="input" placeholder="Rechercher une boisson" value={q} onChange={e=>setQ(e.target.value)} />
-            <select className="input" value={cat} onChange={e=>setCat(e.target.value)} aria-label="Filtrer par catégorie">
-              <option value="all">Toutes</option>
-              {categories.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-            <select className="input" value={sortBy} onChange={e=>setSortBy(e.target.value as any)} aria-label="Trier par">
-              <option value="name">Nom</option>
-              <option value="category">Catégorie</option>
-              <option value="unit">Unité</option>
-              <option value="active">Actif</option>
-              <option value="qty">Quantité</option>
-            </select>
-            <select className="input" value={sortDir} onChange={e=>setSortDir(e.target.value as any)} aria-label="Ordre">
-              <option value="asc">Ascendant</option>
-              <option value="desc">Descendant</option>
-            </select>
+          <div className="flex items-center gap-2" style={{marginBottom: '.5rem'}}>
+            <button className={`btn btn-sm ${activeTab==='liste'?'btn-primary':'btn-outline'}`} onClick={()=>setActiveTab('liste')}>Liste</button>
+            <button className={`btn btn-sm ${activeTab==='ajout'?'btn-primary':'btn-outline'}`} onClick={()=>setActiveTab('ajout')}>Ajouter</button>
+            <button className={`btn btn-sm ${activeTab==='import'?'btn-primary':'btn-outline'}`} onClick={()=>setActiveTab('import')}>Importer</button>
+            <button className={`btn btn-sm ${activeTab==='mass'?'btn-primary':'btn-outline'}`} onClick={()=>setActiveTab('mass')}>Modifier en masse</button>
           </div>
+
+          {activeTab === 'liste' && (
+            <>
+              <div className="drinks-controls">
+                <input className="input" placeholder="Rechercher une boisson" value={q} onChange={e=>setQ(e.target.value)} />
+                <select className="input" value={cat} onChange={e=>setCat(e.target.value)} aria-label="Filtrer par catégorie">
+                  <option value="all">Toutes</option>
+                  {categories.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <select className="input" value={sortBy} onChange={e=>setSortBy(e.target.value as any)} aria-label="Trier par">
+                  <option value="name">Nom</option>
+                  <option value="category">Catégorie</option>
+                  <option value="unit">Unité</option>
+                  <option value="active">Actif</option>
+                  <option value="qty">Quantité</option>
+                </select>
+                <select className="input" value={sortDir} onChange={e=>setSortDir(e.target.value as any)} aria-label="Ordre">
+                  <option value="asc">Ascendant</option>
+                  <option value="desc">Descendant</option>
+                </select>
+                <label className="form-check"><input className="form-check-input" type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)} /> Afficher inactives</label>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'ajout' && (
+            <>
+              <div className="controls-hint">Ajout rapide</div>
+              <div className="drinks-grid">
+                <input className="input" placeholder="Nom de la boisson" value={name} onChange={e=>setName(e.target.value)} />
+                <input className="input" list="drink-categories" placeholder="Catégorie (ex: vin, bière)" value={category} onChange={e=>setCategory(e.target.value)} />
+                <input className="input" list="drink-units" placeholder="Unité (ex: bouteille, carton)" value={unit} onChange={e=>setUnit(e.target.value)} />
+                <button className="btn btn-primary" onClick={quickAdd}>Ajouter</button>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'mass' && (
+            <>
+              <div className="controls-hint">Catégoriser / Modifier en masse (sélection)</div>
+              <div className="upload-grid">
+                <input className="input" list="drink-categories" placeholder="Catégorie" value={bulkCategory} onChange={e=>setBulkCategory(e.target.value)} />
+                <input className="input" list="drink-units" placeholder="Unité" value={bulkUnit} onChange={e=>setBulkUnit(e.target.value)} />
+                <select className="input" value={bulkActive} onChange={e=>setBulkActive(e.target.value)}>
+                  <option value="">Statut (inchangé)</option>
+                  <option value="true">Activer</option>
+                  <option value="false">Désactiver</option>
+                </select>
+                <div className="upload-actions">
+                  <button className="btn btn-primary" onClick={applyBulk} disabled={selected.size===0}>Appliquer ({selected.size})</button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'import' && (
+            <>
+              <div className="controls-hint">Importer un fichier (.csv, .txt)</div>
+              <div className="upload-grid">
+                <input key={fileKey} type="file" accept=".csv,.txt" className="input" onChange={e=>setUploadFile(e.target.files?.[0] || null)} />
+                <input className="input" placeholder="Catégorie par défaut" value={uploadCategory} onChange={e=>setUploadCategory(e.target.value)} />
+                <input className="input" placeholder="Unité par défaut" value={uploadUnit} onChange={e=>setUploadUnit(e.target.value)} />
+                <div className="upload-actions">
+                  <button className="btn btn-primary" onClick={handleUpload} disabled={!uploadFile || importing}>{importing ? 'Import...' : 'Importer'}</button>
+                  {lastImportAdded !== null && (
+                    <span className="text-sm text-gray-600">Ajoutés: {lastImportAdded}</span>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
           <datalist id="drink-categories">
             {categories.map(c => (<option key={c} value={c} />))}
           </datalist>
           <datalist id="drink-units">
             {unitsList.map(u => (<option key={u} value={u} />))}
           </datalist>
-          <div className="controls-divider" />
-          <div className="controls-hint">Ajout rapide</div>
-          <div className="drinks-grid">
-            <input className="input" placeholder="Nom de la boisson" value={name} onChange={e=>setName(e.target.value)} />
-            <input className="input" list="drink-categories" placeholder="Catégorie (ex: vin, bière)" value={category} onChange={e=>setCategory(e.target.value)} />
-            <input className="input" list="drink-units" placeholder="Unité (ex: bouteille, carton)" value={unit} onChange={e=>setUnit(e.target.value)} />
-            <button className="btn btn-primary" onClick={quickAdd}>Ajouter</button>
-          </div>
-          <div className="controls-divider" />
-          <div className="controls-hint">Catégoriser / Modifier en masse (sélection)</div>
-          <div className="upload-grid">
-            <input className="input" list="drink-categories" placeholder="Catégorie" value={bulkCategory} onChange={e=>setBulkCategory(e.target.value)} />
-            <input className="input" list="drink-units" placeholder="Unité" value={bulkUnit} onChange={e=>setBulkUnit(e.target.value)} />
-            <select className="input" value={bulkActive} onChange={e=>setBulkActive(e.target.value)}>
-              <option value="">Statut (inchangé)</option>
-              <option value="true">Activer</option>
-              <option value="false">Désactiver</option>
-            </select>
-            <div className="upload-actions">
-              <button className="btn btn-primary" onClick={applyBulk} disabled={selected.size===0}>Appliquer ({selected.size})</button>
-            </div>
-          </div>
-          <div className="controls-divider" />
-          <div className="controls-hint">Importer un fichier (.csv, .txt)</div>
-          <div className="upload-grid">
-            <input key={fileKey} type="file" accept=".csv,.txt" className="input" onChange={e=>setUploadFile(e.target.files?.[0] || null)} />
-            <input className="input" placeholder="Catégorie par défaut" value={uploadCategory} onChange={e=>setUploadCategory(e.target.value)} />
-            <input className="input" placeholder="Unité par défaut" value={uploadUnit} onChange={e=>setUploadUnit(e.target.value)} />
-            <div className="upload-actions">
-              <button className="btn btn-primary" onClick={handleUpload} disabled={!uploadFile || importing}>{importing ? 'Import...' : 'Importer'}</button>
-              {lastImportAdded !== null && (
-                <span className="text-sm text-gray-600">Ajoutés: {lastImportAdded}</span>
-              )}
-            </div>
-          </div>
         </div>
 
         <div className="drinks-table-container">
           <table className="table drinks-table">
             <thead>
               <tr>
-                <th><input type="checkbox" checked={filtered.length>0 && filtered.every(d=>selected.has(d.id))} onChange={toggleSelectAll} /></th>
+                {activeTab==='mass' && (
+                  <th><input type="checkbox" checked={sorted.length>0 && sorted.every(d=>selected.has(d.id))} onChange={toggleSelectAll} /></th>
+                )}
                 <th>Boisson</th>
                 <th>Catégorie</th>
                 <th>Unité</th>
@@ -301,7 +330,9 @@ export default function DrinksOrder() {
             <tbody>
               {sorted.map(d => (
                 <tr key={d.id}>
-                  <td><input type="checkbox" checked={selected.has(d.id)} onChange={()=>toggleSelect(d.id)} /></td>
+                  {activeTab==='mass' && (
+                    <td><input type="checkbox" checked={selected.has(d.id)} onChange={()=>toggleSelect(d.id)} /></td>
+                  )}
                   <td className="font-medium text-gray-900 name-cell" title={d.name}>
                     {editingId===d.id ? (
                       <input className="input" value={eName} onChange={e=>setEName(e.target.value)} />
