@@ -98,6 +98,17 @@ export default function DrinksOrder() {
     }
   }
 
+  async function removeDrink(id: string) {
+    if (!confirm('Supprimer cette boisson ?')) return
+    await api.delete(`/api/drinks/${id}`)
+    setCounts(prev => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+    await load()
+  }
+
   return (
     <div className="card">
       <div className="card-header">
@@ -151,6 +162,7 @@ export default function DrinksOrder() {
                 <th>Catégorie</th>
                 <th>Unité</th>
                 <th>Quantité</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -169,11 +181,14 @@ export default function DrinksOrder() {
                       <button className="btn btn-sm btn-outline qty-btn" onClick={()=>inc(d.id, +1)}>+</button>
                     </div>
                   </td>
+                  <td>
+                    <button className="btn btn-sm btn-outline" onClick={()=>removeDrink(d.id)}>Supprimer</button>
+                  </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td className="p-4 text-gray-500" colSpan={4}>Aucune boisson.</td>
+                  <td className="p-4 text-gray-500" colSpan={5}>Aucune boisson.</td>
                 </tr>
               )}
             </tbody>
