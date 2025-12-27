@@ -498,7 +498,7 @@ export default function DrinksOrder() {
         </div>
 
         {activeTab==='reassort' ? (
-          <div className="drinks-main" style={{display:'grid', gridTemplateColumns:'1fr', gap:'1rem', alignItems:'start'}}>
+          <div className="drinks-main" style={{display:'grid', gridTemplateColumns: helpOpen ? 'minmax(0,1fr) 320px' : '1fr', gap:'1rem', alignItems:'start'}}>
             <div className="drinks-table-container">
               <table className="table drinks-table">
                 <thead>
@@ -619,7 +619,7 @@ export default function DrinksOrder() {
               </table>
             </div>
             {helpOpen && (
-            <aside className="help-panel" style={{position:'fixed', right:'24px', top:'120px', width:'320px', maxHeight:'70vh', overflow:'auto', zIndex:50}}>
+            <aside className="help-panel" style={{position:'sticky', top:'1rem', width:'320px', maxHeight:'calc(100vh - 140px)', overflowY:'scroll', overflowX:'hidden', contain:'layout paint', backfaceVisibility:'hidden', willChange:'transform', transform:'translateZ(0)'}}>
               <div className="card" style={{padding:'0.75rem'}}>
                 <div className="flex items-center justify-between" style={{marginBottom:'.5rem'}}>
                   <h4 className="text-md font-semibold">Mode d'emploi</h4>
