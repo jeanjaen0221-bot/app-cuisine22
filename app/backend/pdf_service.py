@@ -81,8 +81,15 @@ def _draw_final_stamp(c: canvas.Canvas, page_width: float):
                 w, h = im.size
                 ratio = target_w / float(w)
                 target_h = h * ratio
-            x = (page_width - target_w) / 2
-            y = 18  # bottom padding
+            # Place at top-right within page white margins
+            try:
+                page_w, page_h = c._pagesize  # type: ignore[attr-defined]
+            except Exception:
+                from reportlab.lib.pagesizes import A4
+                page_w, page_h = A4
+            margin = 36  # same as document margins
+            x = page_w - margin - target_w
+            y = page_h - margin - target_h
             c.drawImage(img_path, x, y, width=target_w, height=target_h, mask='auto', preserveAspectRatio=True, anchor='sw')
             c.restoreState()
             return
@@ -99,8 +106,14 @@ def _draw_final_stamp(c: canvas.Canvas, page_width: float):
     c.setFont("Helvetica-Bold", 12)
     text = "VERSION FINALE"
     w = c.stringWidth(text, "Helvetica-Bold", 12)
-    x = (page_width - w) / 2
-    y = 20
+    try:
+        page_w, page_h = c._pagesize  # type: ignore[attr-defined]
+    except Exception:
+        from reportlab.lib.pagesizes import A4
+        page_w, page_h = A4
+    margin = 36
+    x = page_w - margin - w
+    y = page_h - margin - 14
     c.drawString(x, y, text)
     c.restoreState()
 
