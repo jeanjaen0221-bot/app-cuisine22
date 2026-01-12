@@ -47,9 +47,10 @@ type Props = {
   initial?: Partial<Reservation>
   onSubmit: (payload: Partial<ReservationCreate>) => Promise<void>
   formId?: string
+  onOpenBilling?: () => void
 }
 
-export default function ReservationForm({ initial, onSubmit, formId }: Props) {
+export default function ReservationForm({ initial, onSubmit, formId, onOpenBilling }: Props) {
   const [client_name, setClient] = useState(initial?.client_name || '')
   const [service_date, setDate] = useState(initial?.service_date || '')
   const [arrival_time, setTime] = useState(initial?.arrival_time || '')
@@ -845,9 +846,16 @@ export default function ReservationForm({ initial, onSubmit, formId }: Props) {
           </div>
         )}
         <div className="card-footer">
-          <button type="submit" className="btn btn-primary btn-sm disabled:opacity-60 w-full sm:w-auto" disabled={submitting}>
-            {submitting ? 'Sauvegarde…' : 'Sauvegarder'}
-          </button>
+          <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+            {initial?.id && onOpenBilling && (
+              <button type="button" className="btn btn-outline btn-sm w-full sm:w-auto" onClick={onOpenBilling}>
+                Facturation
+              </button>
+            )}
+            <button type="submit" className="btn btn-primary btn-sm disabled:opacity-60 w-full sm:w-auto" disabled={submitting}>
+              {submitting ? 'Sauvegarde…' : 'Sauvegarder'}
+            </button>
+          </div>
         </div>
       </form>
     </div>

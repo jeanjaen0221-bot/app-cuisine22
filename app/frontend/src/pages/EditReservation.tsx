@@ -100,7 +100,12 @@ export default function EditReservation() {
         <div className="card"><div className="card-body text-gray-600">Chargement…</div></div>
       ) : (
         <div key={(data && (data as any).id) || (!isExisting ? 'new' : id)}>
-          <ReservationForm initial={data || undefined} onSubmit={save} formId="reservation-form" />
+          <ReservationForm
+            initial={data || undefined}
+            onSubmit={save}
+            formId="reservation-form"
+            onOpenBilling={() => setBillingOpen(true)}
+          />
         </div>
       )}
       {id && id !== 'new' && (
