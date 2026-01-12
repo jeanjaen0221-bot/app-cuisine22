@@ -845,7 +845,7 @@ export default function ReservationForm({ initial, onSubmit, formId }: Props) {
           </div>
         )}
         <div className="card-footer">
-          <button type="submit" className="btn btn-primary btn-sm disabled:opacity-60 hidden md:inline-flex" disabled={submitting}>
+          <button type="submit" className="btn btn-primary btn-sm disabled:opacity-60 w-full sm:w-auto" disabled={submitting}>
             {submitting ? 'Sauvegarde…' : 'Sauvegarder'}
           </button>
         </div>
