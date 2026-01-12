@@ -112,7 +112,7 @@ export default function EditReservation() {
       <div className="fixed bottom-0 inset-x-0 z-40 md:hidden bg-white border-t shadow mobile-sticky">
         <div className="container p-2">
           <div className="grid grid-cols-3 gap-2">
-            <button type="submit" form="reservation-form" className="btn btn-primary w-full">Sauvegarder</button>
+            <button type="submit" form="reservation-form" className="btn btn-primary btn-sm w-full">Sauvegarder</button>
             <button
               className="btn btn-outline w-full"
               disabled={!isExisting}
