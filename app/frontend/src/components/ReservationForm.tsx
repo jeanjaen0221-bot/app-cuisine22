@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../lib/api';
-import { Reservation, ReservationCreate, ReservationItem } from '../types';
+import { Reservation, ReservationCreate, ReservationItem, MenuItem } from '../types';
 import { 
   User, 
   CalendarDays, 
@@ -67,6 +67,33 @@ export default function ReservationForm({ initial, onSubmit, formId }: Props) {
   const [itemsError, setItemsError] = useState<string | null>(null)
   const [allergenOptions, setAllergenOptions] = useState<AllergenOption[]>(DEFAULT_ALLERGENS)
   const [allergenQuery, setAllergenQuery] = useState('')
+
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerItems, setPickerItems] = useState<MenuItem[]>([])
+  const [pickerQ, setPickerQ] = useState('')
+  const [pickerTypeFilter, setPickerTypeFilter] = useState<'all' | 'entrée' | 'plat' | 'dessert'>('all')
+
+  const totalsByType = useMemo(() => {
+    const effective = items.filter(it => (it.name || '').trim() !== '' || (it.quantity || 0) > 0)
+    const t: Record<'entrée' | 'plat' | 'dessert', number> = { 'entrée': 0, 'plat': 0, 'dessert': 0 }
+    for (const it of effective) {
+      const k = (it.type || '').toLowerCase()
+      const isEntree = k.startsWith('entrée') || k.startsWith('entree')
+      if (isEntree) t['entrée'] += Number(it.quantity || 0)
+      else if (k === 'plat') t['plat'] += Number(it.quantity || 0)
+      else if (k === 'dessert') t['dessert'] += Number(it.quantity || 0)
+    }
+    return { entree: t['entrée'], plat: t['plat'], dessert: t['dessert'] }
+  }, [items])
+
+  const filteredPicker = useMemo(() => {
+    const ql = pickerQ.trim().toLowerCase()
+    return pickerItems.filter(it => {
+      if (pickerTypeFilter !== 'all' && it.type !== pickerTypeFilter) return false
+      if (ql && !it.name.toLowerCase().includes(ql)) return false
+      return true
+    })
+  }, [pickerItems, pickerQ, pickerTypeFilter])
 
   // État pour la taille de police
   const [fontSize, setFontSize] = useState('text-base');
@@ -269,6 +296,33 @@ export default function ReservationForm({ initial, onSubmit, formId }: Props) {
       return next;
     });
   };
+
+  async function loadPicker() {
+    const res = await api.get('/api/menu-items')
+    const arr: MenuItem[] = Array.isArray(res.data) ? res.data : []
+    setPickerItems(arr.filter(it => it.active))
+  }
+
+  const openPicker = async () => {
+    if (!pickerOpen) await loadPicker()
+    setPickerOpen(true)
+  }
+
+  function addFromPicker(it: MenuItem) {
+    setItems(prev => {
+      const next = [...prev]
+      const idx = next.findIndex(x => (String(x.type).toLowerCase() === String(it.type).toLowerCase()) && String(x.name).trim().toLowerCase() === String(it.name).trim().toLowerCase())
+      if (idx >= 0) {
+        const q = Number(next[idx].quantity || 0) + 1
+        next[idx] = { ...next[idx], quantity: q }
+        setOpenRow(idx)
+      } else {
+        next.push({ type: it.type, name: it.name, quantity: 1 })
+        setOpenRow(next.length - 1)
+      }
+      return next
+    })
+  }
 
   function validate(): boolean {
     const errs: {client?:string,date?:string,pax?:string,time?:string} = {};
@@ -719,8 +773,18 @@ export default function ReservationForm({ initial, onSubmit, formId }: Props) {
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="text-lg font-semibold text-primary">Plats</h3>
-          <button type="button" className="btn w-full sm:w-auto" onClick={addItem}>+ Ajouter un plat</button>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <h3 className="text-lg font-semibold text-primary">Plats</h3>
+            <div className="text-sm text-gray-600 flex gap-3">
+              <span>Entrées: <b>{totalsByType.entree}</b>/{pax}</span>
+              <span>Plats: <b>{totalsByType.plat}</b>/{pax}</span>
+              <span>Desserts: <b>{totalsByType.dessert}</b>/{pax}</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" className="btn w-full sm:w-auto" onClick={addItem}>+ Ajouter un plat</button>
+            <button type="button" className="btn btn-outline w-full sm:w-auto" onClick={openPicker}>Catalogue</button>
+          </div>
         </div>
         {itemsError && (
           <div className="mt-2 text-xs text-red-600">{itemsError}</div>
@@ -741,6 +805,45 @@ export default function ReservationForm({ initial, onSubmit, formId }: Props) {
             </div>
           ))}
         </div>
+
+        {pickerOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="card w-[90vw] max-w-2xl max-h-[80vh] overflow-hidden">
+              <div className="card-header flex items-center justify-between">
+                <h2 className="text-lg font-medium">Ajouter depuis le catalogue</h2>
+                <button type="button" className="btn btn-sm btn-outline" onClick={()=>setPickerOpen(false)}>Fermer</button>
+              </div>
+              <div className="card-body space-y-3">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input className="input flex-1" placeholder="Rechercher" value={pickerQ} onChange={e=>setPickerQ(e.target.value)} />
+                  <div className="flex gap-2">
+                    {(['all','entrée','plat','dessert'] as const).map(t => (
+                      <button key={t} type="button" className={`filter-chip ${pickerTypeFilter===t ? 'is-active' : ''}`} onClick={()=>setPickerTypeFilter(t)}>
+                        {t === 'all' ? 'Tous' : t.charAt(0).toUpperCase()+t.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="border rounded-md overflow-auto max-h-[50vh]">
+                  <ul>
+                    {filteredPicker.map(it => (
+                      <li key={it.id} className="flex items-center justify-between px-3 py-2 border-b last:border-b-0">
+                        <div className="flex items-center gap-3">
+                          <span className="font-medium text-gray-900">{it.name}</span>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${it.type==='entrée' ? 'bg-emerald-50 text-emerald-700' : it.type==='plat' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{it.type}</span>
+                        </div>
+                        <button type="button" className="btn btn-sm btn-primary" onClick={()=>addFromPicker(it)}>Ajouter</button>
+                      </li>
+                    ))}
+                    {filteredPicker.length === 0 && (
+                      <li className="px-3 py-6 text-center text-gray-500">Aucun élément</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="card-footer">
           <button type="submit" className="btn btn-primary disabled:opacity-60 w-full sm:w-auto" disabled={submitting}>
             {submitting ? 'Sauvegarde…' : 'Sauvegarder'}
@@ -799,18 +902,20 @@ const ItemRow = React.memo(function ItemRow({
         if (!e.currentTarget.contains(e.relatedTarget as Node)) onClose(); 
       }}
     >
-      <select 
-        className="input col-span-12 sm:col-span-2" 
-        value={item.type} 
-        onChange={(e) => { 
-          onChange({ type: e.target.value }); 
-          setQ(''); 
-        }}
-      >
-        <option>entrée</option>
-        <option>plat</option>
-        <option>dessert</option>
-      </select>
+      <div className="col-span-12 sm:col-span-2">
+        <div className="btn-group w-full">
+          {(['entrée','plat','dessert'] as const).map(t => (
+            <button
+              key={t}
+              type="button"
+              className={`btn btn-outline btn-sm ${item.type===t ? 'btn-primary' : ''}`}
+              onClick={() => { onChange({ type: t }); setQ(''); }}
+            >
+              {t.charAt(0).toUpperCase()+t.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="col-span-12 sm:col-span-8 relative">
         <input 
           className="input w-full" 
@@ -866,22 +971,45 @@ const ItemRow = React.memo(function ItemRow({
           </div>
         )}
       </div>
-      <input
-        type="number"
-        min={0}
-        className="input col-span-12 sm:col-span-2"
-        value={qtyInput}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (/^\d*$/.test(v)) {
-            setQtyInput(v);
-            onChange({ quantity: v === '' ? 0 : parseInt(v, 10) });
-          }
-        }}
-        onBlur={() => { 
-          if (qtyInput === '') setQtyInput('0'); 
-        }}
-      />
+      <div className="col-span-12 sm:col-span-2 flex items-center">
+        <button 
+          type="button" 
+          className="btn btn-outline rounded-r-none px-3 border-r-0"
+          onClick={() => {
+            const n = Math.max(0, (Number(qtyInput || '0') || 0) - 1)
+            setQtyInput(String(n))
+            onChange({ quantity: n })
+          }}
+          aria-label="Diminuer la quantité"
+        >
+          <Minus className="w-4 h-4" />
+        </button>
+        <input
+          type="text"
+          className="input text-center rounded-none"
+          value={qtyInput}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (/^\d*$/.test(v)) {
+              setQtyInput(v);
+              onChange({ quantity: v === '' ? 0 : parseInt(v, 10) });
+            }
+          }}
+          onBlur={() => { if (qtyInput === '') setQtyInput('0'); }}
+        />
+        <button 
+          type="button" 
+          className="btn btn-outline rounded-l-none px-3 border-l-0"
+          onClick={() => {
+            const n = (Number(qtyInput || '0') || 0) + 1
+            setQtyInput(String(n))
+            onChange({ quantity: n })
+          }}
+          aria-label="Augmenter la quantité"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+      </div>
       <input
         className="input col-span-12"
         placeholder="Commentaire (facultatif)"
