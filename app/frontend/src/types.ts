@@ -80,3 +80,54 @@ export type ReplenishItem = {
 export type ReplenishResponse = {
   items: ReplenishItem[]
 }
+
+// --- Suppliers & Purchasing ---
+export type Supplier = {
+  id: UUID
+  name: string
+  email?: string
+  phone?: string
+  notes?: string
+  active: boolean
+}
+
+export type SupplierCreate = {
+  name: string
+  email?: string
+  phone?: string
+  notes?: string
+  active?: boolean
+}
+
+export type PurchaseOrderItem = {
+  id: UUID
+  order_id: UUID
+  drink_id?: UUID | null
+  name: string
+  unit?: string | null
+  quantity: number
+  price_cents?: number | null
+}
+
+export type PurchaseOrder = {
+  id: UUID
+  supplier_id?: UUID | null
+  status: 'draft' | 'sent' | 'received' | 'cancelled'
+  note?: string | null
+  created_at: string
+  items: PurchaseOrderItem[]
+}
+
+export type PurchaseOrderItemCreate = {
+  drink_id?: UUID | null
+  name?: string
+  unit?: string
+  quantity: number
+  price_cents?: number | null
+}
+
+export type PurchaseOrderCreate = {
+  supplier_id?: UUID | null
+  note?: string | null
+  items: PurchaseOrderItemCreate[]
+}

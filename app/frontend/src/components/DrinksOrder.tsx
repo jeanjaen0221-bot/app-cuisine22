@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import type { Drink, DrinkStock, ReplenishItem, ReplenishOptions, ReplenishResponse } from '../types'
 
 export default function DrinksOrder() {
+  const navigate = useNavigate()
   const [drinks, setDrinks] = useState<Drink[]>([])
   const [q, setQ] = useState('')
   const [cat, setCat] = useState<string>('all')
@@ -330,6 +332,30 @@ export default function DrinksOrder() {
     await load()
   }
 
+  async function createOrderFromCounts() {
+    const items = Object.entries(counts)
+      .filter(([_, v]) => (v || 0) > 0)
+      .map(([id, v]) => ({ drink_id: id, quantity: v }))
+    if (items.length === 0) {
+      alert('Aucune quantité > 0.')
+      return
+    }
+    const res = await api.post('/api/purchase-orders', { items })
+    navigate(`/achats/${res.data.id}`)
+  }
+
+  async function createOrderFromSuggestions() {
+    const items = Object.values(repl)
+      .filter((x) => (x.suggest || 0) > 0)
+      .map((x) => ({ drink_id: x.drink_id, quantity: x.suggest }))
+    if (items.length === 0) {
+      alert('Aucune suggestion > 0.')
+      return
+    }
+    const res = await api.post('/api/purchase-orders', { items })
+    navigate(`/achats/${res.data.id}`)
+  }
+
   async function handleUpload() {
     if (!uploadFile) return
     setImporting(true)
@@ -444,6 +470,9 @@ export default function DrinksOrder() {
           </span>
           <button className="btn btn-sm btn-outline" onClick={resetAll}>
             Tout remettre à 0
+          </button>
+          <button className="btn btn-sm btn-primary" onClick={createOrderFromCounts} disabled={summary.lines === 0}>
+            Créer commande
           </button>
         </div>
       </div>
@@ -566,6 +595,9 @@ export default function DrinksOrder() {
                   <span>
                     Total: <b>{replSummary.total}</b>
                   </span>
+                  <button className="btn btn-sm btn-primary" onClick={createOrderFromSuggestions} disabled={replSummary.lines === 0 || recalcPending || loadingStock}>
+                    Créer commande suggérée
+                  </button>
                 </div>
               </div>
             </>

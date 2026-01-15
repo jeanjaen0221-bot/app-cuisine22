@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink } from 'react-router-dom'
-import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart } from 'lucide-react'
+import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart, Building2 } from 'lucide-react'
 import NotesWidget from '../components/NotesWidget'
 import Home from './Home'
 import EditReservation from './EditReservation'
@@ -7,6 +7,9 @@ import MenuPage from './MenuPage'
 import ZenchefSettings from './ZenchefSettings'
 import PastReservations from './PastReservations'
 import CommandePage from './CommandePage'
+import OrdersListPage from './OrdersListPage'
+import OrderDetailPage from './OrderDetailPage'
+import SuppliersPage from './SuppliersPage'
 
 export default function App() {
   return (
@@ -26,6 +29,12 @@ export default function App() {
           <NavLink to="/commande" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <ShoppingCart className="w-4 h-4"/> Commande
           </NavLink>
+          <NavLink to="/achats" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+            <ShoppingCart className="w-4 h-4"/> Achats
+          </NavLink>
+          <NavLink to="/fournisseurs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+            <Building2 className="w-4 h-4"/> Fournisseurs
+          </NavLink>
           <NavLink to="/settings" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <SettingsIcon className="w-4 h-4"/> Paramètres
           </NavLink>
@@ -39,6 +48,9 @@ export default function App() {
           <Route path="/reservation/:id" element={<EditReservation />} />
           <Route path="/menu" element={<MenuPage />} />
           <Route path="/commande" element={<CommandePage />} />
+          <Route path="/achats" element={<OrdersListPage />} />
+          <Route path="/achats/:id" element={<OrderDetailPage />} />
+          <Route path="/fournisseurs" element={<SuppliersPage />} />
           <Route path="/settings" element={<ZenchefSettings />} />
         </Routes>
         <NotesWidget />

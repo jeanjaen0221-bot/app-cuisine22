@@ -296,3 +296,129 @@ class BillingInfoRead(SQLModel):
     notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+
+# --- Suppliers & Purchasing ---
+class Supplier(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    notes: Optional[str] = None
+    active: bool = True
+
+
+class SupplierCreate(SQLModel):
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    notes: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class SupplierUpdate(SQLModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    notes: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class SupplierRead(SQLModel):
+    id: uuid.UUID
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    notes: Optional[str] = None
+    active: bool
+
+
+class DrinkVendor(SQLModel, table=True):
+    drink_id: uuid.UUID = Field(foreign_key="drink.id", primary_key=True)
+    supplier_id: uuid.UUID = Field(foreign_key="supplier.id", primary_key=True)
+    vendor_sku: Optional[str] = None
+    price_cents: Optional[int] = None
+    pack_size: Optional[int] = None
+    preferred: bool = False
+
+
+class DrinkVendorRead(SQLModel):
+    drink_id: uuid.UUID
+    supplier_id: uuid.UUID
+    vendor_sku: Optional[str] = None
+    price_cents: Optional[int] = None
+    pack_size: Optional[int] = None
+    preferred: bool = False
+
+
+class DrinkVendorUpsert(SQLModel):
+    drink_id: uuid.UUID
+    supplier_id: uuid.UUID
+    vendor_sku: Optional[str] = None
+    price_cents: Optional[int] = None
+    pack_size: Optional[int] = None
+    preferred: Optional[bool] = None
+
+
+class PurchaseOrderStatus(str, Enum):
+    draft = "draft"
+    sent = "sent"
+    received = "received"
+    cancelled = "cancelled"
+
+
+class PurchaseOrder(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    supplier_id: Optional[uuid.UUID] = Field(default=None, foreign_key="supplier.id")
+    status: PurchaseOrderStatus = PurchaseOrderStatus.draft
+    note: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PurchaseOrderItem(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    order_id: uuid.UUID = Field(foreign_key="purchaseorder.id")
+    drink_id: Optional[uuid.UUID] = Field(default=None, foreign_key="drink.id")
+    name: str
+    unit: Optional[str] = None
+    quantity: int = 0
+    price_cents: Optional[int] = None
+
+
+class PurchaseOrderItemCreate(SQLModel):
+    drink_id: Optional[uuid.UUID] = None
+    name: Optional[str] = None
+    unit: Optional[str] = None
+    quantity: int
+    price_cents: Optional[int] = None
+
+
+class PurchaseOrderCreate(SQLModel):
+    supplier_id: Optional[uuid.UUID] = None
+    note: Optional[str] = None
+    items: List[PurchaseOrderItemCreate] = Field(default_factory=list)
+
+
+class PurchaseOrderItemRead(SQLModel):
+    id: uuid.UUID
+    order_id: uuid.UUID
+    drink_id: Optional[uuid.UUID] = None
+    name: str
+    unit: Optional[str] = None
+    quantity: int
+    price_cents: Optional[int] = None
+
+
+class PurchaseOrderUpdate(SQLModel):
+    supplier_id: Optional[uuid.UUID] = None
+    status: Optional[PurchaseOrderStatus] = None
+    note: Optional[str] = None
+
+
+class PurchaseOrderRead(SQLModel):
+    id: uuid.UUID
+    supplier_id: Optional[uuid.UUID] = None
+    status: PurchaseOrderStatus
+    note: Optional[str] = None
+    created_at: datetime
+    items: List[PurchaseOrderItemRead] = Field(default_factory=list)
