@@ -146,6 +146,16 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       ctx.fillStyle = '#8b8'
       if ('r' in fx) { ctx.beginPath(); ctx.arc((fx as any).x, (fx as any).y, (fx as any).r, 0, Math.PI * 2); ctx.fill() }
       else ctx.fillRect((fx as any).x, (fx as any).y, (fx as any).w, (fx as any).h)
+      const label = (fx as any).label
+      if (label) {
+        ctx.fillStyle = '#111'
+        ctx.font = `${12/scale}px sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        const cx = 'r' in fx ? (fx as any).x : (fx as any).x + (fx as any).w/2
+        const cy = 'r' in fx ? (fx as any).y : (fx as any).y + (fx as any).h/2
+        ctx.fillText(label, cx, cy)
+      }
     }
 
     for (const t of tables) {
@@ -196,8 +206,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       setDraggingId(hit.id)
       dragDelta.current = { x: x - hit.x, y: y - hit.y }
     } else {
-      setIsPanning(true)
-      dragDelta.current = { x: sx - offset.x, y: sy - offset.y }
+      // Plan fixe: ne pas déplacer le fond
     }
   }
 
@@ -207,14 +216,10 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   }
 
   function onPointerMove(e: React.PointerEvent) {
-    if (!draggingId && !isPanning) return
+    if (!draggingId) return
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
-    if (isPanning) {
-      setOffset({ x: sx - dragDelta.current.x, y: sy - dragDelta.current.y })
-      return
-    }
     const { x, y } = screenToWorld(sx, sy)
     const t = tables.find(t => t.id === draggingId)
     if (!t) return
@@ -241,12 +246,23 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
     const { x, y } = screenToWorld(sx, sy)
-    const hit = [...tables].reverse().find(t => tableHit(x, y, t))
-    if (!hit) return
-    // Toggle lock state on fixed tables: double-click to unlock/lock
-    if (hit.kind === 'fixed') {
-      hit.locked = !hit.locked
+    const tHit = [...tables].reverse().find(t => tableHit(x, y, t))
+    if (tHit && tHit.kind === 'fixed') {
+      tHit.locked = !tHit.locked
       onChange && onChange({ ...data, tables: [...tables] })
+      return
+    }
+    // Rename fixtures on double click
+    const fHit = [...fixtures].reverse().find(f => ('r' in (f as any))
+      ? circleHit(x, y, { id: (f as any).id, x: (f as any).x, y: (f as any).y, r: (f as any).r })
+      : rectHit(x, y, { id: (f as any).id, x: (f as any).x, y: (f as any).y, w: (f as any).w, h: (f as any).h })
+    ) as any
+    if (fHit) {
+      const name = window.prompt('Nom de l\'objet', fHit.label || '')
+      if (name !== null) {
+        fHit.label = name
+        onChange && onChange({ ...data, fixtures: [...fixtures] })
+      }
     }
   }
 

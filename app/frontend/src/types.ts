@@ -155,7 +155,7 @@ export type FloorPlanData = {
   walls?: FloorRect[]
   columns?: FloorCircle[]
   no_go?: FloorRect[]
-  fixtures?: (FloorRect & { shape?: 'rect' } | FloorCircle & { shape?: 'round' })[]
+  fixtures?: ((FloorRect & { shape?: 'rect'; label?: string }) | (FloorCircle & { shape?: 'round'; label?: string }))[]
   tables: FloorTable[]
 }
 

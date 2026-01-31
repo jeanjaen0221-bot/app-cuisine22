@@ -71,6 +71,17 @@ export default function FloorPlanPage() {
     if (mode === 'service' && inst) saveInstanceData(next)
   }
 
+  function addFixture(shape: 'rect' | 'round') {
+    const next: FloorPlanData = { ...(mode === 'base' ? base?.data : inst?.data) } as any
+    if (!next.fixtures) next.fixtures = [] as any
+    const id = `fx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    const name = window.prompt('Nom de l\'objet', shape === 'rect' ? 'Objet' : 'Colonne') || ''
+    if (shape === 'round') (next.fixtures as any).push({ id, shape: 'round', x: 300, y: 220, r: 40, label: name })
+    else (next.fixtures as any).push({ id, shape: 'rect', x: 300, y: 220, w: 120, h: 60, label: name })
+    if (mode === 'base' && base) saveBaseData(next)
+    if (mode === 'service' && inst) saveInstanceData(next)
+  }
+
   return (
     <div className="page">
       <div className="toolbar" style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
@@ -93,6 +104,9 @@ export default function FloorPlanPage() {
               <button onClick={() => addTable('fixed')}>Ajouter table fixe</button>
               <button onClick={() => addTable('rect')}>Ajouter table rectangulaire</button>
               <button onClick={() => addTable('round')}>Ajouter table ronde</button>
+              <hr />
+              <button onClick={() => addFixture('rect')}>Ajouter objet carré</button>
+              <button onClick={() => addFixture('round')}>Ajouter objet rond</button>
             </div>
             <div style={{ marginTop: 16 }}>
               <div>Date par défaut: {new Date().toLocaleDateString()}</div>
@@ -125,6 +139,9 @@ export default function FloorPlanPage() {
               <label>Importer & créer
                 <input type="file" accept="application/pdf" onChange={(e)=>doImport(e, true)} />
               </label>
+              <hr />
+              <button onClick={() => addFixture('rect')} disabled={!inst}>Ajouter objet carré</button>
+              <button onClick={() => addFixture('round')} disabled={!inst}>Ajouter objet rond</button>
             </div>
           </div>
           <div>
