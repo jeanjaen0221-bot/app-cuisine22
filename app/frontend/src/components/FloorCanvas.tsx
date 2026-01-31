@@ -150,7 +150,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
     for (const t of tables) {
       const assigned = assignments?.tables?.[t.id]
-      const isLocked = t.locked || t.kind === 'fixed'
+      const isLocked = !!t.locked
       const coll = tableCollides(t)
       let color = t.kind === 'fixed' ? '#2c7' : t.kind === 'rect' ? '#39f' : '#f93'
       if (isLocked) color = '#2a5'
@@ -192,7 +192,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const sy = e.clientY - rect.top
     const { x, y } = screenToWorld(sx, sy)
     const hit = [...tables].reverse().find(t => tableHit(x, y, t))
-    if (hit && editable && !hit.locked && hit.kind !== 'fixed') {
+    if (hit && editable && !hit.locked) {
       setDraggingId(hit.id)
       dragDelta.current = { x: x - hit.x, y: y - hit.y }
     } else {
@@ -236,6 +236,20 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     setIsPanning(false)
   }
 
+  function onDoubleClick(e: React.MouseEvent) {
+    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
+    const sx = e.clientX - rect.left
+    const sy = e.clientY - rect.top
+    const { x, y } = screenToWorld(sx, sy)
+    const hit = [...tables].reverse().find(t => tableHit(x, y, t))
+    if (!hit) return
+    // Toggle lock state on fixed tables: double-click to unlock/lock
+    if (hit.kind === 'fixed') {
+      hit.locked = !hit.locked
+      onChange && onChange({ ...data, tables: [...tables] })
+    }
+  }
+
   function onWheel(e: React.WheelEvent) {
     e.preventDefault()
     const delta = -e.deltaY
@@ -262,6 +276,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerUp}
         onWheel={onWheel}
+        onDoubleClick={onDoubleClick}
       />
     </div>
   )
