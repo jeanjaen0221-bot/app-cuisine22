@@ -11,6 +11,7 @@ export default function FloorPlanPage() {
   const [label, setLabel] = useState<ServiceLabel>('lunch')
   const [grid, setGrid] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [drawNoGo, setDrawNoGo] = useState(false)
 
   useEffect(() => { loadBase() }, [])
 
@@ -104,6 +105,9 @@ export default function FloorPlanPage() {
           <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             <input type="checkbox" checked={grid} onChange={(e) => setGrid(e.target.checked)} /> Grille
           </label>
+          <button className={`btn ${drawNoGo?'active':''}`} onClick={() => setDrawNoGo(v => !v)}>
+            {drawNoGo ? 'Arrêter: Zone interdite' : 'Dessiner zone interdite'}
+          </button>
           {busy && <span>Chargement…</span>}
         </div>
       </div>
@@ -126,7 +130,7 @@ export default function FloorPlanPage() {
           </div>
           <div style={{ minHeight: 400 }}>
             {base && (
-              <FloorCanvas data={base.data} showGrid={grid} editable onChange={saveBaseData} />
+              <FloorCanvas data={base.data} showGrid={grid} editable onChange={saveBaseData} drawNoGoMode={drawNoGo} />
             )}
           </div>
         </div>
@@ -159,7 +163,7 @@ export default function FloorPlanPage() {
           </div>
           <div>
             {inst && (
-              <FloorCanvas data={inst.data} assignments={inst.assignments} showGrid={grid} editable onChange={saveInstanceData} />
+              <FloorCanvas data={inst.data} assignments={inst.assignments} showGrid={grid} editable onChange={saveInstanceData} drawNoGoMode={drawNoGo} />
             )}
           </div>
         </div>

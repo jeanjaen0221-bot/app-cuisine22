@@ -8,9 +8,10 @@ type Props = {
   showGrid?: boolean
   onChange?: (data: FloorPlanData) => void
   className?: string
+  drawNoGoMode?: boolean
 }
 
-export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className }: Props) {
+export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [scale, setScale] = useState(1)
@@ -30,6 +31,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const dragStart = useRef<{ x: number; y: number } | null>(null)
   const lastValid = useRef<{ x: number; y: number } | null>(null)
   const dragInvalid = useRef(false)
+  const [draftNoGo, setDraftNoGo] = useState<FloorRect | null>(null)
+  const drawStartNoGo = useRef<{ x: number; y: number } | null>(null)
 
   const room = data.room || { width: 1200, height: 800, grid: 50 }
   const tables = data.tables || []
@@ -241,6 +244,20 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       }
     }
 
+    if (draftNoGo) {
+      ctx.save()
+      ctx.globalAlpha = 0.35
+      ctx.fillStyle = '#c66'
+      ctx.fillRect(draftNoGo.x, draftNoGo.y, draftNoGo.w, draftNoGo.h)
+      ctx.restore()
+      ctx.save()
+      ctx.strokeStyle = '#c00'
+      ctx.setLineDash([6 / scale, 6 / scale])
+      ctx.lineWidth = 2 / scale
+      ctx.strokeRect(draftNoGo.x, draftNoGo.y, draftNoGo.w, draftNoGo.h)
+      ctx.restore()
+    }
+
     for (const fx of fixtures) {
       ctx.fillStyle = '#8b8'
       if ('r' in fx) { ctx.beginPath(); ctx.arc((fx as any).x, (fx as any).y, (fx as any).r, 0, Math.PI * 2); ctx.fill() }
@@ -304,7 +321,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   }
 
   useEffect(() => { draw() })
-  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid])
+  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo])
 
   function onPointerDown(e: React.PointerEvent) {
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
@@ -351,6 +368,16 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     if (editable && h !== 'none') {
       setResizeHandle(h)
       return
+    }
+    if (editable && drawNoGoMode) {
+      if (x >= 0 && y >= 0 && x <= room.width && y <= room.height) {
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const sx0 = snapGrid ? snap(x) : x
+        const sy0 = snapGrid ? snap(y) : y
+        drawStartNoGo.current = { x: sx0, y: sy0 }
+        setDraftNoGo({ id: 'draft', x: sx0, y: sy0, w: 0, h: 0 })
+        return
+      }
     }
     // Plan fixe: ne pas déplacer le fond
   }
@@ -442,6 +469,18 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       onChange && onChange({ ...data, room: { ...(room as any), width: nw, height: nh } })
       return
     }
+    if (drawStartNoGo.current && editable && drawNoGoMode) {
+      const p0 = drawStartNoGo.current
+      let x0 = p0.x, y0 = p0.y
+      let x1 = x, y1 = y
+      if (showGrid && room.grid && room.grid > 0) { x1 = snap(x1); y1 = snap(y1) }
+      const left = Math.min(x0, x1)
+      const top = Math.min(y0, y1)
+      const w = Math.abs(x1 - x0)
+      const h = Math.abs(y1 - y0)
+      setDraftNoGo({ id: 'draft', x: left, y: top, w, h })
+      return
+    }
     if (draggingId) {
       const t = tables.find(t => t.id === draggingId)
       if (!t) return
@@ -472,6 +511,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         el.style.cursor = fr.handle === 'corner' ? 'nwse-resize' : fr.handle === 'right' ? 'ew-resize' : fr.handle === 'bottom' ? 'ns-resize' : 'ew-resize'
       } else if (ngr) {
         el.style.cursor = ngr.handle === 'corner' ? 'nwse-resize' : ngr.handle === 'right' ? 'ew-resize' : 'ns-resize'
+      } else if (drawNoGoMode) {
+        el.style.cursor = 'crosshair'
       } else {
         el.style.cursor = h === 'corner' ? 'nwse-resize' : h === 'right' ? 'ew-resize' : h === 'bottom' ? 'ns-resize' : 'default'
       }
@@ -480,6 +521,16 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
   function onPointerUp() {
     const currentDraggingId = draggingId
+    if (drawStartNoGo.current && draftNoGo && editable && drawNoGoMode) {
+      const minSize = 10
+      if (draftNoGo.w >= minSize && draftNoGo.h >= minSize) {
+        const id = `ng_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
+        const next = [...noGo, { id, x: draftNoGo.x, y: draftNoGo.y, w: draftNoGo.w, h: draftNoGo.h }]
+        onChange && onChange({ ...data, no_go: next })
+      }
+      drawStartNoGo.current = null
+      setDraftNoGo(null)
+    }
     // Revert invalid drop before clearing ids/state
     if (dragStart.current && lastValid.current && dragInvalid.current && editable && currentDraggingId) {
       const t = tables.find(tt => tt.id === currentDraggingId)
