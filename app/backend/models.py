@@ -5,7 +5,7 @@ from enum import Enum
 from typing import List, Optional
 
 from sqlmodel import Field, SQLModel
-from sqlalchemy import UniqueConstraint, CheckConstraint, Index
+from sqlalchemy import UniqueConstraint, CheckConstraint, Index, Column, JSON
 
 
 class ReservationStatus(str, Enum):
@@ -422,3 +422,24 @@ class PurchaseOrderRead(SQLModel):
     note: Optional[str] = None
     created_at: datetime
     items: List[PurchaseOrderItemRead] = Field(default_factory=list)
+
+
+class FloorPlanTemplate(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    name: str
+    width: int = 1000
+    height: int = 800
+    layout: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class FloorPlanInstance(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    template_id: uuid.UUID = Field(foreign_key="floorplantemplate.id")
+    service_date: date
+    service_label: str
+    assignments: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    layout_overrides: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

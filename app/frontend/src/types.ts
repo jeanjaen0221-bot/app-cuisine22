@@ -131,3 +131,87 @@ export type PurchaseOrderCreate = {
   note?: string | null
   items: PurchaseOrderItemCreate[]
 }
+
+// --- Floor plan ---
+export type FloorPlanFixedTable = {
+  id: string
+  x: number
+  y: number
+  rotation?: number
+  seats: number
+  label?: string
+}
+
+export type FloorPlanObstacle = {
+  id: string
+  type: 'rect' | 'circle' | 'poly'
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  radius?: number
+  points?: { x: number; y: number }[]
+}
+
+export type FloorPlanZone = {
+  id: string
+  kind: 'circulation' | 'reservable' | 'forbidden'
+  points: { x: number; y: number }[]
+}
+
+export type FloorPlanServiceElement = {
+  id: string
+  kind: 'service_round' | 'desk' | 'custom'
+  x: number
+  y: number
+  radius?: number
+  width?: number
+  height?: number
+}
+
+export type FloorPlanLayout = {
+  fixedTables: FloorPlanFixedTable[]
+  obstacles?: FloorPlanObstacle[]
+  zones?: FloorPlanZone[]
+  serviceElements?: FloorPlanServiceElement[]
+  movableTables6Count?: number
+  round10ReserveCount?: number
+}
+
+export type FloorPlanTemplate = {
+  id: UUID
+  name: string
+  width: number
+  height: number
+  layout: FloorPlanLayout
+  created_at: string
+  updated_at: string
+}
+
+export type AssignmentTable = { type: 'fixed' | 't6' | 'r10'; id: string; seats?: number; head?: boolean }
+
+export type FloorPlanAssignment = {
+  name: string
+  pax: number
+  tables: AssignmentTable[]
+}
+
+export type FloorPlanInstance = {
+  id: UUID
+  template_id: UUID
+  service_date: string
+  service_label: string
+  assignments: Record<string, FloorPlanAssignment>
+  layout_overrides: any
+  created_at: string
+  updated_at: string
+}
+
+export type ParsedReservation = {
+  name: string
+  pax: number
+  service_date?: string | null
+  arrival_time?: string | null
+  reference?: string | null
+  constraints?: string | null
+}
