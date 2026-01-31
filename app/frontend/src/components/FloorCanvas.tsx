@@ -19,6 +19,12 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const [isPanning, setIsPanning] = useState(false)
   const dragDelta = useRef({ x: 0, y: 0 })
   const [resizeHandle, setResizeHandle] = useState<'none' | 'right' | 'bottom' | 'corner'>('none')
+  const [fixtureDraggingId, setFixtureDraggingId] = useState<string | null>(null)
+  const [fixtureResize, setFixtureResize] = useState<{
+    id: string
+    shape: 'rect' | 'round'
+    handle: 'right' | 'bottom' | 'corner' | 'radius'
+  } | null>(null)
 
   const room = data.room || { width: 1200, height: 800, grid: 50 }
   const tables = data.tables || []
@@ -68,6 +74,37 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const bmid = worldToScreen(room.width / 2, room.height)
     if (Math.abs(sx - bmid.x) <= M && Math.abs(sy - bmid.y) <= M) return 'bottom'
     return 'none'
+  }
+
+  function fixtureHandleAt(sx: number, sy: number): { id: string; shape: 'rect' | 'round'; handle: 'right' | 'bottom' | 'corner' | 'radius' } | null {
+    const M = 12
+    const list = [...fixtures].reverse() as any[]
+    for (const fx of list) {
+      if ('r' in fx) {
+        const p = worldToScreen(fx.x + fx.r, fx.y)
+        if (Math.abs(sx - p.x) <= M && Math.abs(sy - p.y) <= M) return { id: fx.id, shape: 'round', handle: 'radius' }
+      } else {
+        const cr = worldToScreen(fx.x + fx.w, fx.y + fx.h)
+        if (Math.abs(sx - cr.x) <= M && Math.abs(sy - cr.y) <= M) return { id: fx.id, shape: 'rect', handle: 'corner' }
+        const rr = worldToScreen(fx.x + fx.w, fx.y + fx.h / 2)
+        if (Math.abs(sx - rr.x) <= M && Math.abs(sy - rr.y) <= M) return { id: fx.id, shape: 'rect', handle: 'right' }
+        const bb = worldToScreen(fx.x + fx.w / 2, fx.y + fx.h)
+        if (Math.abs(sx - bb.x) <= M && Math.abs(sy - bb.y) <= M) return { id: fx.id, shape: 'rect', handle: 'bottom' }
+      }
+    }
+    return null
+  }
+
+  function fixtureHit(x: number, y: number) {
+    const list = [...fixtures].reverse() as any[]
+    for (const fx of list) {
+      if ('r' in fx) {
+        if (circleHit(x, y, { id: fx.id, x: fx.x, y: fx.y, r: fx.r })) return fx
+      } else {
+        if (rectHit(x, y, { id: fx.id, x: fx.x, y: fx.y, w: fx.w, h: fx.h })) return fx
+      }
+    }
+    return null
   }
 
   function intersectsRectRect(a: FloorRect, b: FloorRect) {
@@ -174,6 +211,16 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         const cy = 'r' in fx ? (fx as any).y : (fx as any).y + (fx as any).h/2
         ctx.fillText(label, cx, cy)
       }
+      // handles for fixtures
+      const hs2 = 6 / scale
+      ctx.fillStyle = '#444'
+      if ('r' in fx) {
+        ctx.fillRect((fx as any).x + (fx as any).r - hs2 / 2, (fx as any).y - hs2 / 2, hs2, hs2)
+      } else {
+        ctx.fillRect((fx as any).x + (fx as any).w - hs2 / 2, (fx as any).y + (fx as any).h - hs2 / 2, hs2, hs2)
+        ctx.fillRect((fx as any).x + (fx as any).w - hs2 / 2, (fx as any).y + (fx as any).h / 2 - hs2 / 2, hs2, hs2)
+        ctx.fillRect((fx as any).x + (fx as any).w / 2 - hs2 / 2, (fx as any).y + (fx as any).h - hs2 / 2, hs2, hs2)
+      }
     }
 
     for (const t of tables) {
@@ -219,18 +266,29 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
     const { x, y } = screenToWorld(sx, sy)
-    const h = handleAt(sx, sy)
-    if (editable && h !== 'none') {
-      setResizeHandle(h)
+    const fr = fixtureHandleAt(sx, sy)
+    if (editable && fr) {
+      setFixtureResize(fr)
+      return
+    }
+    const f = fixtureHit(x, y)
+    if (editable && f) {
+      setFixtureDraggingId((f as any).id)
+      dragDelta.current = { x: x - (f as any).x, y: y - (f as any).y }
       return
     }
     const hit = [...tables].reverse().find(t => tableHit(x, y, t))
     if (hit && editable && !hit.locked) {
       setDraggingId(hit.id)
       dragDelta.current = { x: x - hit.x, y: y - hit.y }
-    } else {
-      // Plan fixe: ne pas déplacer le fond
+      return
     }
+    const h = handleAt(sx, sy)
+    if (editable && h !== 'none') {
+      setResizeHandle(h)
+      return
+    }
+    // Plan fixe: ne pas déplacer le fond
   }
 
   function snap(v: number) {
@@ -243,6 +301,42 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
     const { x, y } = screenToWorld(sx, sy)
+    if (fixtureResize && editable) {
+      const idx = (fixtures as any[]).findIndex(f => f.id === fixtureResize.id)
+      if (idx >= 0) {
+        const fx: any = (fixtures as any[])[idx]
+        if (fixtureResize.shape === 'round') {
+          const dx = x - fx.x
+          const dy = y - fx.y
+          let nr = Math.max(5, Math.sqrt(dx * dx + dy * dy))
+          if (showGrid && room.grid && room.grid > 0) nr = snap(nr)
+          fx.r = nr
+        } else {
+          let nw = fx.w
+          let nh = fx.h
+          if (fixtureResize.handle === 'right' || fixtureResize.handle === 'corner') nw = Math.max(10, x - fx.x)
+          if (fixtureResize.handle === 'bottom' || fixtureResize.handle === 'corner') nh = Math.max(10, y - fx.y)
+          if (showGrid && room.grid && room.grid > 0) {
+            nw = snap(nw); nh = snap(nh)
+          }
+          fx.w = nw; fx.h = nh
+        }
+        onChange && onChange({ ...data, fixtures: [...(fixtures as any[])] })
+      }
+      return
+    }
+    if (fixtureDraggingId) {
+      const fx: any = (fixtures as any[]).find(f => f.id === fixtureDraggingId)
+      if (fx) {
+        const nx = x - dragDelta.current.x
+        const ny = y - dragDelta.current.y
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        fx.x = snapGrid ? snap(nx) : nx
+        fx.y = snapGrid ? snap(ny) : ny
+        onChange && onChange({ ...data, fixtures: [...(fixtures as any[])] })
+      }
+      return
+    }
     if (resizeHandle !== 'none' && editable) {
       let nw = room.width
       let nh = room.height
@@ -272,10 +366,15 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       onChange && onChange({ ...data, tables: [...tables] })
       return
     }
+    const fr = fixtureHandleAt(sx, sy)
     const h = handleAt(sx, sy)
     const el = canvasRef.current
     if (el) {
-      el.style.cursor = h === 'corner' ? 'nwse-resize' : h === 'right' ? 'ew-resize' : h === 'bottom' ? 'ns-resize' : 'default'
+      if (fr) {
+        el.style.cursor = fr.handle === 'corner' ? 'nwse-resize' : fr.handle === 'right' ? 'ew-resize' : fr.handle === 'bottom' ? 'ns-resize' : 'ew-resize'
+      } else {
+        el.style.cursor = h === 'corner' ? 'nwse-resize' : h === 'right' ? 'ew-resize' : h === 'bottom' ? 'ns-resize' : 'default'
+      }
     }
   }
 
@@ -283,6 +382,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     setDraggingId(null)
     setIsPanning(false)
     setResizeHandle('none')
+    setFixtureDraggingId(null)
+    setFixtureResize(null)
     const el = canvasRef.current
     if (el) el.style.cursor = 'default'
   }
