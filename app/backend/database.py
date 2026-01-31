@@ -34,6 +34,7 @@ def init_db() -> None:
     ensure_reservation_last_pdf_column()
     ensure_on_invoice_column()
     ensure_drink_unique_index()
+    ensure_floorplan_columns()
 
 
 def run_startup_migrations() -> None:
@@ -137,8 +138,83 @@ def ensure_final_version_column() -> None:
                     conn.execute(text("ALTER TABLE reservation ADD COLUMN final_version BOOLEAN DEFAULT FALSE"))
                 except Exception:
                     pass
+
+
+def ensure_floorplan_columns() -> None:
+    """Ensure JSON/JSONB columns exist for floorplan tables (idempotent)."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                # floorplanbase.data
+                try:
+                    res = conn.exec_driver_sql("PRAGMA table_info(floorplanbase);")
+                    cols = [row[1] for row in res.fetchall()]
+                    if 'data' not in cols:
+                        # SQLite: use TEXT to store JSON payloads
+                        conn.exec_driver_sql("ALTER TABLE floorplanbase ADD COLUMN data TEXT;")
+                except Exception:
+                    pass
+                # floorplaninstance.data & assignments
+                try:
+                    res = conn.exec_driver_sql("PRAGMA table_info(floorplaninstance);")
+                    cols = [row[1] for row in res.fetchall()]
+                    if 'data' not in cols:
+                        conn.exec_driver_sql("ALTER TABLE floorplaninstance ADD COLUMN data TEXT;")
+                    if 'assignments' not in cols:
+                        conn.exec_driver_sql("ALTER TABLE floorplaninstance ADD COLUMN assignments TEXT;")
+                except Exception:
+                    pass
+            elif backend == 'postgresql':
+                # Use JSONB for PG and default to empty object to avoid null issues
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='floorplanbase' AND column_name='data'
+                      ) THEN
+                        ALTER TABLE floorplanbase ADD COLUMN data JSONB DEFAULT '{}'::jsonb;
+                      END IF;
+                    END$$;
+                    """
+                ))
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='floorplaninstance' AND column_name='data'
+                      ) THEN
+                        ALTER TABLE floorplaninstance ADD COLUMN data JSONB DEFAULT '{}'::jsonb;
+                      END IF;
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='floorplaninstance' AND column_name='assignments'
+                      ) THEN
+                        ALTER TABLE floorplaninstance ADD COLUMN assignments JSONB DEFAULT '{}'::jsonb;
+                      END IF;
+                    END$$;
+                    """
+                ))
+            else:
+                # Best-effort generic ALTERs for other backends
+                try:
+                    conn.execute(text("ALTER TABLE floorplanbase ADD COLUMN data JSON"))
+                except Exception:
+                    pass
+                try:
+                    conn.execute(text("ALTER TABLE floorplaninstance ADD COLUMN data JSON"))
+                except Exception:
+                    pass
+                try:
+                    conn.execute(text("ALTER TABLE floorplaninstance ADD COLUMN assignments JSON"))
+                except Exception:
+                    pass
     except Exception:
-        # Non-fatal
+        # Non-fatal; will be surfaced by API if still missing
         pass
 
 
