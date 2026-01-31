@@ -25,6 +25,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     shape: 'rect' | 'round'
     handle: 'right' | 'bottom' | 'corner' | 'radius'
   } | null>(null)
+  const [noGoDraggingId, setNoGoDraggingId] = useState<string | null>(null)
+  const [noGoResize, setNoGoResize] = useState<{ id: string; handle: 'right' | 'bottom' | 'corner' } | null>(null)
+  const dragStart = useRef<{ x: number; y: number } | null>(null)
+  const lastValid = useRef<{ x: number; y: number } | null>(null)
+  const dragInvalid = useRef(false)
 
   const room = data.room || { width: 1200, height: 800, grid: 50 }
   const tables = data.tables || []
@@ -45,6 +50,28 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
   function worldToScreen(x: number, y: number) {
     return { x: x * scale + offset.x, y: y * scale + offset.y }
+  }
+
+  function noGoHandleAt(sx: number, sy: number): { id: string; handle: 'right' | 'bottom' | 'corner' } | null {
+    const M = 12
+    const list = [...noGo].reverse()
+    for (const r of list) {
+      const cr = worldToScreen(r.x + r.w, r.y + r.h)
+      if (Math.abs(sx - cr.x) <= M && Math.abs(sy - cr.y) <= M) return { id: r.id, handle: 'corner' }
+      const rr = worldToScreen(r.x + r.w, r.y + r.h / 2)
+      if (Math.abs(sx - rr.x) <= M && Math.abs(sy - rr.y) <= M) return { id: r.id, handle: 'right' }
+      const bb = worldToScreen(r.x + r.w / 2, r.y + r.h)
+      if (Math.abs(sx - bb.x) <= M && Math.abs(sy - bb.y) <= M) return { id: r.id, handle: 'bottom' }
+    }
+    return null
+  }
+
+  function noGoHit(x: number, y: number) {
+    const list = [...noGo].reverse()
+    for (const r of list) {
+      if (rectHit(x, y, r)) return r
+    }
+    return null
   }
   function screenToWorld(x: number, y: number) {
     return { x: (x - offset.x) / scale, y: (y - offset.y) / scale }
@@ -130,8 +157,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   function tableCollides(t: FloorTable) {
     if (t.r) {
       const c: FloorCircle = { id: t.id, x: t.x, y: t.y, r: t.r }
+      // bounds
+      if (c.x - (c.r || 0) < 0 || c.y - (c.r || 0) < 0 || c.x + (c.r || 0) > room.width || c.y + (c.r || 0) > room.height) return true
       for (const r of noGo) if (intersectsCircleRect(c, r)) return true
       for (const r of walls) if (intersectsCircleRect(c, r)) return true
+      for (const col of cols) { if (intersectsCircleCircle(c, col)) return true }
       for (const f of fixtures) {
         if ('r' in (f as any)) { if (intersectsCircleCircle(c, f as any)) return true }
         else { if (intersectsCircleRect(c, f as any)) return true }
@@ -141,8 +171,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       const w = t.w || 120
       const h = t.h || 60
       const rr: FloorRect = { id: t.id, x: t.x, y: t.y, w, h }
+      // bounds
+      if (rr.x < 0 || rr.y < 0 || rr.x + rr.w > room.width || rr.y + rr.h > room.height) return true
       for (const r of noGo) if (intersectsRectRect(rr, r)) return true
       for (const r of walls) if (intersectsRectRect(rr, r)) return true
+      for (const col of cols) if (intersectsCircleRect(col, rr)) return true
       for (const f of fixtures) {
         if ('r' in (f as any)) { if (intersectsCircleRect(f as any, rr)) return true }
         else { if (intersectsRectRect(rr, f as any)) return true }
@@ -196,7 +229,17 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     for (const c of cols) { ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.fill() }
 
     ctx.fillStyle = '#bbb'
-    for (const r of noGo) ctx.fillRect(r.x, r.y, r.w, r.h)
+    for (const r of noGo) {
+      ctx.fillRect(r.x, r.y, r.w, r.h)
+      if (editable) {
+        const hs2 = 6 / scale
+        ctx.fillStyle = '#555'
+        ctx.fillRect(r.x + r.w - hs2 / 2, r.y + r.h - hs2 / 2, hs2, hs2)
+        ctx.fillRect(r.x + r.w - hs2 / 2, r.y + r.h / 2 - hs2 / 2, hs2, hs2)
+        ctx.fillRect(r.x + r.w / 2 - hs2 / 2, r.y + r.h - hs2 / 2, hs2, hs2)
+        ctx.fillStyle = '#bbb'
+      }
+    }
 
     for (const fx of fixtures) {
       ctx.fillStyle = '#8b8'
@@ -284,9 +327,23 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       }
       return
     }
+    const ngr = noGoHandleAt(sx, sy)
+    if (editable && ngr) {
+      setNoGoResize(ngr)
+      return
+    }
+    const ng = noGoHit(x, y)
+    if (editable && ng) {
+      setNoGoDraggingId(ng.id)
+      dragDelta.current = { x: x - ng.x, y: y - ng.y }
+      return
+    }
     const hit = [...tables].reverse().find(t => tableHit(x, y, t))
     if (hit && editable && !hit.locked) {
       setDraggingId(hit.id)
+      dragStart.current = { x: hit.x, y: hit.y }
+      lastValid.current = { x: hit.x, y: hit.y }
+      dragInvalid.current = false
       dragDelta.current = { x: x - hit.x, y: y - hit.y }
       return
     }
@@ -344,6 +401,34 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       }
       return
     }
+    if (noGoResize && editable) {
+      const idx = noGo.findIndex(r => r.id === noGoResize.id)
+      if (idx >= 0) {
+        const r = { ...noGo[idx] }
+        let nw = r.w
+        let nh = r.h
+        if (noGoResize.handle === 'right' || noGoResize.handle === 'corner') nw = Math.max(10, x - r.x)
+        if (noGoResize.handle === 'bottom' || noGoResize.handle === 'corner') nh = Math.max(10, y - r.y)
+        if (showGrid && room.grid && room.grid > 0) { nw = snap(nw); nh = snap(nh) }
+        const next = [...noGo]
+        next[idx] = { ...r, w: nw, h: nh }
+        onChange && onChange({ ...data, no_go: next })
+      }
+      return
+    }
+    if (noGoDraggingId) {
+      const idx = noGo.findIndex(r => r.id === noGoDraggingId)
+      if (idx >= 0) {
+        const r = { ...noGo[idx] }
+        const nx = x - dragDelta.current.x
+        const ny = y - dragDelta.current.y
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const next = [...noGo]
+        next[idx] = { ...r, x: snapGrid ? snap(nx) : nx, y: snapGrid ? snap(ny) : ny }
+        onChange && onChange({ ...data, no_go: next })
+      }
+      return
+    }
     if (resizeHandle !== 'none' && editable) {
       let nw = room.width
       let nh = room.height
@@ -370,15 +455,23 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         t.x = snapGrid ? snap(nx) : nx
         t.y = snapGrid ? snap(ny) : ny
       }
+      const invalidNow = tableCollides(t)
+      dragInvalid.current = invalidNow
+      if (!invalidNow) {
+        lastValid.current = { x: t.x, y: t.y }
+      }
       onChange && onChange({ ...data, tables: [...tables] })
       return
     }
     const fr = fixtureHandleAt(sx, sy)
+    const ngr = noGoHandleAt(sx, sy)
     const h = handleAt(sx, sy)
     const el = canvasRef.current
     if (el) {
       if (fr) {
         el.style.cursor = fr.handle === 'corner' ? 'nwse-resize' : fr.handle === 'right' ? 'ew-resize' : fr.handle === 'bottom' ? 'ns-resize' : 'ew-resize'
+      } else if (ngr) {
+        el.style.cursor = ngr.handle === 'corner' ? 'nwse-resize' : ngr.handle === 'right' ? 'ew-resize' : 'ns-resize'
       } else {
         el.style.cursor = h === 'corner' ? 'nwse-resize' : h === 'right' ? 'ew-resize' : h === 'bottom' ? 'ns-resize' : 'default'
       }
@@ -386,11 +479,26 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   }
 
   function onPointerUp() {
+    const currentDraggingId = draggingId
+    // Revert invalid drop before clearing ids/state
+    if (dragStart.current && lastValid.current && dragInvalid.current && editable && currentDraggingId) {
+      const t = tables.find(tt => tt.id === currentDraggingId)
+      if (t) {
+        t.x = lastValid.current.x
+        t.y = lastValid.current.y
+        onChange && onChange({ ...data, tables: [...tables] })
+      }
+    }
     setDraggingId(null)
     setIsPanning(false)
     setResizeHandle('none')
     setFixtureDraggingId(null)
     setFixtureResize(null)
+    dragStart.current = null
+    lastValid.current = null
+    dragInvalid.current = false
+    setNoGoDraggingId(null)
+    setNoGoResize(null)
     const el = canvasRef.current
     if (el) el.style.cursor = 'default'
   }

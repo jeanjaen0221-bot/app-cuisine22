@@ -59,6 +59,115 @@ def _capacity_for_table(tbl: Dict[str, Any]) -> int:
     return cap
 
 
+def _rect_intersects(a: Dict[str, float], b: Dict[str, float]) -> bool:
+    return not (a["x"] + a["w"] <= b["x"] or b["x"] + b["w"] <= a["x"] or a["y"] + a["h"] <= b["y"] or b["y"] + b["h"] <= a["y"])
+
+
+def _circle_rect_intersects(c: Dict[str, float], r: Dict[str, float]) -> bool:
+    cx = max(r["x"], min(c["x"], r["x"] + r["w"]))
+    cy = max(r["y"], min(c["y"], r["y"] + r["h"]))
+    dx = c["x"] - cx
+    dy = c["y"] - cy
+    return dx * dx + dy * dy <= (c.get("r") or 0) ** 2
+
+
+def _circle_circle_intersects(a: Dict[str, float], b: Dict[str, float]) -> bool:
+    dx = a["x"] - b["x"]
+    dy = a["y"] - b["y"]
+    rr = (a.get("r") or 0) + (b.get("r") or 0)
+    return dx * dx + dy * dy <= rr * rr
+
+
+def _table_collides(plan: Dict[str, Any], t: Dict[str, Any], existing_tables: Optional[List[Dict[str, Any]]] = None) -> bool:
+    room = (plan.get("room") or {"width": 0, "height": 0})
+    x = float(t.get("x") or 0)
+    y = float(t.get("y") or 0)
+    if "r" in t and t.get("r"):
+        r = float(t.get("r") or 0)
+        # bounds
+        if x - r < 0 or y - r < 0 or x + r > float(room.get("width") or 0) or y + r > float(room.get("height") or 0):
+            return True
+        c = {"x": x, "y": y, "r": r}
+        for rr in (plan.get("no_go") or []):
+            if _circle_rect_intersects(c, {"x": float(rr.get("x")), "y": float(rr.get("y")), "w": float(rr.get("w")), "h": float(rr.get("h"))}):
+                return True
+        for w in (plan.get("walls") or []):
+            if _circle_rect_intersects(c, {"x": float(w.get("x")), "y": float(w.get("y")), "w": float(w.get("w")), "h": float(w.get("h"))}):
+                return True
+        for fx in (plan.get("fixtures") or []):
+            if "r" in fx and fx.get("r"):
+                if _circle_circle_intersects(c, {"x": float(fx.get("x")), "y": float(fx.get("y")), "r": float(fx.get("r"))}):
+                    return True
+            else:
+                if _circle_rect_intersects(c, {"x": float(fx.get("x")), "y": float(fx.get("y")), "w": float(fx.get("w")), "h": float(fx.get("h"))}):
+                    return True
+        for col in (plan.get("columns") or []):
+            if _circle_circle_intersects(c, {"x": float(col.get("x")), "y": float(col.get("y")), "r": float(col.get("r") or 0)}):
+                return True
+        for ot in (existing_tables or (plan.get("tables") or [])):
+            if ot is t:
+                continue
+            if "r" in (ot or {}) and ot.get("r"):
+                if _circle_circle_intersects(c, {"x": float(ot.get("x")), "y": float(ot.get("y")), "r": float(ot.get("r"))}):
+                    return True
+            else:
+                if _circle_rect_intersects(c, {"x": float(ot.get("x")), "y": float(ot.get("y")), "w": float(ot.get("w") or 120), "h": float(ot.get("h") or 60)}):
+                    return True
+        return False
+    else:
+        w = float(t.get("w") or 120)
+        h = float(t.get("h") or 60)
+        # bounds
+        if x < 0 or y < 0 or x + w > float(room.get("width") or 0) or y + h > float(room.get("height") or 0):
+            return True
+        rr = {"x": x, "y": y, "w": w, "h": h}
+        for ng in (plan.get("no_go") or []):
+            if _rect_intersects(rr, {"x": float(ng.get("x")), "y": float(ng.get("y")), "w": float(ng.get("w")), "h": float(ng.get("h"))}):
+                return True
+        for w2 in (plan.get("walls") or []):
+            if _rect_intersects(rr, {"x": float(w2.get("x")), "y": float(w2.get("y")), "w": float(w2.get("w")), "h": float(w2.get("h"))}):
+                return True
+        for fx in (plan.get("fixtures") or []):
+            if "r" in fx and fx.get("r"):
+                if _circle_rect_intersects({"x": float(fx.get("x")), "y": float(fx.get("y")), "r": float(fx.get("r"))}, rr):
+                    return True
+            else:
+                if _rect_intersects(rr, {"x": float(fx.get("x")), "y": float(fx.get("y")), "w": float(fx.get("w") or 0), "h": float(fx.get("h") or 0)}):
+                    return True
+        for col in (plan.get("columns") or []):
+            if _circle_rect_intersects({"x": float(col.get("x")), "y": float(col.get("y")), "r": float(col.get("r") or 0)}, rr):
+                return True
+        for ot in (existing_tables or (plan.get("tables") or [])):
+            if ot is t:
+                continue
+            if "r" in (ot or {}) and ot.get("r"):
+                if _circle_rect_intersects({"x": float(ot.get("x")), "y": float(ot.get("y")), "r": float(ot.get("r"))}, rr):
+                    return True
+            else:
+                if _rect_intersects(rr, {"x": float(ot.get("x")), "y": float(ot.get("y")), "w": float(ot.get("w") or 120), "h": float(ot.get("h") or 60)}):
+                    return True
+        return False
+
+
+def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: float = 60, r: float = 50) -> Optional[Dict[str, float]]:
+    room = (plan.get("room") or {"width": 0, "height": 0})
+    gw = int(room.get("grid") or 50)
+    W = int(room.get("width") or 0)
+    H = int(room.get("height") or 0)
+    # scan grid row by row
+    for yy in range(0, max(0, H - (int(h) if shape == "rect" else int(r))), max(1, gw)):
+        for xx in range(0, max(0, W - (int(w) if shape == "rect" else int(r))), max(1, gw)):
+            cand: Dict[str, Any]
+            if shape == "rect":
+                cand = {"x": float(xx), "y": float(yy), "w": float(w), "h": float(h)}
+            else:
+                cand = {"x": float(xx + r), "y": float(yy + r), "r": float(r)}
+            t = {"id": "_probe", **cand}
+            if not _table_collides(plan, t, existing_tables=plan.get("tables") or []):
+                return cand
+    return None
+
+
 def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> Dict[str, Any]:
     tables: List[Dict[str, Any]] = list(plan_data.get("tables") or [])
     # Partition tables
@@ -72,7 +181,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
     avail_rounds = {t.get("id"): t for t in rounds}
 
     # Sort reservations largest first to minimize waste
-    groups = sorted(reservations, key=lambda r: r.pax, reverse=True)
+    groups = sorted(reservations, key=lambda r: (r.arrival_time or dtime(0, 0), -int(r.pax)))
 
     assignments_by_table: Dict[str, Dict[str, Any]] = {}
 
@@ -123,7 +232,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             predicate=lambda t: _capacity_for_table(t) >= r.pax,
         )
         if best_fixed:
-            assignments_by_table.setdefault(best_fixed.get("id"), {"res_id": str(r.id), "name": r.client_name, "pax": r.pax})
+            assignments_by_table.setdefault(best_fixed.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": r.pax})
             placed = True
         if placed:
             continue
@@ -136,7 +245,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 
         best_rect = take_table(avail_rects, predicate=rect_can_fit)
         if best_rect:
-            assignments_by_table.setdefault(best_rect.get("id"), {"res_id": str(r.id), "name": r.client_name, "pax": r.pax})
+            assignments_by_table.setdefault(best_rect.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": r.pax})
             placed = True
         if placed:
             continue
@@ -145,7 +254,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         combo = take_best_rect_combo(r.pax)
         if combo:
             for t in combo:
-                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": r.client_name, "pax": r.pax})
+                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": r.pax})
                 avail_rects.pop(t.get("id"), None)
             placed = True
         if placed:
@@ -157,8 +266,30 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             predicate=lambda t: _capacity_for_table(t) >= r.pax,
         )
         if best_round:
-            assignments_by_table.setdefault(best_round.get("id"), {"res_id": str(r.id), "name": r.client_name, "pax": r.pax, "last_resort": True})
+            assignments_by_table.setdefault(best_round.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": r.pax, "last_resort": True})
             placed = True
+
+        # 5) Create and place a new non-fixed table if still not placed
+        if not placed:
+            # Prefer a rectangle for <= 8 pax; otherwise round
+            if r.pax <= 8:
+                # try rectangle 120x60, capacity ~ pax
+                spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
+                if spot:
+                    new_id = str(uuid.uuid4())
+                    new_tbl = {"id": new_id, "kind": "rect", "capacity": int(r.pax), **spot}
+                    (plan_data.setdefault("tables", [])).append(new_tbl)
+                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": r.pax})
+                    placed = True
+            if not placed:
+                # try round with r=50
+                spot = _find_spot_for_table(plan_data, "round", r=50)
+                if spot:
+                    new_id = str(uuid.uuid4())
+                    new_tbl = {"id": new_id, "kind": "round", "capacity": int(r.pax), **spot}
+                    (plan_data.setdefault("tables", [])).append(new_tbl)
+                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": r.pax})
+                    placed = True
 
         # If not placed, leave unassigned; frontend will show conflict
 
@@ -251,7 +382,9 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     if not row:
         raise HTTPException(404, "Instance not found")
     reservations = _load_reservations(session, row.service_date, row.service_label)
-    row.assignments = _auto_assign(row.data or {}, reservations)
+    plan = row.data or {}
+    row.data = plan
+    row.assignments = _auto_assign(plan, reservations)
     session.add(row)
     session.commit()
     session.refresh(row)

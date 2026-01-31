@@ -82,6 +82,17 @@ export default function FloorPlanPage() {
     if (mode === 'service' && inst) saveInstanceData(next)
   }
 
+  function addNoGo() {
+    const next: FloorPlanData = { ...(mode === 'base' ? base?.data : inst?.data) } as any
+    if (!next.no_go) next.no_go = [] as any
+    const id = `ng_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    const w = 200, h = 120
+    const x = 150, y = 150
+    ;(next.no_go as any).push({ id, x, y, w, h })
+    if (mode === 'base' && base) saveBaseData(next)
+    if (mode === 'service' && inst) saveInstanceData(next)
+  }
+
   return (
     <div className="page">
       <div className="toolbar" style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
@@ -107,6 +118,7 @@ export default function FloorPlanPage() {
               <hr />
               <button onClick={() => addFixture('rect')}>Ajouter objet carré</button>
               <button onClick={() => addFixture('round')}>Ajouter objet rond</button>
+              <button onClick={addNoGo}>Ajouter zone interdite</button>
             </div>
             <div style={{ marginTop: 16 }}>
               <div>Date par défaut: {new Date().toLocaleDateString()}</div>
@@ -142,6 +154,7 @@ export default function FloorPlanPage() {
               <hr />
               <button onClick={() => addFixture('rect')} disabled={!inst}>Ajouter objet carré</button>
               <button onClick={() => addFixture('round')} disabled={!inst}>Ajouter objet rond</button>
+              <button onClick={addNoGo} disabled={!inst}>Ajouter zone interdite</button>
             </div>
           </div>
           <div>
