@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink } from 'react-router-dom'
-import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart, Building2, Map } from 'lucide-react'
+import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart, Building2 } from 'lucide-react'
 import NotesWidget from '../components/NotesWidget'
 import Home from './Home'
 import EditReservation from './EditReservation'
@@ -10,7 +10,6 @@ import CommandePage from './CommandePage'
 import OrdersListPage from './OrdersListPage'
 import OrderDetailPage from './OrderDetailPage'
 import SuppliersPage from './SuppliersPage'
-import FloorPlanPage from './FloorPlanPage'
 
 export default function App() {
   return (
@@ -23,9 +22,6 @@ export default function App() {
           </NavLink>
           <NavLink to="/past" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <History className="w-4 h-4"/> Passées
-          </NavLink>
-          <NavLink to="/plan-salle" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-            <Map className="w-4 h-4"/> Plan de salle
           </NavLink>
           <NavLink to="/menu" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <UtensilsCrossed className="w-4 h-4"/> Base de plats
@@ -48,7 +44,6 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/past" element={<PastReservations />} />
-          <Route path="/plan-salle" element={<FloorPlanPage />} />
           <Route path="/reservation/new" element={<EditReservation />} />
           <Route path="/reservation/:id" element={<EditReservation />} />
           <Route path="/menu" element={<MenuPage />} />
