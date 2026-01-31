@@ -212,7 +212,7 @@ def ensure_floorplan_columns() -> None:
                     END$$;
                     """
                 ))
-                # Ensure template_id exists, backfill from oldest base, set NOT NULL, and add FK if missing
+                # Ensure template_id exists, backfill from oldest base, set NOT NULL
                 conn.execute(text(
                     """
                     DO $$
@@ -249,7 +249,12 @@ def ensure_floorplan_columns() -> None:
                     END$$;
                     """
                 ))
-                # Add FK constraint if missing
+                # Drop any old FK (e.g., pointing to floorplantemplate) and add correct FK to floorplanbase(id)
+                conn.execute(text(
+                    """
+                    ALTER TABLE floorplaninstance DROP CONSTRAINT IF EXISTS floorplaninstance_template_id_fkey;
+                    """
+                ))
                 conn.execute(text(
                     """
                     DO $$

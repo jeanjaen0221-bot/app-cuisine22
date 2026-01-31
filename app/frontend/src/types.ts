@@ -175,6 +175,7 @@ export type FloorPlanInstance = {
   id: UUID
   service_date: string
   service_label?: string | null
+  template_id?: UUID
   data: FloorPlanData
   assignments: AssignmentMap
   created_at: string
