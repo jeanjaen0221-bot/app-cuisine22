@@ -5,7 +5,17 @@ from typing import Generator
 from sqlmodel import SQLModel, create_engine, Session
 from sqlalchemy import text
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data.db")
+def _dsn_from_pg_env() -> str | None:
+    host = os.getenv("PGHOST")
+    db = os.getenv("PGDATABASE")
+    user = os.getenv("PGUSER")
+    pwd = os.getenv("PGPASSWORD")
+    port = os.getenv("PGPORT", "5432")
+    if host and db and user and pwd:
+        return f"postgresql://{user}:{pwd}@{host}:{port}/{db}"
+    return None
+
+DATABASE_URL = os.getenv("DATABASE_URL") or _dsn_from_pg_env() or "sqlite:///./data.db"
 
 # Normalize postgres scheme for SQLAlchemy/psycopg2
 if DATABASE_URL.startswith("postgres://"):

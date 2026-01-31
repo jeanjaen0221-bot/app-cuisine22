@@ -39,3 +39,48 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+export async function getFloorBase() {
+  const r = await api.get('/api/floorplan/base')
+  return r.data
+}
+
+export async function updateFloorBase(payload: { name?: string; data?: any }) {
+  const r = await api.put('/api/floorplan/base', payload)
+  return r.data
+}
+
+export async function createFloorInstance(payload: { service_date: string; service_label?: string | null }) {
+  const r = await api.post('/api/floorplan/instances', payload)
+  return r.data
+}
+
+export async function listFloorInstances(params?: { service_date?: string; service_label?: string }) {
+  const r = await api.get('/api/floorplan/instances', { params })
+  return r.data
+}
+
+export async function getFloorInstance(id: string) {
+  const r = await api.get(`/api/floorplan/instances/${id}`)
+  return r.data
+}
+
+export async function updateFloorInstance(id: string, payload: { data?: any; assignments?: any }) {
+  const r = await api.put(`/api/floorplan/instances/${id}`, payload)
+  return r.data
+}
+
+export async function autoAssignInstance(id: string) {
+  const r = await api.post(`/api/floorplan/instances/${id}/auto-assign`)
+  return r.data
+}
+
+export async function importReservationsPdf(file: File, service_date: string, service_label?: string | null, create?: boolean) {
+  const fd = new FormData()
+  fd.append('file', file)
+  fd.append('service_date', service_date)
+  if (service_label) fd.append('service_label', service_label)
+  if (create) fd.append('create', 'true')
+  const r = await api.post('/api/floorplan/import-pdf', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  return r.data
+}

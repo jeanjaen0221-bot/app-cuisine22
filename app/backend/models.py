@@ -5,7 +5,7 @@ from enum import Enum
 from typing import List, Optional
 
 from sqlmodel import Field, SQLModel
-from sqlalchemy import UniqueConstraint, CheckConstraint, Index
+from sqlalchemy import UniqueConstraint, CheckConstraint, Index, Column, JSON
 
 
 class ReservationStatus(str, Enum):
@@ -422,3 +422,57 @@ class PurchaseOrderRead(SQLModel):
     note: Optional[str] = None
     created_at: datetime
     items: List[PurchaseOrderItemRead] = Field(default_factory=list)
+
+
+class FloorPlanBase(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    name: str = "base"
+    data: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class FloorPlanBaseRead(SQLModel):
+    id: uuid.UUID
+    name: str
+    data: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class FloorPlanBaseUpdate(SQLModel):
+    name: Optional[str] = None
+    data: Optional[dict] = None
+
+
+class FloorPlanInstance(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    service_date: date
+    service_label: Optional[str] = None
+    data: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    assignments: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    __table_args__ = (
+        UniqueConstraint('service_date', 'service_label', name='uq_floorplan_instance'),
+    )
+
+
+class FloorPlanInstanceRead(SQLModel):
+    id: uuid.UUID
+    service_date: date
+    service_label: Optional[str] = None
+    data: dict
+    assignments: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class FloorPlanInstanceCreate(SQLModel):
+    service_date: date
+    service_label: Optional[str] = None
+
+
+class FloorPlanInstanceUpdate(SQLModel):
+    data: Optional[dict] = None
+    assignments: Optional[dict] = None

@@ -21,9 +21,17 @@ from reportlab.lib.units import cm
 from .models import Reservation, ReservationItem, BillingInfo
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PDF_DIR = os.path.abspath(os.path.join(BASE_DIR, "../generated_pdfs"))
+PDF_DIR = os.getenv("PDF_DIR") or os.path.abspath(os.path.join(BASE_DIR, "../generated_pdfs"))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
-os.makedirs(PDF_DIR, exist_ok=True)
+try:
+    os.makedirs(PDF_DIR, exist_ok=True)
+except Exception:
+    # Fallback safe dir for PaaS with read-only code volume
+    PDF_DIR = os.path.join("/tmp", "generated_pdfs")
+    try:
+        os.makedirs(PDF_DIR, exist_ok=True)
+    except Exception:
+        pass
 
 
 def _reservation_filename(reservation: Reservation) -> str:

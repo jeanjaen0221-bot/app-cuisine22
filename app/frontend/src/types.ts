@@ -131,3 +131,52 @@ export type PurchaseOrderCreate = {
   note?: string | null
   items: PurchaseOrderItemCreate[]
 }
+
+export type ServiceLabel = 'lunch' | 'dinner' | (string & {})
+
+export type FloorTable = {
+  id: string
+  kind: 'fixed' | 'rect' | 'round'
+  x: number
+  y: number
+  w?: number
+  h?: number
+  r?: number
+  capacity?: number
+  locked?: boolean
+  label?: string
+}
+
+export type FloorRect = { id: string; x: number; y: number; w: number; h: number }
+export type FloorCircle = { id: string; x: number; y: number; r: number }
+
+export type FloorPlanData = {
+  room?: { width: number; height: number; grid?: number }
+  walls?: FloorRect[]
+  columns?: FloorCircle[]
+  no_go?: FloorRect[]
+  fixtures?: (FloorRect & { shape?: 'rect' } | FloorCircle & { shape?: 'round' })[]
+  tables: FloorTable[]
+}
+
+export type AssignmentMap = {
+  tables: Record<string, { res_id: string; name: string; pax: number; last_resort?: boolean }>
+}
+
+export type FloorPlanBase = {
+  id: UUID
+  name: string
+  data: FloorPlanData
+  created_at: string
+  updated_at: string
+}
+
+export type FloorPlanInstance = {
+  id: UUID
+  service_date: string
+  service_label?: string | null
+  data: FloorPlanData
+  assignments: AssignmentMap
+  created_at: string
+  updated_at: string
+}

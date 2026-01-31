@@ -1,0 +1,21 @@
+[phases.setup]
+# Install Python and Node for a multi-language build
+nixPkgs = ["python311", "nodejs_20"]
+
+[phases.install]
+# Install backend and frontend dependencies
+cmds = [
+  "pip install --upgrade pip",
+  "pip install -r app/backend/requirements.txt",
+  "npm --prefix app/frontend install"
+]
+
+[phases.build]
+# Build the frontend to app/frontend/dist so FastAPI can serve it
+cmds = [
+  "npm --prefix app/frontend run build"
+]
+
+[start]
+# Run the FastAPI server on Railway's provided PORT
+cmd = "uvicorn app.backend.main:app --host 0.0.0.0 --port ${PORT}"
