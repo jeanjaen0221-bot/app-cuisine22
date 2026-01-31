@@ -18,6 +18,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [isPanning, setIsPanning] = useState(false)
   const dragDelta = useRef({ x: 0, y: 0 })
+  const [resizeHandle, setResizeHandle] = useState<'none' | 'right' | 'bottom' | 'corner'>('none')
 
   const room = data.room || { width: 1200, height: 800, grid: 50 }
   const tables = data.tables || []
@@ -56,6 +57,17 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const w = t.w || 120
     const h = t.h || 60
     return rectHit(px, py, { id: t.id, x: t.x, y: t.y, w, h })
+  }
+
+  function handleAt(sx: number, sy: number): 'none' | 'right' | 'bottom' | 'corner' {
+    const M = 12
+    const br = worldToScreen(room.width, room.height)
+    if (Math.abs(sx - br.x) <= M && Math.abs(sy - br.y) <= M) return 'corner'
+    const rmid = worldToScreen(room.width, room.height / 2)
+    if (Math.abs(sx - rmid.x) <= M && Math.abs(sy - rmid.y) <= M) return 'right'
+    const bmid = worldToScreen(room.width / 2, room.height)
+    if (Math.abs(sx - bmid.x) <= M && Math.abs(sy - bmid.y) <= M) return 'bottom'
+    return 'none'
   }
 
   function intersectsRectRect(a: FloorRect, b: FloorRect) {
@@ -133,6 +145,12 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     ctx.lineWidth = 2 / scale
     ctx.strokeRect(0, 0, room.width, room.height)
 
+    const hs = 8 / scale
+    ctx.fillStyle = '#222'
+    ctx.fillRect(room.width - hs / 2, room.height - hs / 2, hs, hs)
+    ctx.fillRect(room.width - hs / 2, room.height / 2 - hs / 2, hs, hs)
+    ctx.fillRect(room.width / 2 - hs / 2, room.height - hs / 2, hs, hs)
+
     ctx.fillStyle = '#999'
     for (const w of walls) ctx.fillRect(w.x, w.y, w.w, w.h)
 
@@ -201,6 +219,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
     const { x, y } = screenToWorld(sx, sy)
+    const h = handleAt(sx, sy)
+    if (editable && h !== 'none') {
+      setResizeHandle(h)
+      return
+    }
     const hit = [...tables].reverse().find(t => tableHit(x, y, t))
     if (hit && editable && !hit.locked) {
       setDraggingId(hit.id)
@@ -216,29 +239,52 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   }
 
   function onPointerMove(e: React.PointerEvent) {
-    if (!draggingId) return
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
     const { x, y } = screenToWorld(sx, sy)
-    const t = tables.find(t => t.id === draggingId)
-    if (!t) return
-    const nx = x - dragDelta.current.x
-    const ny = y - dragDelta.current.y
-    const snapGrid = showGrid && room.grid && room.grid > 0
-    if (t.r) {
-      t.x = snapGrid ? snap(nx) : nx
-      t.y = snapGrid ? snap(ny) : ny
-    } else {
-      t.x = snapGrid ? snap(nx) : nx
-      t.y = snapGrid ? snap(ny) : ny
+    if (resizeHandle !== 'none' && editable) {
+      let nw = room.width
+      let nh = room.height
+      if (resizeHandle === 'right' || resizeHandle === 'corner') nw = Math.max(100, x)
+      if (resizeHandle === 'bottom' || resizeHandle === 'corner') nh = Math.max(100, y)
+      const snapGrid = showGrid && room.grid && room.grid > 0
+      if (snapGrid) {
+        nw = snap(nw)
+        nh = snap(nh)
+      }
+      onChange && onChange({ ...data, room: { ...(room as any), width: nw, height: nh } })
+      return
     }
-    onChange && onChange({ ...data, tables: [...tables] })
+    if (draggingId) {
+      const t = tables.find(t => t.id === draggingId)
+      if (!t) return
+      const nx = x - dragDelta.current.x
+      const ny = y - dragDelta.current.y
+      const snapGrid = showGrid && room.grid && room.grid > 0
+      if (t.r) {
+        t.x = snapGrid ? snap(nx) : nx
+        t.y = snapGrid ? snap(ny) : ny
+      } else {
+        t.x = snapGrid ? snap(nx) : nx
+        t.y = snapGrid ? snap(ny) : ny
+      }
+      onChange && onChange({ ...data, tables: [...tables] })
+      return
+    }
+    const h = handleAt(sx, sy)
+    const el = canvasRef.current
+    if (el) {
+      el.style.cursor = h === 'corner' ? 'nwse-resize' : h === 'right' ? 'ew-resize' : h === 'bottom' ? 'ns-resize' : 'default'
+    }
   }
 
   function onPointerUp() {
     setDraggingId(null)
     setIsPanning(false)
+    setResizeHandle('none')
+    const el = canvasRef.current
+    if (el) el.style.cursor = 'default'
   }
 
   function onDoubleClick(e: React.MouseEvent) {
