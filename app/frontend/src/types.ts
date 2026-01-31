@@ -140,6 +140,7 @@ export type FloorPlanFixedTable = {
   rotation?: number
   seats: number
   label?: string
+  locked?: boolean
 }
 
 export type FloorPlanObstacle = {

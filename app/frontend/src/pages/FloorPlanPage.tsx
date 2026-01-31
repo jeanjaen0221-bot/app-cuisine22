@@ -9,6 +9,7 @@ import type {
   FloorPlanAssignment,
   AssignmentTable,
 } from '../types'
+import FloorPlanEditor from '../components/FloorPlanEditor'
 
 function numberInput(v: any, d = 0) {
   const n = parseInt(v as string, 10)
@@ -97,6 +98,7 @@ export default function FloorPlanPage() {
   const [serviceLabel, setServiceLabel] = useState<string>('service')
   const [instance, setInstance] = useState<FloorPlanInstance | null>(null)
   const [instances, setInstances] = useState<FloorPlanInstance[]>([])
+  const [scale, setScale] = useState<number>(1)
 
   useEffect(() => {
     fetchTemplates()
@@ -271,8 +273,23 @@ export default function FloorPlanPage() {
 
           {editing && (
             <div className="card p-3 space-y-2">
-              <h3 className="font-medium">Aperçu</h3>
-              <CanvasPreview layout={editing.layout as FloorPlanLayout} width={Math.min(800, editing.width)} height={Math.min(500, editing.height)} />
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium">Éditeur visuel</h3>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm">Zoom</label>
+                  <input className="input" type="range" min={0.25} max={2} step={0.05} value={scale} onChange={e => setScale(parseFloat(e.target.value))} style={{ width: 160 }} />
+                  <button className="btn" onClick={() => setScale(1)}>100%</button>
+                  <button className="btn" onClick={() => setScale(s => Math.max(0.25, s - 0.1))}>-</button>
+                  <button className="btn" onClick={() => setScale(s => Math.min(2, s + 0.1))}>+</button>
+                </div>
+              </div>
+              <FloorPlanEditor
+                layout={(editing.layout as FloorPlanLayout) || { fixedTables: [] }}
+                width={editing.width || 1000}
+                height={editing.height || 800}
+                scale={scale}
+                onLayoutChange={(next) => setEditing(prev => prev ? { ...prev, layout: next } : prev)}
+              />
             </div>
           )}
         </div>
