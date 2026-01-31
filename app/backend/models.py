@@ -449,6 +449,7 @@ class FloorPlanInstance(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     service_date: date
     service_label: Optional[str] = None
+    template_id: uuid.UUID = Field(foreign_key="floorplanbase.id")
     data: dict = Field(default_factory=dict, sa_column=Column(JSON))
     assignments: dict = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -462,6 +463,7 @@ class FloorPlanInstanceRead(SQLModel):
     id: uuid.UUID
     service_date: date
     service_label: Optional[str] = None
+    template_id: uuid.UUID
     data: dict
     assignments: dict
     created_at: datetime

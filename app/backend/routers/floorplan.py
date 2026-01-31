@@ -334,6 +334,7 @@ def create_instance(payload: FloorPlanInstanceCreate, session: Session = Depends
     row = FloorPlanInstance(
         service_date=payload.service_date,
         service_label=payload.service_label,
+        template_id=base.id,
         data=base.data or {},
         assignments={"tables": {}},
     )

@@ -166,6 +166,16 @@ def ensure_floorplan_columns() -> None:
                         conn.exec_driver_sql("ALTER TABLE floorplaninstance ADD COLUMN data TEXT;")
                     if 'assignments' not in cols:
                         conn.exec_driver_sql("ALTER TABLE floorplaninstance ADD COLUMN assignments TEXT;")
+                    if 'template_id' not in cols:
+                        # Add column and best-effort backfill from first base row
+                        conn.exec_driver_sql("ALTER TABLE floorplaninstance ADD COLUMN template_id TEXT;")
+                        try:
+                            base_id_res = conn.exec_driver_sql("SELECT id FROM floorplanbase ORDER BY created_at ASC LIMIT 1;")
+                            row = base_id_res.fetchone()
+                            if row and row[0]:
+                                conn.exec_driver_sql("UPDATE floorplaninstance SET template_id = ? WHERE template_id IS NULL;", (str(row[0]),))
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             elif backend == 'postgresql':
@@ -198,6 +208,59 @@ def ensure_floorplan_columns() -> None:
                         WHERE table_name='floorplaninstance' AND column_name='assignments'
                       ) THEN
                         ALTER TABLE floorplaninstance ADD COLUMN assignments JSONB DEFAULT '{}'::jsonb;
+                      END IF;
+                    END$$;
+                    """
+                ))
+                # Ensure template_id exists, backfill from oldest base, set NOT NULL, and add FK if missing
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='floorplaninstance' AND column_name='template_id'
+                      ) THEN
+                        ALTER TABLE floorplaninstance ADD COLUMN template_id UUID;
+                      END IF;
+                    END$$;
+                    """
+                ))
+                # Backfill template_id to the oldest base id
+                conn.execute(text(
+                    """
+                    UPDATE floorplaninstance SET template_id = (
+                      SELECT id FROM floorplanbase ORDER BY created_at ASC LIMIT 1
+                    )
+                    WHERE template_id IS NULL;
+                    """
+                ))
+                # Set NOT NULL if column exists
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='floorplaninstance' AND column_name='template_id'
+                      ) THEN
+                        ALTER TABLE floorplaninstance ALTER COLUMN template_id SET NOT NULL;
+                      END IF;
+                    END$$;
+                    """
+                ))
+                # Add FK constraint if missing
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = 'fk_floorplaninstance_template'
+                      ) THEN
+                        ALTER TABLE floorplaninstance
+                          ADD CONSTRAINT fk_floorplaninstance_template
+                          FOREIGN KEY (template_id) REFERENCES floorplanbase(id);
                       END IF;
                     END$$;
                     """
