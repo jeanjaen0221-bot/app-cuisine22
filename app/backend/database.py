@@ -138,6 +138,9 @@ def ensure_final_version_column() -> None:
                     conn.execute(text("ALTER TABLE reservation ADD COLUMN final_version BOOLEAN DEFAULT FALSE"))
                 except Exception:
                     pass
+    except Exception:
+        # Non-fatal
+        pass
 
 
 def ensure_floorplan_columns() -> None:
