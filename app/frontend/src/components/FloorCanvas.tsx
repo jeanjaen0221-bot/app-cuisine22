@@ -80,6 +80,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const M = 12
     const list = [...fixtures].reverse() as any[]
     for (const fx of list) {
+      if ((fx as any).locked) continue
       if ('r' in fx) {
         const p = worldToScreen(fx.x + fx.r, fx.y)
         if (Math.abs(sx - p.x) <= M && Math.abs(sy - p.y) <= M) return { id: fx.id, shape: 'round', handle: 'radius' }
@@ -211,15 +212,16 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         const cy = 'r' in fx ? (fx as any).y : (fx as any).y + (fx as any).h/2
         ctx.fillText(label, cx, cy)
       }
-      // handles for fixtures
-      const hs2 = 6 / scale
-      ctx.fillStyle = '#444'
-      if ('r' in fx) {
-        ctx.fillRect((fx as any).x + (fx as any).r - hs2 / 2, (fx as any).y - hs2 / 2, hs2, hs2)
-      } else {
-        ctx.fillRect((fx as any).x + (fx as any).w - hs2 / 2, (fx as any).y + (fx as any).h - hs2 / 2, hs2, hs2)
-        ctx.fillRect((fx as any).x + (fx as any).w - hs2 / 2, (fx as any).y + (fx as any).h / 2 - hs2 / 2, hs2, hs2)
-        ctx.fillRect((fx as any).x + (fx as any).w / 2 - hs2 / 2, (fx as any).y + (fx as any).h - hs2 / 2, hs2, hs2)
+      if (!(fx as any).locked && editable) {
+        const hs2 = 6 / scale
+        ctx.fillStyle = '#444'
+        if ('r' in fx) {
+          ctx.fillRect((fx as any).x + (fx as any).r - hs2 / 2, (fx as any).y - hs2 / 2, hs2, hs2)
+        } else {
+          ctx.fillRect((fx as any).x + (fx as any).w - hs2 / 2, (fx as any).y + (fx as any).h - hs2 / 2, hs2, hs2)
+          ctx.fillRect((fx as any).x + (fx as any).w - hs2 / 2, (fx as any).y + (fx as any).h / 2 - hs2 / 2, hs2, hs2)
+          ctx.fillRect((fx as any).x + (fx as any).w / 2 - hs2 / 2, (fx as any).y + (fx as any).h - hs2 / 2, hs2, hs2)
+        }
       }
     }
 
@@ -268,13 +270,18 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const { x, y } = screenToWorld(sx, sy)
     const fr = fixtureHandleAt(sx, sy)
     if (editable && fr) {
-      setFixtureResize(fr)
+      const fx: any = (fixtures as any[]).find(f => f.id === fr.id)
+      if (fx && !fx.locked) {
+        setFixtureResize(fr)
+      }
       return
     }
     const f = fixtureHit(x, y)
     if (editable && f) {
-      setFixtureDraggingId((f as any).id)
-      dragDelta.current = { x: x - (f as any).x, y: y - (f as any).y }
+      if (!(f as any).locked) {
+        setFixtureDraggingId((f as any).id)
+        dragDelta.current = { x: x - (f as any).x, y: y - (f as any).y }
+      }
       return
     }
     const hit = [...tables].reverse().find(t => tableHit(x, y, t))
@@ -399,15 +406,19 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       onChange && onChange({ ...data, tables: [...tables] })
       return
     }
-    // Rename fixtures on double click
     const fHit = [...fixtures].reverse().find(f => ('r' in (f as any))
       ? circleHit(x, y, { id: (f as any).id, x: (f as any).x, y: (f as any).y, r: (f as any).r })
       : rectHit(x, y, { id: (f as any).id, x: (f as any).x, y: (f as any).y, w: (f as any).w, h: (f as any).h })
     ) as any
     if (fHit) {
-      const name = window.prompt('Nom de l\'objet', fHit.label || '')
-      if (name !== null) {
-        fHit.label = name
+      if (e.altKey || e.shiftKey) {
+        const name = window.prompt('Nom de l\'objet', fHit.label || '')
+        if (name !== null) {
+          fHit.label = name
+          onChange && onChange({ ...data, fixtures: [...fixtures] })
+        }
+      } else {
+        fHit.locked = !fHit.locked
         onChange && onChange({ ...data, fixtures: [...fixtures] })
       }
     }
