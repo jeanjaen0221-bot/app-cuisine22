@@ -1184,8 +1184,8 @@ def import_reservations_pdf(
     import re
     
     # Format Albert Brussels: Heure | Pax | Client | Table | Statut | Date | Source
-    # Regex stricte: HH:MM suivi de 1-2 chiffres (pax) puis du reste
-    re_reservation_line = re.compile(r"^(\d{1,2}:\d{2})\s+(\d{1,2})\s+([A-Za-zÀ-ÿ].+)$")
+    # Regex: HH:MM suivi de 1-2 chiffres (pax) puis du reste (au moins 1 caractère)
+    re_reservation_line = re.compile(r"^(\d{1,2}:\d{2})\s+(\d{1,2})\s+(.+)$")
     
     # Patterns pour ignorer les lignes non-réservations
     skip_patterns = [
@@ -1245,6 +1245,8 @@ def import_reservations_pdf(
 
     parsed_count = 0
     skipped_count = 0
+    no_match_count = 0
+    debug_samples = []
     
     for ln in lines:
         # Ignorer les lignes d'en-tête, totaux, téléphones
@@ -1255,6 +1257,9 @@ def import_reservations_pdf(
         # Parser le format structuré Albert Brussels: HH:MM PAX NOM...
         match = re_reservation_line.match(ln)
         if not match:
+            no_match_count += 1
+            if no_match_count <= 10:  # Garder 10 exemples pour debug
+                debug_samples.append(ln[:80])
             continue
         
         time_str = match.group(1)
@@ -1277,9 +1282,9 @@ def import_reservations_pdf(
             skipped_count += 1
             continue
         
-        # Valider pax (1-20 pour réservations individuelles)
-        if pax < 1 or pax > 20:
-            logger.debug("POST /import-pdf -> pax=%d out of range [1-20], skipping (likely total line)", pax)
+        # Valider pax (1-30 pour réservations individuelles, certains grands groupes)
+        if pax < 1 or pax > 30:
+            logger.debug("POST /import-pdf -> pax=%d out of range [1-30], skipping (likely total line)", pax)
             skipped_count += 1
             continue
         
@@ -1312,8 +1317,14 @@ def import_reservations_pdf(
         if parsed_count <= 5:  # Log les 5 premières pour debug
             logger.debug("POST /import-pdf -> parsed: %s @ %s (%d pax)", client_name, time_str, pax)
 
-    logger.info("POST /import-pdf -> filename=%s bytes=%d total_lines=%d skipped=%d parsed=%d", getattr(file, 'filename', ''), len(blob or b""), len(lines), skipped_count, parsed_count)
-    _dbg_add("INFO", f"POST /import-pdf -> total_lines={len(lines)} skipped={skipped_count} parsed={parsed_count} (stored in instance, NOT in main table)")
+    logger.info("POST /import-pdf -> filename=%s bytes=%d total_lines=%d skipped=%d no_match=%d parsed=%d", getattr(file, 'filename', ''), len(blob or b""), len(lines), skipped_count, no_match_count, parsed_count)
+    _dbg_add("INFO", f"POST /import-pdf -> total_lines={len(lines)} skipped={skipped_count} no_match={no_match_count} parsed={parsed_count}")
+    
+    if parsed_count == 0 and debug_samples:
+        logger.warning("POST /import-pdf -> NO RESERVATIONS PARSED! Sample lines that didn't match:")
+        for i, sample in enumerate(debug_samples[:5], 1):
+            logger.warning("  Sample %d: %s", i, sample)
+            _dbg_add("WARNING", f"Sample {i}: {sample}")
     
     # NOTE: L'outil floorplan est complètement indépendant.
     # Il ne crée JAMAIS de réservations dans la table principale.
