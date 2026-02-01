@@ -173,8 +173,10 @@ def _draw_table_list_page(c: pdfcanvas.Canvas, id_to_label: Dict[str, str], plan
         # Derive capacity robustly like runtime logic
         try:
             cap = _capacity_for_table(t)
-        except Exception:
+        except Exception as e:
             cap = int(t.get("capacity") or 0)
+            logger.warning("_draw_table_list_page -> failed to get capacity for table %s: %s", t.get("id"), str(e))
+            _dbg_add("WARNING", f"_draw_table_list_page -> capacity error table={t.get('id')}: {str(e)[:50]}")
         kind = str(t.get("kind") or "")
         rows.append((lbl, cap, kind))
     # Sort by label natural (T before numbers later)
@@ -604,7 +606,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             placed = True
             try:
                 logger.debug("assign fixed -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_fixed.get("id"), _capacity_for_table(best_fixed))
-            except Exception:
+                _dbg_add("DEBUG", f"assign fixed -> res={r.id} pax={r.pax} table={best_fixed.get('id')}")
+            except Exception as e:
+                logger.warning("assign fixed -> log failed: %s", str(e))
                 pass
         if placed:
             continue
@@ -624,7 +628,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             placed = True
             try:
                 logger.debug("assign rect -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_rect.get("id"), _capacity_for_table(best_rect))
-            except Exception:
+                _dbg_add("DEBUG", f"assign rect -> res={r.id} pax={r.pax} table={best_rect.get('id')}")
+            except Exception as e:
+                logger.warning("assign rect -> log failed: %s", str(e))
                 pass
         if placed:
             continue
@@ -642,7 +648,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             placed = True
             try:
                 logger.debug("assign rect-pair -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in combo])
-            except Exception:
+                _dbg_add("DEBUG", f"assign rect-pair -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in combo]}")
+            except Exception as e:
+                logger.warning("assign rect-pair -> log failed: %s", str(e))
                 pass
         if placed:
             continue
@@ -715,7 +723,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             try:
                 logger.debug("assign round -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_round.get("id"), _capacity_for_table(best_round))
                 _dbg_add("DEBUG", f"assign round (last resort) -> res={r.id} pax={r.pax} table={best_round.get('id')}")
-            except Exception:
+            except Exception as e:
+                logger.warning("assign round -> log failed: %s", str(e))
                 pass
 
         # 5) Create and place a new non-fixed table if still not placed
@@ -737,7 +746,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 created_any = True
                 try:
                     logger.debug("create+assign rect6 -> res=%s table=%s at=%s", r.id, new_id, spot)
-                except Exception:
+                    _dbg_add("DEBUG", f"create+assign rect6 -> res={r.id} table={new_id}")
+                except Exception as e:
+                    logger.warning("create+assign rect6 -> log failed: %s", str(e))
                     pass
             if remaining > 0:
                 # try to add a 10-seat round if space allows
@@ -753,7 +764,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     created_any = True
                     try:
                         logger.debug("create+assign round10 -> res=%s table=%s at=%s", r.id, new_id, spot)
-                    except Exception:
+                        _dbg_add("DEBUG", f"create+assign round10 -> res={r.id} table={new_id}")
+                    except Exception as e:
+                        logger.warning("create+assign round10 -> log failed: %s", str(e))
                         pass
             if remaining <= 0 and created_any:
                 placed = True
@@ -866,7 +879,9 @@ def export_instance_annotated(
             lab_by_res.setdefault(rid, []).append(lbl)
     try:
         reservations = _load_reservations(session, row.service_date, row.service_label)
-    except Exception:
+    except Exception as e:
+        logger.error("export_instance_annotated -> failed to load reservations: %s", str(e))
+        _dbg_add("ERROR", f"export_instance_annotated -> load reservations failed: {str(e)[:100]}")
         reservations = []
     # Reservations already sorted by _load_reservations (arrival_time asc, created_at asc)
 
@@ -1038,7 +1053,9 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     # 1) Reservations + assigned tables
     try:
         reservations = _load_reservations(session, row.service_date, row.service_label)
-    except Exception:
+    except Exception as e:
+        logger.error("export_instance_pdf -> failed to load reservations: %s", str(e))
+        _dbg_add("ERROR", f"export_instance_pdf -> load reservations failed: {str(e)[:100]}")
         reservations = []
     _draw_reservations_page(c, reservations, (row.assignments or {}), id_to_label)
     c.showPage()
@@ -1132,7 +1149,9 @@ def import_reservations_pdf(
     blob = file.file.read()
     try:
         text = extract_text(io.BytesIO(blob))
-    except Exception:
+    except Exception as e:
+        logger.error("POST /import-pdf -> PDF text extraction failed: %s", str(e))
+        _dbg_add("ERROR", f"POST /import-pdf -> PDF extraction failed: {str(e)[:100]}")
         text = ""
 
     lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
@@ -1158,13 +1177,16 @@ def import_reservations_pdf(
             try:
                 hh, mm = time_str.split(":")
                 at = dtime(int(hh), int(mm))
-            except Exception:
+            except Exception as e:
+                logger.debug("POST /import-pdf -> failed to parse time '%s': %s", time_str, str(e))
                 at = default_time
             
             # Extraire pax
             try:
                 pax = int(pax_str)
-            except Exception:
+            except Exception as e:
+                logger.warning("POST /import-pdf -> failed to parse pax '%s': %s (line: %s)", pax_str, str(e), ln[:100])
+                _dbg_add("WARNING", f"POST /import-pdf -> invalid pax '{pax_str}': {str(e)[:50]}")
                 continue
             
             # Le reste contient: Client | Table | Statut | Date | Source
@@ -1208,7 +1230,8 @@ def import_reservations_pdf(
             try:
                 hh, mm = raw.split(":")
                 at = dtime(int(hh), int(mm))
-            except Exception:
+            except Exception as e:
+                logger.debug("POST /import-pdf -> fallback time parse failed '%s': %s", raw, str(e))
                 at = None
             nm = nm.replace(tm.group(1), "").strip(" -,")
         # Chercher pax dans le texte
