@@ -289,6 +289,7 @@ from ..models import (
 router = APIRouter(prefix="/api/floorplan", tags=["floorplan"])
 logger = logging.getLogger("app.floorplan")
 logger.propagate = True
+logger.setLevel(logging.DEBUG)
 
 # --- In-memory debug buffer for UI tail ---
 from collections import deque
@@ -317,6 +318,20 @@ _buf_handler.setLevel(logging.DEBUG)
 _buf_handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
 if not any(isinstance(h, _BufferHandler) for h in logger.handlers):
     logger.addHandler(_buf_handler)
+
+def _dbg_add(level: str, msg: str) -> None:
+    """Append a line to the in-memory debug buffer with a new id."""
+    try:
+        global _dbg_seq
+        _dbg_seq += 1
+        _dbg_buffer.append({
+            "id": _dbg_seq,
+            "ts": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "lvl": level,
+            "msg": msg,
+        })
+    except Exception:
+        pass
 
 
 @router.get("/debug-log")
