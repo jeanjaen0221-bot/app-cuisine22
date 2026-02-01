@@ -845,7 +845,16 @@ def export_instance_annotated(
         raise HTTPException(404, "Instance not found")
     if PdfReader is None:
         raise HTTPException(501, "PDF annotation not available (pypdf not installed)")
+    
+    # Si l'instance n'a pas de plan, copier depuis le plan de base
     plan = row.data or {}
+    if not plan.get("tables"):
+        base = _get_or_create_base(session)
+        if base and base.data:
+            import copy
+            plan = copy.deepcopy(base.data)
+            logger.info("POST /instances/%s/export-annotated -> copied base plan with %d tables", instance_id, len(plan.get("tables") or []))
+            _dbg_add("INFO", f"POST /instances/{instance_id}/export-annotated -> copied base plan with {len(plan.get('tables') or [])} tables")
     _plan, id_to_label = _assign_table_numbers(dict(plan), persist=False)
     # Build labels by reservation id
     lab_by_res: Dict[str, List[str]] = {}
@@ -984,7 +993,17 @@ def number_instance_tables(instance_id: uuid.UUID, session: Session = Depends(ge
     row = session.get(FloorPlanInstance, instance_id)
     if not row:
         raise HTTPException(404, "Instance not found")
+    
+    # Si l'instance n'a pas de plan, copier depuis le plan de base
     plan = row.data or {}
+    if not plan.get("tables"):
+        base = _get_or_create_base(session)
+        if base and base.data:
+            import copy
+            plan = copy.deepcopy(base.data)
+            logger.info("POST /instances/%s/number-tables -> copied base plan with %d tables", instance_id, len(plan.get("tables") or []))
+            _dbg_add("INFO", f"POST /instances/{instance_id}/number-tables -> copied base plan with {len(plan.get('tables') or [])} tables")
+    
     plan, _ = _assign_table_numbers(plan, max_numbers=20, max_tnumbers=20, persist=True)
     row.data = plan
     session.add(row)
@@ -1003,7 +1022,16 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     row = session.get(FloorPlanInstance, instance_id)
     if not row:
         raise HTTPException(404, "Instance not found")
+    
+    # Si l'instance n'a pas de plan, copier depuis le plan de base
     plan = row.data or {}
+    if not plan.get("tables"):
+        base = _get_or_create_base(session)
+        if base and base.data:
+            import copy
+            plan = copy.deepcopy(base.data)
+            logger.info("GET /instances/%s/export-pdf -> copied base plan with %d tables", instance_id, len(plan.get("tables") or []))
+            _dbg_add("INFO", f"GET /instances/{instance_id}/export-pdf -> copied base plan with {len(plan.get('tables') or [])} tables")
     _plan, id_to_label = _assign_table_numbers(dict(plan), persist=False)
     buf = io.BytesIO()
     c = pdfcanvas.Canvas(buf, pagesize=A4)
@@ -1052,7 +1080,17 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     if not row:
         raise HTTPException(404, "Instance not found")
     reservations = _load_reservations(session, row.service_date, row.service_label)
+    
+    # Si l'instance n'a pas de plan, copier depuis le plan de base
     plan = row.data or {}
+    if not plan.get("tables"):
+        base = _get_or_create_base(session)
+        if base and base.data:
+            import copy
+            plan = copy.deepcopy(base.data)
+            logger.info("POST /instances/%s/auto-assign -> copied base plan with %d tables", instance_id, len(plan.get("tables") or []))
+            _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> copied base plan with {len(plan.get('tables') or [])} tables")
+    
     logger.info("POST /instances/%s/auto-assign -> reservations=%d tables=%d", instance_id, len(reservations), len(plan.get("tables") or []))
     _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> reservations={len(reservations)} tables={len(plan.get('tables') or [])}")
     row.data = plan
