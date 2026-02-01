@@ -291,6 +291,14 @@ export default function FloorPlanPage() {
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <strong>Logs Salle (tail)</strong>
             <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => {
+                const text = logLines.map(l => `[${l.ts}] ${l.lvl} ${l.msg}`).join('\n')
+                navigator.clipboard.writeText(text).then(() => {
+                  alert('Logs copiés dans le presse-papiers !')
+                }).catch(() => {
+                  alert('Erreur lors de la copie')
+                })
+              }}>Copier</button>
               <button onClick={() => setLogLines([])}>Vider</button>
               <button onClick={() => setShowLogs(false)}>Fermer</button>
             </div>
