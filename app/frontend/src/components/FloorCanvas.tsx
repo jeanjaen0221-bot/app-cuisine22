@@ -32,6 +32,10 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   } | null>(null)
   const [noGoDraggingId, setNoGoDraggingId] = useState<string | null>(null)
   const [noGoResize, setNoGoResize] = useState<{ id: string; handle: 'right' | 'bottom' | 'corner' } | null>(null)
+  const [roundZoneDraggingId, setRoundZoneDraggingId] = useState<string | null>(null)
+  const [roundZoneResize, setRoundZoneResize] = useState<{ id: string; handle: 'right' | 'bottom' | 'corner' } | null>(null)
+  const [rectZoneDraggingId, setRectZoneDraggingId] = useState<string | null>(null)
+  const [rectZoneResize, setRectZoneResize] = useState<{ id: string; handle: 'right' | 'bottom' | 'corner' } | null>(null)
   const dragStart = useRef<{ x: number; y: number } | null>(null)
   const lastValid = useRef<{ x: number; y: number } | null>(null)
   const dragInvalid = useRef(false)
@@ -41,6 +45,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const drawStartRoundZone = useRef<{ x: number; y: number } | null>(null)
   const [draftRectZone, setDraftRectZone] = useState<FloorRect | null>(null)
   const drawStartRectZone = useRef<{ x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; target: any } | null>(null)
 
   const room = data.room || { width: 1200, height: 800, grid: 50 }
   const tables = data.tables || []
@@ -81,6 +86,50 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
   function noGoHit(x: number, y: number) {
     const list = [...noGo].reverse()
+    for (const r of list) {
+      if (rectHit(x, y, r)) return r
+    }
+    return null
+  }
+
+  function roundZoneHandleAt(sx: number, sy: number): { id: string; handle: 'right' | 'bottom' | 'corner' } | null {
+    const M = 12
+    const list = [...roundOnlyZones].reverse()
+    for (const r of list) {
+      const cr = worldToScreen(r.x + r.w, r.y + r.h)
+      if (Math.abs(sx - cr.x) <= M && Math.abs(sy - cr.y) <= M) return { id: r.id, handle: 'corner' }
+      const rr = worldToScreen(r.x + r.w, r.y + r.h / 2)
+      if (Math.abs(sx - rr.x) <= M && Math.abs(sy - rr.y) <= M) return { id: r.id, handle: 'right' }
+      const bb = worldToScreen(r.x + r.w / 2, r.y + r.h)
+      if (Math.abs(sx - bb.x) <= M && Math.abs(sy - bb.y) <= M) return { id: r.id, handle: 'bottom' }
+    }
+    return null
+  }
+
+  function roundZoneHit(x: number, y: number) {
+    const list = [...roundOnlyZones].reverse()
+    for (const r of list) {
+      if (rectHit(x, y, r)) return r
+    }
+    return null
+  }
+
+  function rectZoneHandleAt(sx: number, sy: number): { id: string; handle: 'right' | 'bottom' | 'corner' } | null {
+    const M = 12
+    const list = [...rectOnlyZones].reverse()
+    for (const r of list) {
+      const cr = worldToScreen(r.x + r.w, r.y + r.h)
+      if (Math.abs(sx - cr.x) <= M && Math.abs(sy - cr.y) <= M) return { id: r.id, handle: 'corner' }
+      const rr = worldToScreen(r.x + r.w, r.y + r.h / 2)
+      if (Math.abs(sx - rr.x) <= M && Math.abs(sy - rr.y) <= M) return { id: r.id, handle: 'right' }
+      const bb = worldToScreen(r.x + r.w / 2, r.y + r.h)
+      if (Math.abs(sx - bb.x) <= M && Math.abs(sy - bb.y) <= M) return { id: r.id, handle: 'bottom' }
+    }
+    return null
+  }
+
+  function rectZoneHit(x: number, y: number) {
+    const list = [...rectOnlyZones].reverse()
     for (const r of list) {
       if (rectHit(x, y, r)) return r
     }
@@ -487,7 +536,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     ctx.restore()
   }
 
-  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draggingId, fixtureDraggingId, noGoDraggingId, resizeHandle, fixtureResize, noGoResize, drawNoGoMode])
+  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode])
 
   function onPointerDown(e: React.PointerEvent) {
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
@@ -510,15 +559,40 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       }
       return
     }
+    // Vérifier les handles de redimensionnement des zones (priorité sur le déplacement)
     const ngr = noGoHandleAt(sx, sy)
-    if (editable && ngr) {
+    if (editable && ngr && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
       setNoGoResize(ngr)
       return
     }
+    const rzr = roundZoneHandleAt(sx, sy)
+    if (editable && rzr && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
+      setRoundZoneResize(rzr)
+      return
+    }
+    const tzr = rectZoneHandleAt(sx, sy)
+    if (editable && tzr && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
+      setRectZoneResize(tzr)
+      return
+    }
+    
+    // Vérifier le déplacement des zones
     const ng = noGoHit(x, y)
-    if (editable && ng) {
+    if (editable && ng && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
       setNoGoDraggingId(ng.id)
       dragDelta.current = { x: x - ng.x, y: y - ng.y }
+      return
+    }
+    const rz = roundZoneHit(x, y)
+    if (editable && rz && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
+      setRoundZoneDraggingId(rz.id)
+      dragDelta.current = { x: x - rz.x, y: y - rz.y }
+      return
+    }
+    const tz = rectZoneHit(x, y)
+    if (editable && tz && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
+      setRectZoneDraggingId(tz.id)
+      dragDelta.current = { x: x - tz.x, y: y - tz.y }
       return
     }
     const hit = [...tables].reverse().find(t => tableHit(x, y, t))
@@ -566,6 +640,41 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       }
     }
     // Plan fixe: ne pas déplacer le fond
+  }
+
+  function onContextMenu(e: React.MouseEvent) {
+    e.preventDefault()
+    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
+    const sx = e.clientX - rect.left
+    const sy = e.clientY - rect.top
+    const { x, y } = screenToWorld(sx, sy)
+    
+    // Détecter ce qui est cliqué (priorité: zones > fixtures > tables)
+    const rz = roundZoneHit(x, y)
+    if (rz) {
+      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'roundZone', data: rz } })
+      return
+    }
+    const tz = rectZoneHit(x, y)
+    if (tz) {
+      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'rectZone', data: tz } })
+      return
+    }
+    const ng = noGoHit(x, y)
+    if (ng) {
+      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'noGo', data: ng } })
+      return
+    }
+    const fx = fixtureHit(x, y)
+    if (fx) {
+      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'fixture', data: fx } })
+      return
+    }
+    const table = [...tables].reverse().find(t => tableHit(x, y, t))
+    if (table) {
+      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'table', data: table } })
+      return
+    }
   }
 
   function snap(v: number) {
@@ -639,6 +748,62 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         const next = [...noGo]
         next[idx] = { ...r, x: snapGrid ? snap(nx) : nx, y: snapGrid ? snap(ny) : ny }
         onChange && onChange({ ...data, no_go: next })
+      }
+      return
+    }
+    if (roundZoneResize && editable) {
+      const idx = roundOnlyZones.findIndex((r: any) => r.id === roundZoneResize.id)
+      if (idx >= 0) {
+        const r = { ...roundOnlyZones[idx] }
+        let nw = r.w
+        let nh = r.h
+        if (roundZoneResize.handle === 'right' || roundZoneResize.handle === 'corner') nw = Math.max(10, x - r.x)
+        if (roundZoneResize.handle === 'bottom' || roundZoneResize.handle === 'corner') nh = Math.max(10, y - r.y)
+        if (showGrid && room.grid && room.grid > 0) { nw = snap(nw); nh = snap(nh) }
+        const next = [...roundOnlyZones]
+        next[idx] = { ...r, w: nw, h: nh }
+        onChange && onChange({ ...data, round_only_zones: next } as any)
+      }
+      return
+    }
+    if (roundZoneDraggingId) {
+      const idx = roundOnlyZones.findIndex((r: any) => r.id === roundZoneDraggingId)
+      if (idx >= 0) {
+        const r = { ...roundOnlyZones[idx] }
+        const nx = x - dragDelta.current.x
+        const ny = y - dragDelta.current.y
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const next = [...roundOnlyZones]
+        next[idx] = { ...r, x: snapGrid ? snap(nx) : nx, y: snapGrid ? snap(ny) : ny }
+        onChange && onChange({ ...data, round_only_zones: next } as any)
+      }
+      return
+    }
+    if (rectZoneResize && editable) {
+      const idx = rectOnlyZones.findIndex((r: any) => r.id === rectZoneResize.id)
+      if (idx >= 0) {
+        const r = { ...rectOnlyZones[idx] }
+        let nw = r.w
+        let nh = r.h
+        if (rectZoneResize.handle === 'right' || rectZoneResize.handle === 'corner') nw = Math.max(10, x - r.x)
+        if (rectZoneResize.handle === 'bottom' || rectZoneResize.handle === 'corner') nh = Math.max(10, y - r.y)
+        if (showGrid && room.grid && room.grid > 0) { nw = snap(nw); nh = snap(nh) }
+        const next = [...rectOnlyZones]
+        next[idx] = { ...r, w: nw, h: nh }
+        onChange && onChange({ ...data, rect_only_zones: next } as any)
+      }
+      return
+    }
+    if (rectZoneDraggingId) {
+      const idx = rectOnlyZones.findIndex((r: any) => r.id === rectZoneDraggingId)
+      if (idx >= 0) {
+        const r = { ...rectOnlyZones[idx] }
+        const nx = x - dragDelta.current.x
+        const ny = y - dragDelta.current.y
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const next = [...rectOnlyZones]
+        next[idx] = { ...r, x: snapGrid ? snap(nx) : nx, y: snapGrid ? snap(ny) : ny }
+        onChange && onChange({ ...data, rect_only_zones: next } as any)
       }
       return
     }
@@ -723,6 +888,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     }
     const fr = fixtureHandleAt(sx, sy)
     const ngr = noGoHandleAt(sx, sy)
+    const rzr = roundZoneHandleAt(sx, sy)
+    const tzr = rectZoneHandleAt(sx, sy)
     const h = handleAt(sx, sy)
     const el = canvasRef.current
     if (el) {
@@ -730,6 +897,10 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         el.style.cursor = fr.handle === 'corner' ? 'nwse-resize' : fr.handle === 'right' ? 'ew-resize' : fr.handle === 'bottom' ? 'ns-resize' : 'ew-resize'
       } else if (ngr) {
         el.style.cursor = ngr.handle === 'corner' ? 'nwse-resize' : ngr.handle === 'right' ? 'ew-resize' : 'ns-resize'
+      } else if (rzr) {
+        el.style.cursor = rzr.handle === 'corner' ? 'nwse-resize' : rzr.handle === 'right' ? 'ew-resize' : 'ns-resize'
+      } else if (tzr) {
+        el.style.cursor = tzr.handle === 'corner' ? 'nwse-resize' : tzr.handle === 'right' ? 'ew-resize' : 'ns-resize'
       } else if (drawNoGoMode || drawRoundOnlyMode || drawRectOnlyMode) {
         el.style.cursor = 'crosshair'
       } else {
@@ -789,6 +960,10 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     dragInvalid.current = false
     setNoGoDraggingId(null)
     setNoGoResize(null)
+    setRoundZoneDraggingId(null)
+    setRoundZoneResize(null)
+    setRectZoneDraggingId(null)
+    setRectZoneResize(null)
     const el = canvasRef.current
     if (el) el.style.cursor = 'default'
   }
@@ -877,12 +1052,13 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
           height: '100%', 
           touchAction: 'none', 
           background: 'linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%)',
-          cursor: isPanning ? 'grabbing' : draggingId || fixtureDraggingId || noGoDraggingId ? 'move' : 'default'
+          cursor: isPanning ? 'grabbing' : draggingId || fixtureDraggingId || noGoDraggingId || roundZoneDraggingId || rectZoneDraggingId ? 'move' : 'default'
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerUp}
+        onContextMenu={onContextMenu}
         onWheel={onWheel}
         onDoubleClick={onDoubleClick}
       />
@@ -938,11 +1114,108 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         <div className="font-semibold mb-2 text-gray-700">Contrôles</div>
         <div className="space-y-1 text-gray-600">
           <div>• <strong>Molette</strong>: Zoom</div>
-          <div>• <strong>Clic droit + glisser</strong>: Déplacer</div>
+          <div>• <strong>Clic droit</strong>: Menu contextuel</div>
           <div>• <strong>Double-clic</strong>: Verrouiller/Déverrouiller</div>
-          {editable && <div>• <strong>Glisser</strong>: Déplacer objets</div>}
+          {editable && <div>• <strong>Glisser</strong>: Déplacer/Redimensionner</div>}
         </div>
       </div>
+
+      {/* Menu contextuel */}
+      {contextMenu && (
+        <>
+          <div 
+            className="fixed inset-0 z-40" 
+            onClick={() => setContextMenu(null)}
+          />
+          <div 
+            className="fixed z-50 bg-white rounded-lg shadow-2xl border border-gray-200 py-1 min-w-[180px]"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <div className="px-3 py-2 text-xs font-semibold text-gray-500 border-b border-gray-100">
+              {contextMenu.target.type === 'roundZone' && 'Zone Tables Rondes (R)'}
+              {contextMenu.target.type === 'rectZone' && 'Zone Tables Rect (T)'}
+              {contextMenu.target.type === 'noGo' && 'Zone Interdite'}
+              {contextMenu.target.type === 'fixture' && 'Objet'}
+              {contextMenu.target.type === 'table' && `Table ${contextMenu.target.data.label || contextMenu.target.data.id}`}
+            </div>
+            {contextMenu.target.type === 'roundZone' && (
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 transition-colors"
+                onClick={() => {
+                  const next = roundOnlyZones.filter((z: any) => z.id !== contextMenu.target.data.id)
+                  onChange && onChange({ ...data, round_only_zones: next } as any)
+                  setContextMenu(null)
+                }}
+              >
+                🗑️ Supprimer la zone R
+              </button>
+            )}
+            {contextMenu.target.type === 'rectZone' && (
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 transition-colors"
+                onClick={() => {
+                  const next = rectOnlyZones.filter((z: any) => z.id !== contextMenu.target.data.id)
+                  onChange && onChange({ ...data, rect_only_zones: next } as any)
+                  setContextMenu(null)
+                }}
+              >
+                🗑️ Supprimer la zone T
+              </button>
+            )}
+            {contextMenu.target.type === 'noGo' && (
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 transition-colors"
+                onClick={() => {
+                  const next = noGo.filter(z => z.id !== contextMenu.target.data.id)
+                  onChange && onChange({ ...data, no_go: next })
+                  setContextMenu(null)
+                }}
+              >
+                🗑️ Supprimer la zone interdite
+              </button>
+            )}
+            {contextMenu.target.type === 'fixture' && (
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 transition-colors"
+                onClick={() => {
+                  const next = fixtures.filter((f: any) => f.id !== contextMenu.target.data.id)
+                  onChange && onChange({ ...data, fixtures: next })
+                  setContextMenu(null)
+                }}
+              >
+                🗑️ Supprimer l'objet
+              </button>
+            )}
+            {contextMenu.target.type === 'table' && (
+              <>
+                <button
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 text-blue-600 transition-colors"
+                  onClick={() => {
+                    const t = tables.find(tt => tt.id === contextMenu.target.data.id)
+                    if (t) {
+                      t.locked = !t.locked
+                      onChange && onChange({ ...data, tables: [...tables] })
+                    }
+                    setContextMenu(null)
+                  }}
+                >
+                  {contextMenu.target.data.locked ? '🔓 Déverrouiller' : '🔒 Verrouiller'}
+                </button>
+                <button
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 transition-colors"
+                  onClick={() => {
+                    const next = tables.filter(t => t.id !== contextMenu.target.data.id)
+                    onChange && onChange({ ...data, tables: next })
+                    setContextMenu(null)
+                  }}
+                >
+                  🗑️ Supprimer la table
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }
