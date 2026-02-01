@@ -1,11 +1,198 @@
+# from __future__ imports must be at the top
 from __future__ import annotations
+# ---- Numbering helpers ----
+
+def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumbers: int = 20, persist: bool = True) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    """Assign labels 1..N to fixed/rect tables and T1..TN to round tables, top-to-bottom then left-to-right.
+    Returns (updated_plan, id_to_label).
+    """
+    tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
+    # Separate pools
+    nums = [t for t in tables if (t.get("kind") in ("fixed", "rect"))]
+    tees = [t for t in tables if (t.get("kind") == "round")]
+    # Sort top-to-bottom (increasing y), tie by x
+    def key_rect(t):
+        y = float(t.get("y") or 0)
+        x = float(t.get("x") or 0)
+        return (y, x)
+    def key_round(t):
+        y = float(t.get("y") or 0)
+        x = float(t.get("x") or 0)
+        return (y, x)
+    nums.sort(key=key_rect)
+    tees.sort(key=key_round)
+    id_to_label: Dict[str, str] = {}
+    # Assign numbers 1..max_numbers
+    for i, t in enumerate(nums[: max_numbers]):
+        lbl = str(i + 1)
+        id_to_label[str(t.get("id"))] = lbl
+        if persist:
+            t["label"] = lbl
+    # Assign T1..Tmax_tnumbers
+    for i, t in enumerate(tees[: max_tnumbers]):
+        lbl = f"T{i + 1}"
+        id_to_label[str(t.get("id"))] = lbl
+        if persist:
+            t["label"] = lbl
+    if persist:
+        plan["tables"] = tables
+    return plan, id_to_label
+
+# ---- PDF helpers ----
+
+def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict[str, str]) -> None:
+    page_w, page_h = A4
+    margin = 15 * mm
+    room = (plan.get("room") or {"width": 1000, "height": 600})
+    W = float(room.get("width") or 1000)
+    H = float(room.get("height") or 600)
+    scale = min((page_w - 2 * margin) / max(1.0, W), (page_h - 2 * margin) / max(1.0, H))
+    ox = (page_w - scale * W) / 2.0
+    oy = (page_h - scale * H) / 2.0
+
+    def tx(x: float) -> float:
+        return ox + scale * x
+    def ty(y: float) -> float:
+        # input y is top-left downwards; convert to reportlab bottom-up
+        return oy + scale * (H - y)
+
+    # room boundary
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(1)
+    c.rect(ox, oy, scale * W, scale * H, stroke=1, fill=0)
+
+    # draw no-go zones
+    for ng in (plan.get("no_go") or []):
+        x = float(ng.get("x") or 0)
+        y = float(ng.get("y") or 0)
+        w = float(ng.get("w") or 0)
+        h = float(ng.get("h") or 0)
+        c.setFillColor(colors.Color(1, 0, 0, alpha=0.2))
+        c.setStrokeColor(colors.red)
+        c.rect(tx(x), ty(y + h), scale * w, scale * h, stroke=1, fill=1)
+
+    # fixtures/walls (light grey)
+    c.setFillColor(colors.lightgrey)
+    c.setStrokeColor(colors.grey)
+    for wrec in (plan.get("walls") or []):
+        x = float(wrec.get("x") or 0)
+        y = float(wrec.get("y") or 0)
+        w = float(wrec.get("w") or 0)
+        h = float(wrec.get("h") or 0)
+        c.rect(tx(x), ty(y + h), scale * w, scale * h, stroke=1, fill=1)
+    for fx in (plan.get("fixtures") or []):
+        if "r" in fx and fx.get("r"):
+            x = float(fx.get("x") or 0)
+            y = float(fx.get("y") or 0)
+            r = float(fx.get("r") or 0)
+            c.circle(tx(x), ty(y), scale * r, stroke=1, fill=1)
+        else:
+            x = float(fx.get("x") or 0)
+            y = float(fx.get("y") or 0)
+            w = float(fx.get("w") or 0)
+            h = float(fx.get("h") or 0)
+            c.rect(tx(x), ty(y + h), scale * w, scale * h, stroke=1, fill=1)
+
+    # columns
+    c.setFillColor(colors.darkgrey)
+    for col in (plan.get("columns") or []):
+        x = float(col.get("x") or 0)
+        y = float(col.get("y") or 0)
+        r = float(col.get("r") or 0)
+        c.circle(tx(x), ty(y), scale * r, stroke=0, fill=1)
+
+    # tables
+    c.setStrokeColor(colors.black)
+    c.setFillColor(colors.white)
+    tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
+    for t in tables:
+        kind = (t.get("kind") or "rect")
+        lbl = t.get("label") or id_to_label.get(str(t.get("id")) or "", "")
+        if kind == "round" and t.get("r"):
+            x = float(t.get("x") or 0)
+            y = float(t.get("y") or 0)
+            r = float(t.get("r") or 0)
+            c.circle(tx(x), ty(y), scale * r, stroke=1, fill=0)
+            if lbl:
+                c.setFont("Helvetica-Bold", 8)
+                c.drawCentredString(tx(x), ty(y) - 3, str(lbl))
+        else:
+            x = float(t.get("x") or 0)
+            y = float(t.get("y") or 0)
+            w = float(t.get("w") or 120)
+            h = float(t.get("h") or 60)
+            c.rect(tx(x), ty(y + h), scale * w, scale * h, stroke=1, fill=0)
+            if lbl:
+                cx = tx(x + w / 2.0)
+                cy = ty(y + h / 2.0)
+                c.setFont("Helvetica-Bold", 8)
+                c.drawCentredString(cx, cy - 3, str(lbl))
+
+    # title
+    c.setFont("Helvetica", 10)
+    c.drawString(margin, page_h - margin + 2 * mm, "Plan de table (numérotation)")
+
+
+def _draw_table_list_page(c: pdfcanvas.Canvas, id_to_label: Dict[str, str], plan: Dict[str, Any]) -> None:
+    page_w, page_h = A4
+    margin = 15 * mm
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margin, page_h - margin, "Numéros de tables")
+    c.setFont("Helvetica", 10)
+    y = page_h - margin - 10 * mm
+    line_h = 6 * mm
+    tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
+    # Build display list: label, capacity, kind
+    rows: List[Tuple[str, int, str]] = []
+    for t in tables:
+        tid = str(t.get("id"))
+        lbl = (t.get("label") or id_to_label.get(tid) or "")
+        if not lbl:
+            continue
+        cap = int(t.get("capacity") or 0)
+        kind = str(t.get("kind") or "")
+        rows.append((lbl, cap, kind))
+    # Sort by label natural (T before numbers later)
+    def sort_key(r: Tuple[str, int, str]):
+        lbl = r[0]
+        if lbl.startswith("T"):
+            try:
+                return (1, int(lbl[1:]))
+            except Exception:
+                return (1, 9999)
+        try:
+            return (0, int(lbl))
+        except Exception:
+            return (0, 9999)
+    rows.sort(key=sort_key)
+    # 2 columns list
+    col_x = [margin, page_w / 2.0]
+    col = 0
+    for lbl, cap, kind in rows:
+        text = f"{lbl} - {kind} ({cap} pl.)"
+        c.drawString(col_x[col], y, text)
+        y -= line_h
+        if y < margin + line_h:
+            col += 1
+            if col >= len(col_x):
+                c.showPage()
+                y = page_h - margin - 10 * mm
+                col = 0
+                c.setFont("Helvetica", 10)
+            else:
+                y = page_h - margin - 10 * mm
+
 import io
 import uuid
 from datetime import date, time as dtime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Response
 from sqlmodel import Session, select
+from reportlab.pdfgen import canvas as pdfcanvas
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.lib import colors
 
 from ..database import get_session
 from ..models import (
