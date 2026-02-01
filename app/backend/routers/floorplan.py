@@ -189,6 +189,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Response
 from sqlmodel import Session, select
+import logging
 from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -207,6 +208,7 @@ from ..models import (
 )
 
 router = APIRouter(prefix="/api/floorplan", tags=["floorplan"])
+logger = logging.getLogger("app.floorplan")
 
 
 # ---- Helpers ----
@@ -219,6 +221,7 @@ def _get_or_create_base(session: Session) -> FloorPlanBase:
     session.add(row)
     session.commit()
     session.refresh(row)
+    logger.info("Created FloorPlanBase id=%s", row.id)
     return row
 
 
@@ -450,6 +453,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             pax_on_table = min(_capacity_for_table(best_fixed), int(r.pax))
             assignments_by_table.setdefault(best_fixed.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
             placed = True
+            try:
+                logger.debug("assign fixed -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_fixed.get("id"), _capacity_for_table(best_fixed))
+            except Exception:
+                pass
         if placed:
             continue
 
@@ -465,6 +472,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             pax_on_table = min(_capacity_for_table(best_rect), int(r.pax))
             assignments_by_table.setdefault(best_rect.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
             placed = True
+            try:
+                logger.debug("assign rect -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_rect.get("id"), _capacity_for_table(best_rect))
+            except Exception:
+                pass
         if placed:
             continue
 
@@ -478,6 +489,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 remaining -= pax_on_table
                 avail_rects.pop(t.get("id"), None)
             placed = True
+            try:
+                logger.debug("assign rect-pair -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in combo])
+            except Exception:
+                pass
         if placed:
             continue
 
@@ -491,6 +506,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 remaining -= pax_on_table
                 avail_fixed.pop(t.get("id"), None)
             placed = True
+            try:
+                logger.debug("assign fixed-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
+            except Exception:
+                pass
         if placed:
             continue
 
@@ -504,6 +523,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 remaining -= pax_on_table
                 avail_rects.pop(t.get("id"), None)
             placed = True
+            try:
+                logger.debug("assign rect-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
+            except Exception:
+                pass
         if placed:
             continue
 
@@ -517,6 +540,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 remaining -= pax_on_table
                 avail_rounds.pop(t.get("id"), None)
             placed = True
+            try:
+                logger.debug("assign round-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
+            except Exception:
+                pass
         if placed:
             continue
 
@@ -529,6 +556,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             pax_on_table = min(_capacity_for_table(best_round), int(r.pax))
             assignments_by_table.setdefault(best_round.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "last_resort": True})
             placed = True
+            try:
+                logger.debug("assign round -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_round.get("id"), _capacity_for_table(best_round))
+            except Exception:
+                pass
 
         # 5) Create and place a new non-fixed table if still not placed
         if not placed:
@@ -547,6 +578,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
                 remaining -= pax_on_table
                 created_any = True
+                try:
+                    logger.debug("create+assign rect6 -> res=%s table=%s at=%s", r.id, new_id, spot)
+                except Exception:
+                    pass
             if remaining > 0:
                 # try to add a 10-seat round if space allows
                 spot = _find_spot_for_table(plan_data, "round", r=50)
@@ -559,6 +594,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
                     remaining -= pax_on_table
                     created_any = True
+                    try:
+                        logger.debug("create+assign round10 -> res=%s table=%s at=%s", r.id, new_id, spot)
+                    except Exception:
+                        pass
             if remaining <= 0 and created_any:
                 placed = True
 
@@ -572,6 +611,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 @router.get("/base", response_model=FloorPlanBaseRead)
 def get_base(session: Session = Depends(get_session)):
     row = _get_or_create_base(session)
+    logger.info("GET /base -> id=%s", row.id)
     return FloorPlanBaseRead(**row.model_dump())
 
 
@@ -584,6 +624,7 @@ def update_base(payload: FloorPlanBaseUpdate, session: Session = Depends(get_ses
     session.add(row)
     session.commit()
     session.refresh(row)
+    logger.info("PUT /base -> updated id=%s (keys=%s)", row.id, list(data.keys()))
     return FloorPlanBaseRead(**row.model_dump())
 
 
@@ -598,6 +639,9 @@ def number_base_tables(session: Session = Depends(get_session)):
     session.add(row)
     session.commit()
     session.refresh(row)
+    tables = plan.get("tables") or []
+    used = sum(1 for t in tables if t.get("label"))
+    logger.info("POST /base/number-tables -> labeled=%d", used)
     return FloorPlanBaseRead(**row.model_dump())
 
 
@@ -616,6 +660,7 @@ def export_base_pdf(session: Session = Depends(get_session)):
     pdf_bytes = buf.getvalue()
     buf.close()
     headers = {"Content-Disposition": "attachment; filename=base_floorplan.pdf"}
+    logger.info("GET /base/export-pdf -> bytes=%d labels=%d", len(pdf_bytes), len(id_to_label))
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
@@ -632,6 +677,7 @@ def create_instance(payload: FloorPlanInstanceCreate, session: Session = Depends
         )
     ).first()
     if existing:
+        logger.info("POST /instances -> exists id=%s for %s/%s", existing.id, payload.service_date, payload.service_label)
         return FloorPlanInstanceRead(**existing.model_dump())
 
     row = FloorPlanInstance(
@@ -644,6 +690,7 @@ def create_instance(payload: FloorPlanInstanceCreate, session: Session = Depends
     session.add(row)
     session.commit()
     session.refresh(row)
+    logger.info("POST /instances -> created id=%s for %s/%s (template_id=%s)", row.id, row.service_date, row.service_label, row.template_id)
     return FloorPlanInstanceRead(**row.model_dump())
 
 
@@ -655,6 +702,7 @@ def list_instances(service_date: Optional[date] = None, service_label: Optional[
         rows = [r for r in rows if r.service_date == service_date]
     if service_label:
         rows = [r for r in rows if (r.service_label or "").lower() == service_label.lower()]
+    logger.info("GET /instances -> count=%d (filters: date=%s label=%s)", len(rows), service_date, service_label)
     return [FloorPlanInstanceRead(**r.model_dump()) for r in rows]
 
 
@@ -663,6 +711,7 @@ def get_instance(instance_id: uuid.UUID, session: Session = Depends(get_session)
     row = session.get(FloorPlanInstance, instance_id)
     if not row:
         raise HTTPException(404, "Instance not found")
+    logger.info("GET /instances/%s -> found", instance_id)
     return FloorPlanInstanceRead(**row.model_dump())
 
 
@@ -677,6 +726,9 @@ def number_instance_tables(instance_id: uuid.UUID, session: Session = Depends(ge
     session.add(row)
     session.commit()
     session.refresh(row)
+    tables = plan.get("tables") or []
+    used = sum(1 for t in tables if t.get("label"))
+    logger.info("POST /instances/%s/number-tables -> labeled=%d", instance_id, used)
     return FloorPlanInstanceRead(**row.model_dump())
 
 
@@ -696,6 +748,7 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     pdf_bytes = buf.getvalue()
     buf.close()
     headers = {"Content-Disposition": "attachment; filename=floorplan_instance.pdf"}
+    logger.info("GET /instances/%s/export-pdf -> bytes=%d labels=%d", instance_id, len(pdf_bytes), len(id_to_label))
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
@@ -710,6 +763,7 @@ def update_instance(instance_id: uuid.UUID, payload: FloorPlanInstanceUpdate, se
     session.add(row)
     session.commit()
     session.refresh(row)
+    logger.info("PUT /instances/%s -> updated keys=%s", instance_id, list(data.keys()))
     return FloorPlanInstanceRead(**row.model_dump())
 
 
@@ -720,11 +774,13 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
         raise HTTPException(404, "Instance not found")
     reservations = _load_reservations(session, row.service_date, row.service_label)
     plan = row.data or {}
+    logger.info("POST /instances/%s/auto-assign -> reservations=%d tables=%d", instance_id, len(reservations), len(plan.get("tables") or []))
     row.data = plan
     row.assignments = _auto_assign(plan, reservations)
     session.add(row)
     session.commit()
     session.refresh(row)
+    logger.info("POST /instances/%s/auto-assign -> assigned_tables=%d", instance_id, len((row.assignments or {}).get("tables", {})))
     return FloorPlanInstanceRead(**row.model_dump())
 
 
@@ -800,6 +856,7 @@ def import_reservations_pdf(
         }
         out.append(item)
 
+    logger.info("POST /import-pdf -> filename=%s bytes=%d parsed_lines=%d create=%s", getattr(file, 'filename', ''), len(blob or b""), len(lines), create)
     created_ids: List[str] = []
     if create and out:
         for it in out:
@@ -819,4 +876,5 @@ def import_reservations_pdf(
                 session.rollback()
                 continue
 
+    logger.info("POST /import-pdf -> created=%d", len(created_ids))
     return {"parsed": out, "created_ids": created_ids}
