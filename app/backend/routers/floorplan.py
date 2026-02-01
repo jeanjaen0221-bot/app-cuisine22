@@ -116,6 +116,7 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
             r = float(t.get("r") or 0)
             c.circle(tx(x), ty(y), scale * r, stroke=1, fill=0)
             if lbl:
+                c.setFillColor(colors.black)
                 c.setFont("Helvetica-Bold", 8)
                 c.drawCentredString(tx(x), ty(y) - 3, str(lbl))
             # draw assignment if any
@@ -125,6 +126,7 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
                     c.setFont("Helvetica", 7)
                     c.setFillColor(colors.black)
                     c.drawString(tx(x + r + 4), ty(y) + 2, f"{a.get('name','')} ({a.get('pax',0)})")
+            c.setFillColor(colors.white)
         else:
             x = float(t.get("x") or 0)
             y = float(t.get("y") or 0)
@@ -134,6 +136,7 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
             cx = tx(x + w / 2.0)
             cy = ty(y + h / 2.0)
             if lbl:
+                c.setFillColor(colors.black)
                 c.setFont("Helvetica-Bold", 8)
                 c.drawCentredString(cx, cy - 3, str(lbl))
             # draw assignment if any
@@ -143,6 +146,7 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
                     c.setFont("Helvetica", 7)
                     c.setFillColor(colors.black)
                     c.drawString(tx(x + w + 4), ty(y + 10), f"{a.get('name','')} ({a.get('pax',0)})")
+            c.setFillColor(colors.white)
 
     # title
     c.setFont("Helvetica", 10)
@@ -226,13 +230,8 @@ def _draw_reservations_page(
         if not lbl:
             continue
         lab_by_res.setdefault(res_id, []).append(lbl)
-    # Sort reservations by time then name
-    def tkey(r: Reservation):
-        try:
-            return (r.arrival_time, (r.client_name or "").upper())
-        except Exception:
-            return (None, (r.client_name or "").upper())
-    rows = sorted(reservations, key=tkey)
+    # Reservations already sorted by _load_reservations (arrival_time asc, created_at asc)
+    rows = reservations
     # Header
     c.setFont("Helvetica-Bold", 9)
     c.drawString(margin, y, "Heure")
@@ -374,8 +373,8 @@ def _classify_service_label(t: dtime) -> str:
 
 
 def _load_reservations(session: Session, service_date: date, service_label: Optional[str]) -> List[Reservation]:
-    # Preserve insertion/creation order to align with imported PDF rows
-    stmt = select(Reservation).where(Reservation.service_date == service_date).order_by(Reservation.created_at.asc())
+    # Order by arrival_time then created_at to align with PDF row order
+    stmt = select(Reservation).where(Reservation.service_date == service_date).order_by(Reservation.arrival_time.asc(), Reservation.created_at.asc())
     rows = session.exec(stmt).all()
     if service_label:
         rows = [r for r in rows if _classify_service_label(r.arrival_time) == service_label]
@@ -661,12 +660,14 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if placed:
             continue
 
-        # 3c) Pack multiple rect tables if needed
+        # 3c) Pack multiple rect tables if needed (with extension)
         chosen = pack_from_pool(avail_rects, int(r.pax))
         if chosen:
             remaining = int(r.pax)
             for t in chosen:
-                pax_on_table = max(0, min(_capacity_for_table(t), remaining))
+                # Allow +2 extension per rect up to 8
+                cap_ext = min(8, _capacity_for_table(t) + 2)
+                pax_on_table = max(0, min(cap_ext, remaining))
                 assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
                 remaining -= pax_on_table
                 avail_rects.pop(t.get("id"), None)
@@ -758,13 +759,16 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 
 @router.get("/base", response_model=FloorPlanBaseRead)
 def get_base(session: Session = Depends(get_session)):
+    _dbg_add("INFO", "GET /base")
     row = _get_or_create_base(session)
     logger.info("GET /base -> id=%s", row.id)
+    _dbg_add("INFO", f"GET /base -> id={row.id}")
     return FloorPlanBaseRead(**row.model_dump())
 
 
 @router.put("/base", response_model=FloorPlanBaseRead)
 def update_base(payload: FloorPlanBaseUpdate, session: Session = Depends(get_session)):
+    _dbg_add("INFO", "PUT /base")
     row = _get_or_create_base(session)
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
@@ -773,6 +777,7 @@ def update_base(payload: FloorPlanBaseUpdate, session: Session = Depends(get_ses
     session.commit()
     session.refresh(row)
     logger.info("PUT /base -> updated id=%s (keys=%s)", row.id, list(data.keys()))
+    _dbg_add("INFO", f"PUT /base -> updated id={row.id} keys={list(data.keys())}")
     return FloorPlanBaseRead(**row.model_dump())
 
 
@@ -780,6 +785,7 @@ def update_base(payload: FloorPlanBaseUpdate, session: Session = Depends(get_ses
 
 @router.post("/base/number-tables", response_model=FloorPlanBaseRead)
 def number_base_tables(session: Session = Depends(get_session)):
+    _dbg_add("INFO", "POST /base/number-tables")
     row = _get_or_create_base(session)
     plan = row.data or {}
     plan, _ = _assign_table_numbers(plan, max_numbers=20, max_tnumbers=20, persist=True)
@@ -790,11 +796,13 @@ def number_base_tables(session: Session = Depends(get_session)):
     tables = plan.get("tables") or []
     used = sum(1 for t in tables if t.get("label"))
     logger.info("POST /base/number-tables -> labeled=%d", used)
+    _dbg_add("INFO", f"POST /base/number-tables -> labeled={used}")
     return FloorPlanBaseRead(**row.model_dump())
 
 
 @router.get("/base/export-pdf")
 def export_base_pdf(session: Session = Depends(get_session)):
+    _dbg_add("INFO", "GET /base/export-pdf")
     row = _get_or_create_base(session)
     plan = row.data or {}
     # Do not mutate DB; compute labels transiently if missing
@@ -809,6 +817,7 @@ def export_base_pdf(session: Session = Depends(get_session)):
     buf.close()
     headers = {"Content-Disposition": "attachment; filename=base_floorplan.pdf"}
     logger.info("GET /base/export-pdf -> bytes=%d labels=%d", len(pdf_bytes), len(id_to_label))
+    _dbg_add("INFO", f"GET /base/export-pdf -> bytes={len(pdf_bytes)} labels={len(id_to_label)}")
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
@@ -817,11 +826,12 @@ def export_instance_annotated(
     instance_id: uuid.UUID,
     file: UploadFile = File(...),
     page_start: int = Form(0),
-    start_y_mm: float = Form(40.0),
-    row_h_mm: float = Form(6.0),
-    table_x_mm: float = Form(170.0),
+    start_y_mm: float = Form(95.0),
+    row_h_mm: float = Form(13.5),
+    table_x_mm: float = Form(137.0),
     session: Session = Depends(get_session),
 ):
+    _dbg_add("INFO", f"POST /instances/{instance_id}/export-annotated")
     row = session.get(FloorPlanInstance, instance_id)
     if not row:
         raise HTTPException(404, "Instance not found")
@@ -841,13 +851,7 @@ def export_instance_annotated(
         reservations = _load_reservations(session, row.service_date, row.service_label)
     except Exception:
         reservations = []
-    # Sort like the list page
-    def rkey(r: Reservation):
-        try:
-            return (r.arrival_time, (r.client_name or "").upper())
-        except Exception:
-            return (None, (r.client_name or "").upper())
-    reservations = sorted(reservations, key=rkey)
+    # Reservations already sorted by _load_reservations (arrival_time asc, created_at asc)
 
     # Read original PDF
     orig_bytes = file.file.read()
@@ -907,12 +911,14 @@ def export_instance_annotated(
     out.close()
     headers = {"Content-Disposition": "attachment; filename=floorplan_instance_annotated.pdf"}
     logger.info("POST /instances/%s/export-annotated -> bytes=%d", instance_id, len(pdf_bytes))
+    _dbg_add("INFO", f"POST /instances/{instance_id}/export-annotated -> bytes={len(pdf_bytes)} reservations={len(reservations)}")
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 # ---- Instances ----
 
 @router.post("/instances", response_model=FloorPlanInstanceRead)
 def create_instance(payload: FloorPlanInstanceCreate, session: Session = Depends(get_session)):
+    _dbg_add("INFO", f"POST /instances date={payload.service_date} label={payload.service_label}")
     base = _get_or_create_base(session)
     # Check unique
     existing = session.exec(
@@ -923,6 +929,7 @@ def create_instance(payload: FloorPlanInstanceCreate, session: Session = Depends
     ).first()
     if existing:
         logger.info("POST /instances -> exists id=%s for %s/%s", existing.id, payload.service_date, payload.service_label)
+        _dbg_add("INFO", f"POST /instances -> exists id={existing.id}")
         return FloorPlanInstanceRead(**existing.model_dump())
 
     row = FloorPlanInstance(
@@ -936,6 +943,7 @@ def create_instance(payload: FloorPlanInstanceCreate, session: Session = Depends
     session.commit()
     session.refresh(row)
     logger.info("POST /instances -> created id=%s for %s/%s (template_id=%s)", row.id, row.service_date, row.service_label, row.template_id)
+    _dbg_add("INFO", f"POST /instances -> created id={row.id}")
     return FloorPlanInstanceRead(**row.model_dump())
 
 
@@ -953,15 +961,18 @@ def list_instances(service_date: Optional[date] = None, service_label: Optional[
 
 @router.get("/instances/{instance_id}", response_model=FloorPlanInstanceRead)
 def get_instance(instance_id: uuid.UUID, session: Session = Depends(get_session)):
+    _dbg_add("INFO", f"GET /instances/{instance_id}")
     row = session.get(FloorPlanInstance, instance_id)
     if not row:
         raise HTTPException(404, "Instance not found")
     logger.info("GET /instances/%s -> found", instance_id)
+    _dbg_add("INFO", f"GET /instances/{instance_id} -> found")
     return FloorPlanInstanceRead(**row.model_dump())
 
 
 @router.post("/instances/{instance_id}/number-tables", response_model=FloorPlanInstanceRead)
 def number_instance_tables(instance_id: uuid.UUID, session: Session = Depends(get_session)):
+    _dbg_add("INFO", f"POST /instances/{instance_id}/number-tables")
     row = session.get(FloorPlanInstance, instance_id)
     if not row:
         raise HTTPException(404, "Instance not found")
@@ -974,11 +985,13 @@ def number_instance_tables(instance_id: uuid.UUID, session: Session = Depends(ge
     tables = plan.get("tables") or []
     used = sum(1 for t in tables if t.get("label"))
     logger.info("POST /instances/%s/number-tables -> labeled=%d", instance_id, used)
+    _dbg_add("INFO", f"POST /instances/{instance_id}/number-tables -> labeled={used}")
     return FloorPlanInstanceRead(**row.model_dump())
 
 
 @router.get("/instances/{instance_id}/export-pdf")
 def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_session)):
+    _dbg_add("INFO", f"GET /instances/{instance_id}/export-pdf")
     row = session.get(FloorPlanInstance, instance_id)
     if not row:
         raise HTTPException(404, "Instance not found")
@@ -1003,11 +1016,13 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     buf.close()
     headers = {"Content-Disposition": "attachment; filename=floorplan_instance.pdf"}
     logger.info("GET /instances/%s/export-pdf -> bytes=%d labels=%d", instance_id, len(pdf_bytes), len(id_to_label))
+    _dbg_add("INFO", f"GET /instances/{instance_id}/export-pdf -> bytes={len(pdf_bytes)} labels={len(id_to_label)} reservations={len(reservations)}")
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
 @router.put("/instances/{instance_id}", response_model=FloorPlanInstanceRead)
 def update_instance(instance_id: uuid.UUID, payload: FloorPlanInstanceUpdate, session: Session = Depends(get_session)):
+    _dbg_add("INFO", f"PUT /instances/{instance_id}")
     row = session.get(FloorPlanInstance, instance_id)
     if not row:
         raise HTTPException(404, "Instance not found")
@@ -1018,23 +1033,27 @@ def update_instance(instance_id: uuid.UUID, payload: FloorPlanInstanceUpdate, se
     session.commit()
     session.refresh(row)
     logger.info("PUT /instances/%s -> updated keys=%s", instance_id, list(data.keys()))
+    _dbg_add("INFO", f"PUT /instances/{instance_id} -> updated keys={list(data.keys())}")
     return FloorPlanInstanceRead(**row.model_dump())
 
 
 @router.post("/instances/{instance_id}/auto-assign", response_model=FloorPlanInstanceRead)
 def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session)):
+    _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign")
     row = session.get(FloorPlanInstance, instance_id)
     if not row:
         raise HTTPException(404, "Instance not found")
     reservations = _load_reservations(session, row.service_date, row.service_label)
     plan = row.data or {}
     logger.info("POST /instances/%s/auto-assign -> reservations=%d tables=%d", instance_id, len(reservations), len(plan.get("tables") or []))
+    _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> reservations={len(reservations)} tables={len(plan.get('tables') or [])}")
     row.data = plan
     row.assignments = _auto_assign(plan, reservations)
     session.add(row)
     session.commit()
     session.refresh(row)
     logger.info("POST /instances/%s/auto-assign -> assigned_tables=%d", instance_id, len((row.assignments or {}).get("tables", {})))
+    _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> assigned_tables={len((row.assignments or {}).get('tables', {}))}")
     return FloorPlanInstanceRead(**row.model_dump())
 
 
@@ -1111,6 +1130,7 @@ def import_reservations_pdf(
         out.append(item)
 
     logger.info("POST /import-pdf -> filename=%s bytes=%d parsed_lines=%d create=%s", getattr(file, 'filename', ''), len(blob or b""), len(lines), create)
+    _dbg_add("INFO", f"POST /import-pdf -> parsed={len(out)} create={create}")
     created_ids: List[str] = []
     if create and out:
         for it in out:
@@ -1131,4 +1151,5 @@ def import_reservations_pdf(
                 continue
 
     logger.info("POST /import-pdf -> created=%d", len(created_ids))
+    _dbg_add("INFO", f"POST /import-pdf -> created={len(created_ids)}")
     return {"parsed": out, "created_ids": created_ids}

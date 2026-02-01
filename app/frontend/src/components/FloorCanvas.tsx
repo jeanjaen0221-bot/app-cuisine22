@@ -328,20 +328,18 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       const lbl = (t.label || '').toString()
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      if (lbl) {
-        ctx.fillStyle = '#fff'
-        ctx.font = `${16/scale}px sans-serif`
-        ctx.fillText(lbl, cx, cy)
-      } else {
-        ctx.fillStyle = '#fff'
-        ctx.font = `${14/scale}px sans-serif`
-        ctx.fillText(cap, cx, cy)
-      }
+      // Always show label if present, otherwise capacity
+      const displayText = lbl || cap
+      ctx.fillStyle = '#fff'
+      ctx.font = lbl ? `${16/scale}px sans-serif` : `${14/scale}px sans-serif`
+      ctx.fillText(displayText, cx, cy)
+      // Show assigned client info next to table
       if (assigned) {
         ctx.fillStyle = '#000'
         ctx.font = `${12/scale}px sans-serif`
         ctx.textAlign = 'left'
-        ctx.fillText(`${assigned.name} (${assigned.pax})`, (t.r ? t.x + (t.r||0) : t.x + (t.w||120)) + 6, t.y + 10)
+        const offsetX = t.r ? (t.r || 0) + 6 : (t.w || 120) + 6
+        ctx.fillText(`${assigned.name} (${assigned.pax})`, t.x + offsetX, t.y + 10)
       }
     }
 
