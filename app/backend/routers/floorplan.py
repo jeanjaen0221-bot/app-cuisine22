@@ -570,7 +570,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     best_cap = cap_pair
         return best
 
-    def pack_from_pool(pool: Dict[str, Dict[str, Any]], target: int) -> Optional[List[Dict[str, Any]]]:
+    def pack_from_pool(pool: Dict[str, Dict[str, Any]], target: int, allow_rect_ext: bool = False) -> Optional[List[Dict[str, Any]]]:
         items = list(pool.values())
         if not items:
             return None
@@ -582,7 +582,11 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             if total >= target:
                 break
             chosen.append(t)
-            total += _capacity_for_table(t)
+            cap = _capacity_for_table(t)
+            # Allow +2 extension for rect tables
+            if allow_rect_ext and t.get("kind") == "rect":
+                cap = min(8, cap + 2)
+            total += cap
         if total >= target:
             return chosen
         return None
@@ -643,8 +647,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if placed:
             continue
 
-        # 3b) Pack multiple fixed tables if needed
-        chosen = pack_from_pool(avail_fixed, int(r.pax))
+        # 3b) Pack multiple fixed tables if needed (agençables pour grands groupes 28 pax)
+        chosen = pack_from_pool(avail_fixed, int(r.pax), allow_rect_ext=False)
         if chosen:
             remaining = int(r.pax)
             for t in chosen:
@@ -655,13 +659,14 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             placed = True
             try:
                 logger.debug("assign fixed-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
+                _dbg_add("DEBUG", f"assign fixed-pack -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in chosen]}")
             except Exception:
                 pass
         if placed:
             continue
 
-        # 3c) Pack multiple rect tables if needed (with extension)
-        chosen = pack_from_pool(avail_rects, int(r.pax))
+        # 3c) Pack multiple rect tables if needed (with extension +2 max 8)
+        chosen = pack_from_pool(avail_rects, int(r.pax), allow_rect_ext=True)
         if chosen:
             remaining = int(r.pax)
             for t in chosen:
@@ -674,13 +679,14 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             placed = True
             try:
                 logger.debug("assign rect-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
+                _dbg_add("DEBUG", f"assign rect-pack -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in chosen]}")
             except Exception:
                 pass
         if placed:
             continue
 
-        # 3d) Pack multiple round tables if needed
-        chosen = pack_from_pool(avail_rounds, int(r.pax))
+        # 3d) Pack multiple round tables if needed (dernier recours)
+        chosen = pack_from_pool(avail_rounds, int(r.pax), allow_rect_ext=False)
         if chosen:
             remaining = int(r.pax)
             for t in chosen:
@@ -691,12 +697,13 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             placed = True
             try:
                 logger.debug("assign round-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
+                _dbg_add("DEBUG", f"assign round-pack -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in chosen]}")
             except Exception:
                 pass
         if placed:
             continue
 
-        # 4) Round table (last resort)
+        # 4) Round table single (dernier recours)
         best_round = take_table(
             avail_rounds,
             predicate=lambda t: _capacity_for_table(t) >= r.pax,
@@ -707,6 +714,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             placed = True
             try:
                 logger.debug("assign round -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_round.get("id"), _capacity_for_table(best_round))
+                _dbg_add("DEBUG", f"assign round (last resort) -> res={r.id} pax={r.pax} table={best_round.get('id')}")
             except Exception:
                 pass
 

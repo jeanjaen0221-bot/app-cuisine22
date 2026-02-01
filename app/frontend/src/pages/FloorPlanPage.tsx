@@ -12,7 +12,7 @@ export default function FloorPlanPage() {
   const [grid, setGrid] = useState(true)
   const [busy, setBusy] = useState(false)
   const [drawNoGo, setDrawNoGo] = useState(false)
-  const [annotFile, setAnnotFile] = useState<File | null>(null)
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [debugSalle, setDebugSalle] = useState(false)
   const [logLines, setLogLines] = useState<Array<{ id: number; ts: string; lvl: string; msg: string }>>([])
   const [lastLogId, setLastLogId] = useState<number>(0)
@@ -71,10 +71,10 @@ export default function FloorPlanPage() {
   }
 
   async function doExportInstanceAnnotated() {
-    if (!inst || !annotFile) return
+    if (!inst || !pdfFile) return
     setBusy(true)
     try {
-      await exportInstanceAnnotatedPdf(inst.id as any, annotFile)
+      await exportInstanceAnnotatedPdf(inst.id as any, pdfFile)
     } finally { setBusy(false) }
   }
 
@@ -117,6 +117,8 @@ export default function FloorPlanPage() {
     if (!f) return
     setBusy(true)
     try {
+      // Stocker le fichier pour l'export annoté
+      setPdfFile(f)
       await importReservationsPdf(f, date, label, createRes)
       if (inst) {
         const full = await getFloorInstance(inst.id)
@@ -223,15 +225,13 @@ export default function FloorPlanPage() {
               </label>
               <button onClick={ensureInstance}>Créer/Charger</button>
               <button disabled={!inst} onClick={doAutoAssign}>Auto-attribuer</button>
-              <label>Importer PDF
+              <label>Importer PDF (parse seulement)
                 <input type="file" accept="application/pdf" onChange={(e)=>doImport(e, false)} />
               </label>
-              <label>Importer & créer
+              <label>Importer & créer réservations
                 <input type="file" accept="application/pdf" onChange={(e)=>doImport(e, true)} />
               </label>
-              <label>PDF original (pour export annoté)
-                <input type="file" accept="application/pdf" onChange={(e)=>setAnnotFile(e.target.files?.[0]||null)} />
-              </label>
+              {pdfFile && <div style={{fontSize:12,color:'#666'}}>PDF chargé: {pdfFile.name}</div>}
               <hr />
               <button onClick={() => addFixture('rect')} disabled={!inst}>Ajouter objet carré</button>
               <button onClick={() => addFixture('round')} disabled={!inst}>Ajouter objet rond</button>
@@ -244,7 +244,7 @@ export default function FloorPlanPage() {
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                   <button onClick={doNumberInstance}>Numéroter (1..20 / T1..T20)</button>
                   <button onClick={doExportInstance}>Exporter PDF</button>
-                  <button onClick={doExportInstanceAnnotated} disabled={!annotFile}>Exporter PDF annoté</button>
+                  <button onClick={doExportInstanceAnnotated} disabled={!pdfFile}>Exporter PDF annoté</button>
                 </div>
                 <FloorCanvas data={inst.data} assignments={inst.assignments} showGrid={grid} editable onChange={saveInstanceData} drawNoGoMode={drawNoGo} />
               </>
