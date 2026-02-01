@@ -14,7 +14,7 @@ import FloorPlanPage from './FloorPlanPage'
 
 export default function App() {
   return (
-    <div className="app-layout app-theme">
+    <div className="app-layout app-theme app-theme-violet">
       <aside className="sidebar">
         <div className="sidebar-header">Fiche Cuisine Manager</div>
         <nav className="sidebar-nav">

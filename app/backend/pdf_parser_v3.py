@@ -49,23 +49,20 @@ class ReservationParserV3:
         if self.debug:
             print(f"[DEBUG] Data starts at line {data_start}")
         
-        # Find all time blocks in the data section
-        time_blocks = self._find_time_blocks(lines, data_start)
+        # Find all time entry indices in the data section
+        time_indices = self._find_time_blocks(lines, data_start)
         
         if self.debug:
-            print(f"[DEBUG] Found {len(time_blocks)} time blocks")
+            print(f"[DEBUG] Found {len(time_indices)} time entries")
         
-        # Extract reservations from each block
+        # Extract one reservation per time entry
         all_reservations = []
-        for block_idx, block_start in enumerate(time_blocks):
-            if self.debug:
-                print(f"\n[DEBUG] Processing block {block_idx+1} starting at line {block_start}")
-            
-            reservations = self._extract_block(lines, block_start)
+        for time_idx in time_indices:
+            reservations = self._extract_block(lines, time_idx)
             all_reservations.extend(reservations)
-            
-            if self.debug:
-                print(f"[DEBUG] Block {block_idx+1}: extracted {len(reservations)} reservations")
+        
+        if self.debug:
+            print(f"[DEBUG] Total: {len(all_reservations)} reservations extracted")
         
         if self.debug:
             print(f"\n[DEBUG] Total: {len(all_reservations)} reservations")
@@ -84,97 +81,88 @@ class ReservationParserV3:
     
     def _find_time_blocks(self, lines: List[str], start_idx: int) -> List[int]:
         """
-        Find start indices of all time blocks.
-        A time block starts with one or more consecutive time patterns.
+        Find ALL time entry indices (not blocks, individual times).
+        Each time entry is a potential reservation.
         """
-        blocks = []
-        i = start_idx
-        in_block = False
-        
-        while i < len(lines):
+        time_indices = []
+        for i in range(start_idx, len(lines)):
             if self.RE_TIME.match(lines[i]):
-                if not in_block:
-                    # Start of new block
-                    blocks.append(i)
-                    in_block = True
-            else:
-                in_block = False
-            i += 1
-        
-        return blocks
+                time_indices.append(i)
+        return time_indices
     
-    def _extract_block(self, lines: List[str], block_start: int) -> List[Dict[str, Any]]:
+    def _extract_block(self, lines: List[str], time_idx: int) -> List[Dict[str, Any]]:
         """
-        Extract reservations from one block.
+        Extract ONE reservation starting at time_idx.
         
-        Structure:
-        - N consecutive times
-        - N consecutive pax
-        - N names (with noise interleaved)
+        Structure (line-by-line):
+        - Line N: Time (HH:MM)
+        - Line N+1 to N+10: Search for pax (1-30)
+        - After pax: Search for name (skip noise)
         """
-        times = []
-        pax_values = []
-        names = []
+        time_val = lines[time_idx]
         
-        i = block_start
-        
-        # Phase 1: Extract consecutive times
-        while i < len(lines) and self.RE_TIME.match(lines[i]):
-            times.append(lines[i])
-            i += 1
-        
-        if not times:
-            return []
-        
-        if self.debug:
-            print(f"  Phase 1: {len(times)} times")
-        
-        # Phase 2: Extract consecutive pax (should be same count as times)
-        while i < len(lines) and len(pax_values) < len(times):
-            if self.RE_PAX.match(lines[i]):
+        # Search for pax in next 10 lines
+        pax_val = None
+        pax_idx = None
+        for j in range(time_idx + 1, min(time_idx + 10, len(lines))):
+            if self.RE_PAX.match(lines[j]):
                 try:
-                    pax_val = int(lines[i])
-                    if 1 <= pax_val <= 30:
-                        pax_values.append(pax_val)
-                        i += 1
-                    else:
+                    val = int(lines[j])
+                    if 1 <= val <= 30:
+                        pax_val = val
+                        pax_idx = j
                         break
                 except ValueError:
-                    break
-            else:
-                break
+                    pass
         
-        if self.debug:
-            print(f"  Phase 2: {len(pax_values)} pax")
+        if not pax_val:
+            return []
         
-        # Phase 3: Extract names (skip noise, need same count as times)
-        while i < len(lines) and len(names) < len(times):
-            ln = lines[i]
+        # Search for name after pax (skip noise)
+        name_val = None
+        for j in range(pax_idx + 1, min(pax_idx + 10, len(lines))):
+            ln = lines[j]
             
             # Skip noise
             if (ln in self.NOISE_VALUES or
                 self.RE_PHONE.search(ln) or
                 self.RE_DATE.match(ln) or
                 len(ln) < 2):
-                i += 1
                 continue
             
-            # Check if we've hit the next time block
-            if self.RE_TIME.match(ln):
-                break
-            
-            # This should be a name
-            clean_name = self._clean_name(ln)
-            if clean_name and len(clean_name) >= 2:
-                names.append(clean_name)
-            
-            i += 1
+            # This is a name
+            name_val = self._clean_name(ln)
+            break
         
-        if self.debug:
-            print(f"  Phase 3: {len(names)} names")
+        if not name_val:
+            return []
         
-        # Match and create reservations
-        return self._match_reservations(times, pax_values, names)
+        # Create reservation
+        res_id = self._generate_id(time_idx, name_val, pax_val, time_val)
+        reservation = {
+            "id": res_id,
+            "client_name": name_val,
+            "pax": pax_val,
+            "service_date": self.service_date.isoformat(),
+            "arrival_time": time_val,
+            "drink_formula": "",
+            "notes": "",
+            "status": "confirmed",
+            "final_version": False,
+            "on_invoice": False,
+            "allergens": "",
+            "items": [],
+        }
+        
+        return [reservation]
+    
+    def _generate_id(self, idx: int, name: str, pax: int, time: str) -> str:
+        """Generate deterministic ID for reservation."""
+        import hashlib
+        import uuid
+        content = f"{idx}_{name}_{pax}_{time}"
+        hash_val = hashlib.md5(content.encode()).hexdigest()
+        return str(uuid.UUID(hash_val))
     
     def _clean_name(self, raw: str) -> str:
         """Clean client name."""

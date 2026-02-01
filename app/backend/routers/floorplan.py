@@ -539,10 +539,15 @@ def _table_collides(plan: Dict[str, Any], t: Dict[str, Any], existing_tables: Op
 
 
 def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: float = 60, r: float = 50) -> Optional[Dict[str, float]]:
-    room = (plan.get("room") or {"width": 0, "height": 0})
+    room = (plan.get("room") or {"width": 1000, "height": 600})
     gw = int(room.get("grid") or 50)
-    W = int(room.get("width") or 0)
-    H = int(room.get("height") or 0)
+    W = int(room.get("width") or 1000)
+    H = int(room.get("height") or 600)
+    
+    # Ensure we have valid dimensions
+    if W <= 0 or H <= 0:
+        W, H = 1000, 600
+    
     round_zones = plan.get("round_only_zones", [])  # Zones R (rondes uniquement)
     rect_zones = plan.get("rect_only_zones", [])    # Zones T (rectangulaires uniquement)
     
@@ -562,9 +567,17 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
                 return True
         return False
     
-    # scan grid row by row
-    for yy in range(0, max(0, H - (int(h) if shape == "rect" else int(r))), max(1, gw)):
-        for xx in range(0, max(0, W - (int(w) if shape == "rect" else int(r))), max(1, gw)):
+    # Calculate scan limits based on shape
+    if shape == "rect":
+        max_y = max(0, H - int(h))
+        max_x = max(0, W - int(w))
+    else:
+        max_y = max(0, H - int(r * 2))
+        max_x = max(0, W - int(r * 2))
+    
+    # Scan grid row by row, starting from top-left
+    for yy in range(0, max_y, max(1, gw)):
+        for xx in range(0, max_x, max(1, gw)):
             cand: Dict[str, Any]
             if shape == "rect":
                 cand = {"x": float(xx), "y": float(yy), "w": float(w), "h": float(h)}
@@ -585,7 +598,7 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
             if in_rect_zone and shape != "rect":
                 continue
             
-            t = {"id": "_probe", **cand}
+            t = {"id": "_probe", "kind": shape, **cand}
             if not _table_collides(plan, t, existing_tables=plan.get("tables") or []):
                 return cand
     return None
@@ -1338,14 +1351,14 @@ def import_reservations_pdf(
     blob = file.file.read(MAX_FILE_SIZE + 1)
     if len(blob) > MAX_FILE_SIZE:
         raise HTTPException(413, "File size exceeds 10MB limit")
-    # Use robust v3 parser
+    # Use robust v4 parser
     try:
-        from pdf_parser_v3 import parse_reservation_pdf_v3
+        from pdf_parser_v4 import parse_reservation_pdf_v4
     except ImportError:
         raise HTTPException(500, "PDF parser module not found")
     
     try:
-        result = parse_reservation_pdf_v3(
+        result = parse_reservation_pdf_v4(
             pdf_bytes=blob,
             service_date=service_date,
             service_label=service_label,
