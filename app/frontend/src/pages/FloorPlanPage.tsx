@@ -25,8 +25,13 @@ export default function FloorPlanPage() {
   }, [debugSalle])
 
   useEffect(() => {
+    if (!debugSalle) return
+    
     let timer: any
+    let active = true
+    
     async function poll() {
+      if (!active) return
       try {
         const r = await api.get('/api/floorplan/debug-log', { params: { after: lastLogId || undefined, limit: 200 } })
         const lines = (r.data?.lines || []) as Array<{ id: number; ts: string; lvl: string; msg: string }>
@@ -39,10 +44,17 @@ export default function FloorPlanPage() {
           setLastLogId(last)
         }
       } catch {}
-      timer = setTimeout(poll, debugSalle ? 2000 : 0)
+      if (active) {
+        timer = setTimeout(poll, 2000)
+      }
     }
-    if (debugSalle) poll()
-    return () => { if (timer) clearTimeout(timer) }
+    
+    poll()
+    
+    return () => {
+      active = false
+      if (timer) clearTimeout(timer)
+    }
   }, [debugSalle, lastLogId])
 
   async function loadBase() {

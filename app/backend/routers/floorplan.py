@@ -1192,16 +1192,33 @@ def import_reservations_pdf(
             # Le reste contient: Client | Table | Statut | Date | Source
             # Extraire le nom du client (avant "Confirmé" ou "Table" ou date)
             client_name = rest
-            # Retirer les parties après le nom (Confirmé, dates, etc.)
-            for sep in ["Confirmé", "Annulé", "En attente", "Table", "202"]:
+            
+            # Retirer tout ce qui vient après le statut (Confirmé, Annulé, etc.)
+            for sep in ["Confirmé", "Annulé", "En attente", "Pending", "Confirmed"]:
                 if sep in client_name:
                     client_name = client_name.split(sep)[0].strip()
-            # Retirer les numéros de téléphone (commencent souvent par +32 ou 04)
-            client_name = re.sub(r"\+?\d{2,}[\d\s-]+", "", client_name).strip()
+                    break
+            
+            # Retirer les dates au format YYYY-MM-DD ou DD/MM/YYYY
+            client_name = re.sub(r"\d{4}-\d{2}-\d{2}", "", client_name)
+            client_name = re.sub(r"\d{2}/\d{2}/\d{4}", "", client_name)
+            # Retirer les timestamps HH:MM
+            client_name = re.sub(r"\d{2}:\d{2}", "", client_name)
+            # Retirer "Table" et tout ce qui suit
+            if "Table" in client_name:
+                client_name = client_name.split("Table")[0].strip()
+            # Retirer les numéros de téléphone (commencent par +32, 04, ou 10 chiffres)
+            client_name = re.sub(r"\+\d{2,}[\d\s()-]+", "", client_name)
+            client_name = re.sub(r"\b0\d[\d\s()-]{7,}", "", client_name)
+            # Retirer "Web", "Google", "Phone" (sources)
+            for src in ["Web", "Google", "Phone", "Téléphone"]:
+                client_name = client_name.replace(src, "")
             # Retirer les caractères de séparation en fin
             client_name = client_name.strip(" -,|")
+            # Retirer les chiffres isolés en fin (probablement des IDs)
+            client_name = re.sub(r"\s+\d{1,3}$", "", client_name)
             
-            if not client_name:
+            if not client_name or len(client_name) < 2:
                 client_name = "Client"
             
             item = {
@@ -1267,6 +1284,29 @@ def import_reservations_pdf(
     logger.info("POST /import-pdf -> filename=%s bytes=%d parsed_lines=%d create=%s", getattr(file, 'filename', ''), len(blob or b""), len(lines), create)
     _dbg_add("INFO", f"POST /import-pdf -> parsed={len(out)} create={create}")
     created_ids: List[str] = []
+    
+    # Supprimer les anciennes réservations du même service avant d'importer
+    if create and out:
+        try:
+            from sqlmodel import delete
+            stmt = delete(Reservation).where(
+                Reservation.service_date == service_date
+            )
+            if service_label:
+                # Filter by service label based on arrival time
+                if service_label.lower() == "lunch":
+                    stmt = stmt.where(Reservation.arrival_time < dtime(17, 0))
+                else:
+                    stmt = stmt.where(Reservation.arrival_time >= dtime(17, 0))
+            result = session.exec(stmt)
+            deleted_count = result.rowcount if hasattr(result, 'rowcount') else 0
+            session.commit()
+            logger.info("POST /import-pdf -> deleted %d existing reservations for %s/%s", deleted_count, service_date, service_label or 'all')
+            _dbg_add("INFO", f"POST /import-pdf -> deleted {deleted_count} existing reservations")
+        except Exception as e:
+            logger.warning("POST /import-pdf -> failed to delete existing reservations: %s", str(e))
+            session.rollback()
+    
     if create and out:
         for idx, it in enumerate(out):
             try:

@@ -346,8 +346,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     ctx.restore()
   }
 
-  useEffect(() => { draw() })
-  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo])
+  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draggingId, fixtureDraggingId, noGoDraggingId, resizeHandle, fixtureResize, noGoResize, drawNoGoMode])
 
   function onPointerDown(e: React.PointerEvent) {
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
