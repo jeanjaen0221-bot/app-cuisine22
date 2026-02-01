@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, autoAssignInstance, createFloorInstance, getFloorBase, getFloorInstance, importReservationsPdf, updateFloorBase, updateFloorInstance, numberBaseTables, exportBasePdf, numberInstanceTables, exportInstancePdf, exportInstanceAnnotatedPdf } from '../lib/api'
+import { api, autoAssignInstance, createFloorInstance, getFloorBase, getFloorInstance, importReservationsPdf, updateFloorBase, updateFloorInstance, numberBaseTables, exportBasePdf, numberInstanceTables, exportInstancePdf, exportInstanceAnnotatedPdf, setSalleDebug } from '../lib/api'
 import type { AssignmentMap, FloorPlanBase, FloorPlanData, FloorPlanInstance, ServiceLabel } from '../types'
 import FloorCanvas from '../components/FloorCanvas'
 
@@ -13,8 +13,37 @@ export default function FloorPlanPage() {
   const [busy, setBusy] = useState(false)
   const [drawNoGo, setDrawNoGo] = useState(false)
   const [annotFile, setAnnotFile] = useState<File | null>(null)
+  const [debugSalle, setDebugSalle] = useState(false)
+  const [logLines, setLogLines] = useState<Array<{ id: number; ts: string; lvl: string; msg: string }>>([])
+  const [lastLogId, setLastLogId] = useState<number>(0)
+  const [showLogs, setShowLogs] = useState(false)
 
   useEffect(() => { loadBase() }, [])
+
+  useEffect(() => {
+    setSalleDebug(debugSalle)
+  }, [debugSalle])
+
+  useEffect(() => {
+    let timer: any
+    async function poll() {
+      try {
+        const r = await api.get('/api/floorplan/debug-log', { params: { after: lastLogId || undefined, limit: 200 } })
+        const lines = (r.data?.lines || []) as Array<{ id: number; ts: string; lvl: string; msg: string }>
+        if (lines.length) {
+          setLogLines(prev => {
+            const next = [...prev, ...lines]
+            return next.slice(-1000)
+          })
+          const last = (r.data?.last || lastLogId) as number
+          setLastLogId(last)
+        }
+      } catch {}
+      timer = setTimeout(poll, debugSalle ? 2000 : 0)
+    }
+    if (debugSalle) poll()
+    return () => { if (timer) clearTimeout(timer) }
+  }, [debugSalle, lastLogId])
 
   async function loadBase() {
     setBusy(true)
@@ -143,6 +172,10 @@ export default function FloorPlanPage() {
           <button className={`btn ${drawNoGo?'active':''}`} onClick={() => setDrawNoGo(v => !v)}>
             {drawNoGo ? 'Arrêter: Zone interdite' : 'Dessiner zone interdite'}
           </button>
+          <button className={`btn ${debugSalle ? 'active' : ''}`} onClick={() => { setDebugSalle(v => { const nv = !v; if (nv) setShowLogs(true); return nv }) }}>
+            Debug Salle: {debugSalle ? 'ON' : 'OFF'}
+          </button>
+          <button className="btn" onClick={() => setShowLogs(v => !v)}>Afficher les logs</button>
           {busy && <span>Chargement…</span>}
         </div>
       </div>
@@ -219,6 +252,29 @@ export default function FloorPlanPage() {
           </div>
         </div>
       )}
+      {debugSalle && (
+        <div style={{ position:'fixed', right:12, bottom:12, background:'#222', color:'#0f0', padding:'6px 10px', borderRadius:6, opacity:0.9, zIndex:9999 }}>
+          Debug Salle ON
+        </div>
+      )}
+      {showLogs && (
+        <div style={{ position:'fixed', right:12, top:72, width:480, height:380, background:'#0b0b0b', color:'#eee', padding:10, border:'1px solid #333', borderRadius:8, overflow:'hidden', zIndex:9998, display:'flex', flexDirection:'column', gap:6 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <strong>Logs Salle (tail)</strong>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => setLogLines([])}>Vider</button>
+              <button onClick={() => setShowLogs(false)}>Fermer</button>
+            </div>
+          </div>
+          <div style={{ flex:'1 1 auto', overflow:'auto', border:'1px solid #222', padding:6, background:'#0f0f0f' }}>
+            <pre style={{ whiteSpace:'pre-wrap', margin:0, fontSize:12, lineHeight:'16px' }}>
+              {logLines.map(l => `[${l.ts}] ${l.lvl} ${l.msg}`).join('\n')}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
+// Inline styles for debug widgets can remain here for simplicity

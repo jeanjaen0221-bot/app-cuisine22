@@ -295,12 +295,16 @@ from collections import deque
 from datetime import datetime
 
 _dbg_buffer: "deque[dict]" = deque(maxlen=1000)
+_dbg_seq: int = 0
 
 class _BufferHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
+            global _dbg_seq
+            _dbg_seq += 1
             msg = self.format(record)
             _dbg_buffer.append({
+                "id": _dbg_seq,
                 "ts": datetime.utcnow().isoformat(timespec="seconds") + "Z",
                 "lvl": record.levelname,
                 "msg": msg,
@@ -313,6 +317,27 @@ _buf_handler.setLevel(logging.DEBUG)
 _buf_handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
 if not any(isinstance(h, _BufferHandler) for h in logger.handlers):
     logger.addHandler(_buf_handler)
+
+
+@router.get("/debug-log")
+def get_debug_log(after: Optional[int] = None, limit: int = 200):
+    try:
+        limit = max(1, min(1000, int(limit)))
+    except Exception:
+        limit = 200
+    items = list(_dbg_buffer)
+    if after is not None:
+        try:
+            a = int(after)
+            items = [x for x in items if int(x.get("id") or 0) > a]
+        except Exception:
+            pass
+    else:
+        # If no cursor, return the tail only
+        items = items[-limit:]
+    # When using cursor, still cap to limit
+    items = items[-limit:]
+    return {"lines": items, "last": (items[-1]["id"] if items else after or 0)}
 
 
 # ---- Helpers ----
