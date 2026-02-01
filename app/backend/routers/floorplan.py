@@ -2,36 +2,48 @@
 from __future__ import annotations
 # ---- Numbering helpers ----
 
-def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumbers: int = 20, persist: bool = True) -> Tuple[Dict[str, Any], Dict[str, str]]:
-    """Assign labels 1..N to fixed/rect tables and T1..TN to round tables.
+def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumbers: int = 20, max_rnumbers: int = 20, persist: bool = True) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    """Assign labels:
+    - Fixed tables: 1..N
+    - Rect tables: T1..TN
+    - Round tables: R1..RN
     Order: top-left counting DOWN first (i.e., column-major: x asc, then y desc).
     Returns (updated_plan, id_to_label).
     """
     tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
     # Separate pools
-    nums = [t for t in tables if (t.get("kind") in ("fixed", "rect"))]
-    tees = [t for t in tables if (t.get("kind") == "round")]
+    fixed = [t for t in tables if (t.get("kind") == "fixed" or t.get("locked") is True)]
+    rects = [t for t in tables if (t.get("kind") == "rect" and not t.get("locked"))]
+    rounds = [t for t in tables if (t.get("kind") == "round")]
     # Sort column-major: x asc, then y DESC (start top-left, count DOWN first)
-    def key_rect(t):
+    def key_table(t):
         x = float(t.get("x") or 0)
         y = float(t.get("y") or 0)
         return (x, -y)
-    def key_round(t):
-        x = float(t.get("x") or 0)
-        y = float(t.get("y") or 0)
-        return (x, -y)
-    nums.sort(key=key_rect)
-    tees.sort(key=key_round)
+    
+    fixed.sort(key=key_table)
+    rects.sort(key=key_table)
+    rounds.sort(key=key_table)
+    
     id_to_label: Dict[str, str] = {}
-    # Assign numbers 1..max_numbers
-    for i, t in enumerate(nums[: max_numbers]):
+    
+    # Assign numbers 1..max_numbers to fixed tables
+    for i, t in enumerate(fixed[: max_numbers]):
         lbl = str(i + 1)
         id_to_label[str(t.get("id"))] = lbl
         if persist:
             t["label"] = lbl
-    # Assign T1..Tmax_tnumbers
-    for i, t in enumerate(tees[: max_tnumbers]):
+    
+    # Assign T1..Tmax_tnumbers to rect tables
+    for i, t in enumerate(rects[: max_tnumbers]):
         lbl = f"T{i + 1}"
+        id_to_label[str(t.get("id"))] = lbl
+        if persist:
+            t["label"] = lbl
+    
+    # Assign R1..Rmax_rnumbers to round tables
+    for i, t in enumerate(rounds[: max_rnumbers]):
+        lbl = f"R{i + 1}"
         id_to_label[str(t.get("id"))] = lbl
         if persist:
             t["label"] = lbl
@@ -248,7 +260,7 @@ def _draw_reservations_page(
         c.drawString(margin, y, tstr)
         c.drawString(margin + 25 * mm, y, (r.client_name or "").upper())
         c.drawString(margin + 110 * mm, y, str(r.pax or 0))
-        lst = ", ".join(sorted(lab_by_res.get(str(r.id), []), key=lambda s: (s.startswith('T'), s)))
+        lst = ", ".join(sorted(lab_by_res.get(str(r.id), []), key=lambda s: (s.startswith('R'), s)))
         c.drawString(margin + 125 * mm, y, lst)
         y -= line_h
         if y < margin + 2 * line_h:
@@ -374,13 +386,43 @@ def _classify_service_label(t: dtime) -> str:
     return "lunch" if t.hour < 17 else "dinner"
 
 
-def _load_reservations(session: Session, service_date: date, service_label: Optional[str]) -> List[Reservation]:
-    # Order by arrival_time then created_at to align with PDF row order
-    stmt = select(Reservation).where(Reservation.service_date == service_date).order_by(Reservation.arrival_time.asc(), Reservation.created_at.asc())
-    rows = session.exec(stmt).all()
-    if service_label:
-        rows = [r for r in rows if _classify_service_label(r.arrival_time) == service_label]
-    return rows
+def _load_reservations(session: Session, service_date: date, service_label: Optional[str], instance: Optional[FloorPlanInstance] = None) -> List[Reservation]:
+    """
+    Load reservations for a service.
+    If instance is provided, load from instance.reservations (floorplan tool, independent).
+    Otherwise, load from main Reservation table (legacy).
+    """
+    if instance and instance.reservations:
+        # Load from instance JSON (floorplan tool)
+        items = instance.reservations.get("items", [])
+        # Convert dict to Reservation objects
+        reservations = []
+        for item in items:
+            # Create a Reservation-like object from dict
+            res = Reservation(
+                id=item.get("id") or str(uuid.uuid4()),
+                client_name=item.get("client_name", ""),
+                pax=item.get("pax", 2),
+                service_date=service_date,
+                arrival_time=item.get("arrival_time", "12:00"),
+                drink_formula=item.get("drink_formula", ""),
+                notes=item.get("notes", ""),
+                status=item.get("status", "confirmed"),
+                final_version=item.get("final_version", False),
+                on_invoice=item.get("on_invoice", False),
+                allergens=item.get("allergens", ""),
+            )
+            reservations.append(res)
+        # Sort by arrival_time to align with PDF
+        reservations.sort(key=lambda r: (r.arrival_time, r.client_name))
+        return reservations
+    else:
+        # Load from main table (legacy)
+        stmt = select(Reservation).where(Reservation.service_date == service_date).order_by(Reservation.arrival_time.asc(), Reservation.created_at.asc())
+        rows = session.exec(stmt).all()
+        if service_label:
+            rows = [r for r in rows if _classify_service_label(r.arrival_time) == service_label]
+        return rows
 
 
 def _capacity_for_table(tbl: Dict[str, Any]) -> int:
@@ -501,14 +543,48 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
     gw = int(room.get("grid") or 50)
     W = int(room.get("width") or 0)
     H = int(room.get("height") or 0)
+    round_zones = plan.get("round_only_zones", [])  # Zones R (rondes uniquement)
+    rect_zones = plan.get("rect_only_zones", [])    # Zones T (rectangulaires uniquement)
+    
+    def is_in_round_only_zone(x: float, y: float) -> bool:
+        """Vérifie si une position est dans une zone round-only (R)."""
+        for zone in round_zones:
+            zx, zy, zw, zh = zone.get("x", 0), zone.get("y", 0), zone.get("w", 0), zone.get("h", 0)
+            if x >= zx and x <= zx + zw and y >= zy and y <= zy + zh:
+                return True
+        return False
+    
+    def is_in_rect_only_zone(x: float, y: float) -> bool:
+        """Vérifie si une position est dans une zone rect-only (T)."""
+        for zone in rect_zones:
+            zx, zy, zw, zh = zone.get("x", 0), zone.get("y", 0), zone.get("w", 0), zone.get("h", 0)
+            if x >= zx and x <= zx + zw and y >= zy and y <= zy + zh:
+                return True
+        return False
+    
     # scan grid row by row
     for yy in range(0, max(0, H - (int(h) if shape == "rect" else int(r))), max(1, gw)):
         for xx in range(0, max(0, W - (int(w) if shape == "rect" else int(r))), max(1, gw)):
             cand: Dict[str, Any]
             if shape == "rect":
                 cand = {"x": float(xx), "y": float(yy), "w": float(w), "h": float(h)}
+                check_x, check_y = float(xx + w/2), float(yy + h/2)  # Centre de la table
             else:
                 cand = {"x": float(xx + r), "y": float(yy + r), "r": float(r)}
+                check_x, check_y = float(xx + r), float(yy + r)  # Centre du cercle
+            
+            # Vérifier si la position est dans une zone spécialisée
+            in_round_zone = is_in_round_only_zone(check_x, check_y)
+            in_rect_zone = is_in_rect_only_zone(check_x, check_y)
+            
+            # Si c'est une zone round-only (R), seules les tables rondes sont autorisées
+            if in_round_zone and shape != "round":
+                continue
+            
+            # Si c'est une zone rect-only (T), seules les tables rectangulaires sont autorisées
+            if in_rect_zone and shape != "rect":
+                continue
+            
             t = {"id": "_probe", **cand}
             if not _table_collides(plan, t, existing_tables=plan.get("tables") or []):
                 return cand
@@ -571,6 +647,49 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     best = [a, b]
                     best_cap = cap_pair
         return best
+
+    def is_in_round_only_zone(x: float, y: float) -> bool:
+        """Vérifie si une position est dans une zone round-only."""
+        round_zones = plan.get("round_only_zones", [])
+        for zone in round_zones:
+            zx, zy, zw, zh = zone.get("x", 0), zone.get("y", 0), zone.get("w", 0), zone.get("h", 0)
+            if x >= zx and x <= zx + zw and y >= zy and y <= zy + zh:
+                return True
+        return False
+    
+    def find_free_position_for_table(kind: str, w: float = 120, h: float = 60, r: float = 50) -> Optional[Dict[str, float]]:
+        """Trouve une position libre pour une nouvelle table en respectant les zones round-only."""
+        room_w = plan.get("room", {}).get("width", 1200)
+        room_h = plan.get("room", {}).get("height", 800)
+        grid = plan.get("room", {}).get("grid", 50)
+        
+        # Essayer différentes positions en grille
+        for y in range(100, int(room_h - 100), grid):
+            for x in range(100, int(room_w - 100), grid):
+                in_round_zone = is_in_round_only_zone(x, y)
+                
+                # Si c'est une zone round-only, seules les tables rondes sont autorisées
+                if in_round_zone and kind != "round":
+                    continue
+                
+                # Vérifier qu'il n'y a pas de collision
+                test_table = {"id": "test", "x": x, "y": y}
+                if kind == "round":
+                    test_table["r"] = r
+                else:
+                    test_table["w"] = w
+                    test_table["h"] = h
+                
+                # Ajouter temporairement pour tester les collisions
+                tables = plan.get("tables", [])
+                plan["tables"] = tables + [test_table]
+                collides = tableCollides(test_table)
+                plan["tables"] = tables  # Restaurer
+                
+                if not collides:
+                    return {"x": x, "y": y}
+        
+        return None
 
     def pack_from_pool(pool: Dict[str, Dict[str, Any]], target: int, allow_rect_ext: bool = False) -> Optional[List[Dict[str, Any]]]:
         items = list(pool.values())
@@ -878,7 +997,7 @@ def export_instance_annotated(
         if lbl:
             lab_by_res.setdefault(rid, []).append(lbl)
     try:
-        reservations = _load_reservations(session, row.service_date, row.service_label)
+        reservations = _load_reservations(session, row.service_date, row.service_label, instance=row)
     except Exception as e:
         logger.error("export_instance_annotated -> failed to load reservations: %s", str(e))
         _dbg_add("ERROR", f"export_instance_annotated -> load reservations failed: {str(e)[:100]}")
@@ -892,6 +1011,11 @@ def export_instance_annotated(
 
     # Prepare overlays per page
     res_idx = 0
+    total_annotated = 0
+    
+    logger.info("POST /instances/%s/export-annotated -> annotating %d reservations", instance_id, len(reservations))
+    _dbg_add("INFO", f"Annotating {len(reservations)} reservations with table numbers")
+    
     for pidx in range(len(reader.pages)):
         page = reader.pages[pidx]
         pw = float(page.mediabox.width)
@@ -902,14 +1026,22 @@ def export_instance_annotated(
         y_top = ph - start_y_mm * mm
         y = y_top
         drawn_any = False
+        page_annotations = 0
+        
         # Only start drawing from page_start
         if pidx >= page_start:
             while res_idx < len(reservations):
-                lbls = ", ".join(sorted(lab_by_res.get(str(reservations[res_idx].id), []), key=lambda s: (s.startswith('T'), s)))
+                res = reservations[res_idx]
+                lbls = ", ".join(sorted(lab_by_res.get(str(res.id), []), key=lambda s: (s.startswith('R'), s)))
                 if lbls:
-                    cv.setFont("Helvetica-Bold", 9)
+                    cv.setFont("Helvetica-Bold", 10)
+                    cv.setFillColorRGB(0, 0, 0)  # Noir
                     cv.drawString(table_x_mm * mm, y, lbls)
                     drawn_any = True
+                    page_annotations += 1
+                    total_annotated += 1
+                    if total_annotated <= 5:  # Log les 5 premières
+                        logger.debug("  Annotated: %s -> %s at y=%.1f", res.client_name[:20], lbls, y)
                 # advance to next reservation after drawing current row
                 res_idx += 1
                 y -= row_h_mm * mm
@@ -917,6 +1049,10 @@ def export_instance_annotated(
                 if y < 15 * mm:
                     break
             # If we broke due to height, keep the same res_idx to continue on next page
+        
+        if page_annotations > 0:
+            logger.debug("Page %d: annotated %d reservations", pidx, page_annotations)
+        
         cv.save()
         ov_pdf = PdfReader(io.BytesIO(ov_buf.getvalue()))
         base_page = reader.pages[pidx]
@@ -1053,7 +1189,7 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     c = pdfcanvas.Canvas(buf, pagesize=A4)
     # 1) Reservations + assigned tables
     try:
-        reservations = _load_reservations(session, row.service_date, row.service_label)
+        reservations = _load_reservations(session, row.service_date, row.service_label, instance=row)
     except Exception as e:
         logger.error("export_instance_pdf -> failed to load reservations: %s", str(e))
         _dbg_add("ERROR", f"export_instance_pdf -> load reservations failed: {str(e)[:100]}")
@@ -1108,15 +1244,27 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     
     # Convertir les données dict en objets Reservation pour compatibilité avec _auto_assign
     from types import SimpleNamespace
+    import hashlib
     reservations = []
-    for item in res_data:
+    for idx, item in enumerate(res_data):
+        # Générer un ID stable basé sur l'index et le contenu
+        # Cela garantit que l'ID est le même entre auto-assign et export PDF
+        if "id" not in item or not item["id"]:
+            # Générer un UUID déterministe basé sur l'index et les données
+            content = f"{idx}_{item.get('client_name', '')}_{item.get('pax', 0)}_{item.get('arrival_time', '')}"
+            hash_val = hashlib.md5(content.encode()).hexdigest()
+            item["id"] = str(uuid.UUID(hash_val))
+        
         res = SimpleNamespace(
-            id=item.get("client_name", "unknown") + "_" + str(item.get("pax", 0)),  # Fake ID
+            id=item["id"],
             client_name=item.get("client_name", "Client"),
             pax=int(item.get("pax", 0)),
             arrival_time=dtime.fromisoformat(item.get("arrival_time", "12:00") + (":00" if len(item.get("arrival_time", "12:00")) == 5 else ""))
         )
         reservations.append(res)
+    
+    # Mettre à jour les IDs dans row.reservations pour cohérence
+    row.reservations = {"items": res_data}
     
     # Si l'instance n'a pas de plan, copier depuis le plan de base
     plan = row.data or {}
@@ -1183,9 +1331,13 @@ def import_reservations_pdf(
 
     import re
     
-    # Format Albert Brussels: Heure | Pax | Client | Table | Statut | Date | Source
-    # Regex: HH:MM suivi de 1-2 chiffres (pax) puis du reste (au moins 1 caractère)
-    re_reservation_line = re.compile(r"^(\d{1,2}:\d{2})\s+(\d{1,2})\s+(.+)$")
+    # Format Albert Brussels: extraction multi-lignes
+    # Ligne N: HH:MM (heure)
+    # Ligne N+1 ou N+2: chiffre 1-30 (pax)
+    # Ligne suivante: Nom du client
+    re_time = re.compile(r"^\d{1,2}:\d{2}$")
+    re_pax = re.compile(r"^\d{1,2}$")
+    re_phone = re.compile(r"Téléphone:|^\+\d{2}|^0\d{1,2}\s")
     
     # Patterns pour ignorer les lignes non-réservations
     skip_patterns = [
@@ -1193,18 +1345,13 @@ def import_reservations_pdf(
         r"^Brunch\s*-\s*Nombre",
         r"^albert brussels",
         r"^Standard",
-        r"^Table$",
+        r"^\d{2}/\d{2}/\d{4}$",  # Dates seules
         r"^Heure$",
         r"^Pax$",
         r"^Client$",
+        r"^Table$",
         r"^Statut$",
-        r"^Date",
         r"^Source$",
-        r"Téléphone:",
-        r"^\+\d{2}",     # +32...
-        r"^0\d{1,2}\s",  # 04..., 02...
-        r"^\d{4}-\d{2}-\d{2}",  # Dates YYYY-MM-DD
-        r"^\d{2}/\d{2}/\d{4}",  # Dates DD/MM/YYYY
     ]
     
     default_time = dtime(12, 30) if (service_label or "").lower() == "lunch" else dtime(19, 0)
@@ -1245,60 +1392,90 @@ def import_reservations_pdf(
 
     parsed_count = 0
     skipped_count = 0
-    no_match_count = 0
-    debug_samples = []
+    no_pax_count = 0
+    no_name_count = 0
+    i = 0
+    import hashlib
     
-    for ln in lines:
+    logger.info("POST /import-pdf -> starting parse, total_lines=%d", len(lines))
+    
+    while i < len(lines):
+        ln = lines[i]
+        
         # Ignorer les lignes d'en-tête, totaux, téléphones
         if any(re.search(pat, ln, re.IGNORECASE) for pat in skip_patterns):
             skipped_count += 1
+            i += 1
             continue
         
-        # Parser le format structuré Albert Brussels: HH:MM PAX NOM...
-        match = re_reservation_line.match(ln)
-        if not match:
-            no_match_count += 1
-            if no_match_count <= 10:  # Garder 10 exemples pour debug
-                debug_samples.append(ln[:80])
+        # Chercher une heure (HH:MM seule sur une ligne)
+        if not re_time.match(ln):
+            i += 1
             continue
         
-        time_str = match.group(1)
-        pax_str = match.group(2)
-        rest = match.group(3).strip()
+        time_str = ln
+        
+        # Chercher le pax dans les 5 lignes suivantes (peut être plus loin)
+        pax = None
+        pax_idx = None
+        for j in range(i+1, min(i+6, len(lines))):
+            if re_pax.match(lines[j]):
+                try:
+                    pax_val = int(lines[j])
+                    if 1 <= pax_val <= 30:
+                        pax = pax_val
+                        pax_idx = j
+                        break
+                except ValueError:
+                    pass
+        
+        if pax is None:
+            no_pax_count += 1
+            if no_pax_count <= 3:
+                logger.debug("POST /import-pdf -> time=%s but no pax found in next 5 lines", time_str)
+            i += 1
+            continue
+        
+        # Chercher le nom du client dans les 5 lignes suivantes après pax
+        client_name = None
+        for j in range(pax_idx+1, min(pax_idx+6, len(lines))):
+            candidate = lines[j]
+            # Ignorer les lignes vides, téléphones, commentaires, statuts
+            if not candidate or len(candidate) < 2:
+                continue
+            if re_phone.search(candidate):
+                continue
+            if candidate in ["Commentaire du client", "Confirmé", "Annulé", "-", "Web", "Google", "Phone"]:
+                continue
+            if re.match(r"^\d{4}-\d{2}-\d{2}", candidate):
+                continue
+            # C'est probablement le nom
+            client_name = clean_client_name(candidate)
+            if client_name and len(client_name) >= 2:
+                break
+        
+        if not client_name:
+            no_name_count += 1
+            if no_name_count <= 3:
+                logger.debug("POST /import-pdf -> time=%s pax=%d but no valid client name found", time_str, pax)
+            i = pax_idx + 1
+            continue
         
         # Parser l'heure
         try:
             hh, mm = time_str.split(":")
             at = dtime(int(hh), int(mm))
         except Exception:
-            logger.debug("POST /import-pdf -> invalid time '%s', using default", time_str)
             at = default_time
         
-        # Parser pax
-        try:
-            pax = int(pax_str)
-        except Exception:
-            logger.debug("POST /import-pdf -> invalid pax '%s', skipping line", pax_str)
-            skipped_count += 1
-            continue
-        
-        # Valider pax (1-30 pour réservations individuelles, certains grands groupes)
-        if pax < 1 or pax > 30:
-            logger.debug("POST /import-pdf -> pax=%d out of range [1-30], skipping (likely total line)", pax)
-            skipped_count += 1
-            continue
-        
-        # Nettoyer le nom du client
-        client_name = clean_client_name(rest)
-        
-        # Valider le nom
-        if not client_name or len(client_name) < 2:
-            logger.debug("POST /import-pdf -> no valid client name after cleaning, skipping")
-            skipped_count += 1
-            continue
+        # Générer un ID déterministe pour cette réservation
+        content = f"{parsed_count}_{client_name}_{pax}_{at.hour:02d}:{at.minute:02d}"
+        hash_val = hashlib.md5(content.encode()).hexdigest()
+        res_id = str(uuid.UUID(hash_val))
         
         # Créer la réservation
         item = {
+            "id": res_id,
             "client_name": client_name,
             "pax": pax,
             "service_date": service_date.isoformat(),
@@ -1314,17 +1491,25 @@ def import_reservations_pdf(
         out.append(item)
         parsed_count += 1
         
-        if parsed_count <= 5:  # Log les 5 premières pour debug
+        if parsed_count <= 5:
             logger.debug("POST /import-pdf -> parsed: %s @ %s (%d pax)", client_name, time_str, pax)
+        
+        # Avancer après cette réservation
+        i = pax_idx + 1
 
-    logger.info("POST /import-pdf -> filename=%s bytes=%d total_lines=%d skipped=%d no_match=%d parsed=%d", getattr(file, 'filename', ''), len(blob or b""), len(lines), skipped_count, no_match_count, parsed_count)
-    _dbg_add("INFO", f"POST /import-pdf -> total_lines={len(lines)} skipped={skipped_count} no_match={no_match_count} parsed={parsed_count}")
+    logger.info("POST /import-pdf -> filename=%s bytes=%d total_lines=%d skipped=%d no_pax=%d no_name=%d parsed=%d", getattr(file, 'filename', ''), len(blob or b""), len(lines), skipped_count, no_pax_count, no_name_count, parsed_count)
+    _dbg_add("INFO", f"POST /import-pdf -> total_lines={len(lines)} skipped={skipped_count} no_pax={no_pax_count} no_name={no_name_count} parsed={parsed_count}")
     
-    if parsed_count == 0 and debug_samples:
-        logger.warning("POST /import-pdf -> NO RESERVATIONS PARSED! Sample lines that didn't match:")
-        for i, sample in enumerate(debug_samples[:5], 1):
-            logger.warning("  Sample %d: %s", i, sample)
-            _dbg_add("WARNING", f"Sample {i}: {sample}")
+    if parsed_count == 0:
+        logger.warning("POST /import-pdf -> NO RESERVATIONS PARSED! no_pax=%d no_name=%d", no_pax_count, no_name_count)
+        _dbg_add("WARNING", f"NO RESERVATIONS PARSED! no_pax={no_pax_count} no_name={no_name_count}")
+        # Log quelques lignes autour des heures trouvées pour debug
+        for i, ln in enumerate(lines[:100]):
+            if re_time.match(ln):
+                logger.warning("  Found time at line %d: %s", i, ln)
+                for j in range(i+1, min(i+6, len(lines))):
+                    logger.warning("    Line %d: %s", j, lines[j][:50])
+                break
     
     # NOTE: L'outil floorplan est complètement indépendant.
     # Il ne crée JAMAIS de réservations dans la table principale.

@@ -10,9 +10,11 @@ type Props = {
   onChange?: (data: FloorPlanData) => void
   className?: string
   drawNoGoMode?: boolean
+  drawRoundOnlyMode?: boolean
+  drawRectOnlyMode?: boolean
 }
 
-export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false }: Props) {
+export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [scale, setScale] = useState(0.8)
@@ -35,6 +37,10 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const dragInvalid = useRef(false)
   const [draftNoGo, setDraftNoGo] = useState<FloorRect | null>(null)
   const drawStartNoGo = useRef<{ x: number; y: number } | null>(null)
+  const [draftRoundZone, setDraftRoundZone] = useState<FloorRect | null>(null)
+  const drawStartRoundZone = useRef<{ x: number; y: number } | null>(null)
+  const [draftRectZone, setDraftRectZone] = useState<FloorRect | null>(null)
+  const drawStartRectZone = useRef<{ x: number; y: number } | null>(null)
 
   const room = data.room || { width: 1200, height: 800, grid: 50 }
   const tables = data.tables || []
@@ -42,6 +48,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const cols = data.columns || []
   const noGo = data.no_go || []
   const fixtures = data.fixtures || []
+  const roundOnlyZones = (data as any).round_only_zones || []
+  const rectOnlyZones = (data as any).rect_only_zones || []
 
   useEffect(() => {
     const el = canvasRef.current
@@ -319,6 +327,93 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       ctx.strokeRect(draftNoGo.x, draftNoGo.y, draftNoGo.w, draftNoGo.h)
       ctx.restore()
     }
+    ctx.restore()
+
+    // Zones round-only (tables rondes uniquement)
+    ctx.save()
+    ctx.fillStyle = 'rgba(52, 152, 219, 0.12)'  // Bleu transparent
+    for (const r of roundOnlyZones) {
+      ctx.fillRect(r.x, r.y, r.w, r.h)
+      // Bordure bleue
+      ctx.strokeStyle = 'rgba(41, 128, 185, 0.6)'
+      ctx.lineWidth = 2 / scale
+      ctx.setLineDash([10 / scale, 5 / scale])
+      ctx.strokeRect(r.x, r.y, r.w, r.h)
+      ctx.setLineDash([])
+      
+      // Label "R" au centre
+      ctx.fillStyle = 'rgba(41, 128, 185, 0.8)'
+      ctx.font = `bold ${24/scale}px sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('R', r.x + r.w/2, r.y + r.h/2)
+      
+      if (editable) {
+        const hs2 = 6 / scale
+        ctx.fillStyle = '#2980b9'
+        ctx.fillRect(r.x + r.w - hs2 / 2, r.y + r.h - hs2 / 2, hs2, hs2)
+        ctx.fillRect(r.x + r.w - hs2 / 2, r.y + r.h / 2 - hs2 / 2, hs2, hs2)
+        ctx.fillRect(r.x + r.w / 2 - hs2 / 2, r.y + r.h - hs2 / 2, hs2, hs2)
+      }
+    }
+
+    if (draftRoundZone) {
+      ctx.save()
+      ctx.globalAlpha = 0.3
+      ctx.fillStyle = '#3498db'
+      ctx.fillRect(draftRoundZone.x, draftRoundZone.y, draftRoundZone.w, draftRoundZone.h)
+      ctx.restore()
+      ctx.save()
+      ctx.strokeStyle = '#2980b9'
+      ctx.setLineDash([6 / scale, 6 / scale])
+      ctx.lineWidth = 2 / scale
+      ctx.strokeRect(draftRoundZone.x, draftRoundZone.y, draftRoundZone.w, draftRoundZone.h)
+      ctx.restore()
+    }
+    ctx.restore()
+
+    // Zones rect-only (tables rectangulaires uniquement)
+    ctx.save()
+    ctx.fillStyle = 'rgba(46, 204, 113, 0.12)'  // Vert transparent
+    for (const r of rectOnlyZones) {
+      ctx.fillRect(r.x, r.y, r.w, r.h)
+      // Bordure verte
+      ctx.strokeStyle = 'rgba(39, 174, 96, 0.6)'
+      ctx.lineWidth = 2 / scale
+      ctx.setLineDash([10 / scale, 5 / scale])
+      ctx.strokeRect(r.x, r.y, r.w, r.h)
+      ctx.setLineDash([])
+      
+      // Label "T" au centre
+      ctx.fillStyle = 'rgba(39, 174, 96, 0.8)'
+      ctx.font = `bold ${24/scale}px sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('T', r.x + r.w/2, r.y + r.h/2)
+      
+      if (editable) {
+        const hs2 = 6 / scale
+        ctx.fillStyle = '#27ae60'
+        ctx.fillRect(r.x + r.w - hs2 / 2, r.y + r.h - hs2 / 2, hs2, hs2)
+        ctx.fillRect(r.x + r.w - hs2 / 2, r.y + r.h / 2 - hs2 / 2, hs2, hs2)
+        ctx.fillRect(r.x + r.w / 2 - hs2 / 2, r.y + r.h - hs2 / 2, hs2, hs2)
+      }
+    }
+
+    if (draftRectZone) {
+      ctx.save()
+      ctx.globalAlpha = 0.3
+      ctx.fillStyle = '#2ecc71'
+      ctx.fillRect(draftRectZone.x, draftRectZone.y, draftRectZone.w, draftRectZone.h)
+      ctx.restore()
+      ctx.save()
+      ctx.strokeStyle = '#27ae60'
+      ctx.setLineDash([6 / scale, 6 / scale])
+      ctx.lineWidth = 2 / scale
+      ctx.strokeRect(draftRectZone.x, draftRectZone.y, draftRectZone.w, draftRectZone.h)
+      ctx.restore()
+    }
+    ctx.restore()
 
     // Fixtures (décorations) avec ombre
     for (const fx of fixtures) {
@@ -450,6 +545,26 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         return
       }
     }
+    if (editable && drawRoundOnlyMode) {
+      if (x >= 0 && y >= 0 && x <= room.width && y <= room.height) {
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const sx0 = snapGrid ? snap(x) : x
+        const sy0 = snapGrid ? snap(y) : y
+        drawStartRoundZone.current = { x: sx0, y: sy0 }
+        setDraftRoundZone({ id: 'draft', x: sx0, y: sy0, w: 0, h: 0 })
+        return
+      }
+    }
+    if (editable && drawRectOnlyMode) {
+      if (x >= 0 && y >= 0 && x <= room.width && y <= room.height) {
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const sx0 = snapGrid ? snap(x) : x
+        const sy0 = snapGrid ? snap(y) : y
+        drawStartRectZone.current = { x: sx0, y: sy0 }
+        setDraftRectZone({ id: 'draft', x: sx0, y: sy0, w: 0, h: 0 })
+        return
+      }
+    }
     // Plan fixe: ne pas déplacer le fond
   }
 
@@ -552,6 +667,30 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       setDraftNoGo({ id: 'draft', x: left, y: top, w, h })
       return
     }
+    if (drawStartRoundZone.current && editable && drawRoundOnlyMode) {
+      const p0 = drawStartRoundZone.current
+      let x0 = p0.x, y0 = p0.y
+      let x1 = x, y1 = y
+      if (showGrid && room.grid && room.grid > 0) { x1 = snap(x1); y1 = snap(y1) }
+      const left = Math.min(x0, x1)
+      const top = Math.min(y0, y1)
+      const w = Math.abs(x1 - x0)
+      const h = Math.abs(y1 - y0)
+      setDraftRoundZone({ id: 'draft', x: left, y: top, w, h })
+      return
+    }
+    if (drawStartRectZone.current && editable && drawRectOnlyMode) {
+      const p0 = drawStartRectZone.current
+      let x0 = p0.x, y0 = p0.y
+      let x1 = x, y1 = y
+      if (showGrid && room.grid && room.grid > 0) { x1 = snap(x1); y1 = snap(y1) }
+      const left = Math.min(x0, x1)
+      const top = Math.min(y0, y1)
+      const w = Math.abs(x1 - x0)
+      const h = Math.abs(y1 - y0)
+      setDraftRectZone({ id: 'draft', x: left, y: top, w, h })
+      return
+    }
     if (draggingId) {
       const t = tables.find(t => t.id === draggingId)
       if (!t) return
@@ -591,7 +730,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         el.style.cursor = fr.handle === 'corner' ? 'nwse-resize' : fr.handle === 'right' ? 'ew-resize' : fr.handle === 'bottom' ? 'ns-resize' : 'ew-resize'
       } else if (ngr) {
         el.style.cursor = ngr.handle === 'corner' ? 'nwse-resize' : ngr.handle === 'right' ? 'ew-resize' : 'ns-resize'
-      } else if (drawNoGoMode) {
+      } else if (drawNoGoMode || drawRoundOnlyMode || drawRectOnlyMode) {
         el.style.cursor = 'crosshair'
       } else {
         el.style.cursor = h === 'corner' ? 'nwse-resize' : h === 'right' ? 'ew-resize' : h === 'bottom' ? 'ns-resize' : 'default'
@@ -610,6 +749,26 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       }
       drawStartNoGo.current = null
       setDraftNoGo(null)
+    }
+    if (drawStartRoundZone.current && draftRoundZone && editable && drawRoundOnlyMode) {
+      const minSize = 10
+      if (draftRoundZone.w >= minSize && draftRoundZone.h >= minSize) {
+        const id = `rz_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
+        const next = [...roundOnlyZones, { id, x: draftRoundZone.x, y: draftRoundZone.y, w: draftRoundZone.w, h: draftRoundZone.h }]
+        onChange && onChange({ ...data, round_only_zones: next } as any)
+      }
+      drawStartRoundZone.current = null
+      setDraftRoundZone(null)
+    }
+    if (drawStartRectZone.current && draftRectZone && editable && drawRectOnlyMode) {
+      const minSize = 10
+      if (draftRectZone.w >= minSize && draftRectZone.h >= minSize) {
+        const id = `tz_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
+        const next = [...rectOnlyZones, { id, x: draftRectZone.x, y: draftRectZone.y, w: draftRectZone.w, h: draftRectZone.h }]
+        onChange && onChange({ ...data, rect_only_zones: next } as any)
+      }
+      drawStartRectZone.current = null
+      setDraftRectZone(null)
     }
     // Revert invalid drop before clearing ids/state
     if (dragStart.current && lastValid.current && dragInvalid.current && editable && currentDraggingId) {
@@ -761,6 +920,16 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       {drawNoGoMode && (
         <div className="absolute top-4 left-4 bg-orange-500 text-white px-4 py-2 rounded-lg shadow-lg font-medium">
           Mode dessin zone interdite
+        </div>
+      )}
+      {drawRoundOnlyMode && (
+        <div className="absolute top-4 left-4 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg font-medium">
+          Mode dessin zone tables rondes (R)
+        </div>
+      )}
+      {drawRectOnlyMode && (
+        <div className="absolute top-4 left-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg font-medium">
+          Mode dessin zone tables rectangulaires (T)
         </div>
       )}
 

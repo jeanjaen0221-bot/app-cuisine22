@@ -12,6 +12,8 @@ export default function FloorPlanPage() {
   const [grid, setGrid] = useState(true)
   const [busy, setBusy] = useState(false)
   const [drawNoGo, setDrawNoGo] = useState(false)
+  const [drawRoundOnly, setDrawRoundOnly] = useState(false)
+  const [drawRectOnly, setDrawRectOnly] = useState(false)
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [debugSalle, setDebugSalle] = useState(false)
   const [logLines, setLogLines] = useState<Array<{ id: number; ts: string; lvl: string; msg: string }>>([])
@@ -185,6 +187,28 @@ export default function FloorPlanPage() {
     if (mode === 'service' && inst) saveInstanceData(next)
   }
 
+  function addRoundOnlyZone() {
+    const next: FloorPlanData = { ...(mode === 'base' ? base?.data : inst?.data) } as any
+    if (!(next as any).round_only_zones) (next as any).round_only_zones = []
+    const id = `rz_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    const w = 250, h = 200
+    const x = 200, y = 200
+    ;((next as any).round_only_zones as any).push({ id, x, y, w, h })
+    if (mode === 'base' && base) saveBaseData(next)
+    if (mode === 'service' && inst) saveInstanceData(next)
+  }
+
+  function addRectOnlyZone() {
+    const next: FloorPlanData = { ...(mode === 'base' ? base?.data : inst?.data) } as any
+    if (!(next as any).rect_only_zones) (next as any).rect_only_zones = []
+    const id = `tz_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    const w = 250, h = 200
+    const x = 300, y = 200
+    ;((next as any).rect_only_zones as any).push({ id, x, y, w, h })
+    if (mode === 'base' && base) saveBaseData(next)
+    if (mode === 'service' && inst) saveInstanceData(next)
+  }
+
   return (
     <div className="page">
       <div className="toolbar" style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
@@ -196,8 +220,14 @@ export default function FloorPlanPage() {
           <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             <input type="checkbox" checked={grid} onChange={(e) => setGrid(e.target.checked)} /> Grille
           </label>
-          <button className={`btn ${drawNoGo?'active':''}`} onClick={() => setDrawNoGo(v => !v)}>
+          <button className={`btn ${drawNoGo?'active':''}`} onClick={() => { setDrawNoGo(v => !v); setDrawRoundOnly(false); setDrawRectOnly(false) }}>
             {drawNoGo ? 'Arrêter: Zone interdite' : 'Dessiner zone interdite'}
+          </button>
+          <button className={`btn ${drawRoundOnly?'active':''}`} onClick={() => { setDrawRoundOnly(v => !v); setDrawNoGo(false); setDrawRectOnly(false) }}>
+            {drawRoundOnly ? 'Arrêter: Zone tables rondes (R)' : 'Dessiner zone tables rondes (R)'}
+          </button>
+          <button className={`btn ${drawRectOnly?'active':''}`} onClick={() => { setDrawRectOnly(v => !v); setDrawNoGo(false); setDrawRoundOnly(false) }}>
+            {drawRectOnly ? 'Arrêter: Zone tables rect (T)' : 'Dessiner zone tables rect (T)'}
           </button>
           <button className={`btn ${debugSalle ? 'active' : ''}`} onClick={() => { setDebugSalle(v => { const nv = !v; if (nv) setShowLogs(true); return nv }) }}>
             Debug Salle: {debugSalle ? 'ON' : 'OFF'}
@@ -218,6 +248,8 @@ export default function FloorPlanPage() {
               <button onClick={() => addFixture('rect')}>Ajouter objet carré</button>
               <button onClick={() => addFixture('round')}>Ajouter objet rond</button>
               <button onClick={addNoGo}>Ajouter zone interdite</button>
+              <button onClick={addRoundOnlyZone} className="btn" style={{ background: '#3498db', color: 'white' }}>Ajouter zone tables rondes (R)</button>
+              <button onClick={addRectOnlyZone} className="btn" style={{ background: '#27ae60', color: 'white' }}>Ajouter zone tables rect (T)</button>
             </div>
             <div style={{ marginTop: 16 }}>
               <div>Date par défaut: {new Date().toLocaleDateString()}</div>
@@ -227,10 +259,10 @@ export default function FloorPlanPage() {
             {base && (
               <>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <button onClick={doNumberBase}>Numéroter (1..20 / T1..T20)</button>
+                  <button onClick={doNumberBase}>Numéroter (1..20 / T1..T20 / R1..R20)</button>
                   <button onClick={doExportBase}>Exporter PDF</button>
                 </div>
-                <FloorCanvas data={base.data} showGrid={grid} editable onChange={saveBaseData} drawNoGoMode={drawNoGo} />
+                <FloorCanvas data={base.data} showGrid={grid} editable onChange={saveBaseData} drawNoGoMode={drawNoGo} drawRoundOnlyMode={drawRoundOnly} drawRectOnlyMode={drawRectOnly} />
               </>
             )}
           </div>
@@ -275,7 +307,7 @@ export default function FloorPlanPage() {
                   <button onClick={doExportInstance}>Exporter PDF</button>
                   <button onClick={doExportInstanceAnnotated} disabled={!pdfFile}>Exporter PDF annoté</button>
                 </div>
-                <FloorCanvas data={inst.data} assignments={inst.assignments} showGrid={grid} editable onChange={saveInstanceData} drawNoGoMode={drawNoGo} />
+                <FloorCanvas data={inst.data} assignments={inst.assignments} showGrid={grid} editable onChange={saveInstanceData} drawNoGoMode={drawNoGo} drawRoundOnlyMode={drawRoundOnly} drawRectOnlyMode={drawRectOnly} />
               </>
             )}
           </div>
