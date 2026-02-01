@@ -1245,7 +1245,7 @@ def import_reservations_pdf(
     _dbg_add("INFO", f"POST /import-pdf -> parsed={len(out)} create={create}")
     created_ids: List[str] = []
     if create and out:
-        for it in out:
+        for idx, it in enumerate(out):
             try:
                 res = Reservation(
                     client_name=it["client_name"],
@@ -1258,8 +1258,10 @@ def import_reservations_pdf(
                 session.add(res)
                 session.commit()
                 created_ids.append(str(res.id))
-            except Exception:
+            except Exception as e:
                 session.rollback()
+                logger.warning("POST /import-pdf -> failed to create reservation %d: %s (client=%s pax=%s time=%s)", idx, str(e), it.get("client_name"), it.get("pax"), it.get("arrival_time"))
+                _dbg_add("WARNING", f"POST /import-pdf -> failed reservation {idx}: {str(e)[:100]} (client={it.get('client_name')} pax={it.get('pax')})")
                 continue
 
     logger.info("POST /import-pdf -> created=%d", len(created_ids))
