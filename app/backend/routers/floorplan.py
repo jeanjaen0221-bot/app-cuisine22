@@ -1088,13 +1088,24 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
         if base and base.data:
             import copy
             plan = copy.deepcopy(base.data)
-            logger.info("POST /instances/%s/auto-assign -> copied base plan with %d tables", instance_id, len(plan.get("tables") or []))
-            _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> copied base plan with {len(plan.get('tables') or [])} tables")
+            tables = plan.get("tables") or []
+            fixed_count = sum(1 for t in tables if t.get("kind") == "fixed" or t.get("locked"))
+            rect_count = sum(1 for t in tables if t.get("kind") == "rect")
+            round_count = sum(1 for t in tables if t.get("kind") == "round")
+            logger.info("POST /instances/%s/auto-assign -> copied base plan: %d tables (fixed=%d rect=%d round=%d)", instance_id, len(tables), fixed_count, rect_count, round_count)
+            _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> copied base: {len(tables)} tables (fixed={fixed_count} rect={rect_count} round={round_count})")
     
-    logger.info("POST /instances/%s/auto-assign -> reservations=%d tables=%d", instance_id, len(reservations), len(plan.get("tables") or []))
-    _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> reservations={len(reservations)} tables={len(plan.get('tables') or [])}")
+    tables = plan.get("tables") or []
+    fixed_count = sum(1 for t in tables if t.get("kind") == "fixed" or t.get("locked"))
+    rect_count = sum(1 for t in tables if t.get("kind") == "rect")
+    round_count = sum(1 for t in tables if t.get("kind") == "round")
+    logger.info("POST /instances/%s/auto-assign -> reservations=%d tables=%d (fixed=%d rect=%d round=%d)", instance_id, len(reservations), len(tables), fixed_count, rect_count, round_count)
+    _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> reservations={len(reservations)} tables={len(tables)} (fixed={fixed_count} rect={rect_count} round={round_count})")
+    # Sauvegarder le plan avec les tables du base avant auto-assign
     row.data = plan
     row.assignments = _auto_assign(plan, reservations)
+    # Le plan peut avoir été modifié par _auto_assign (tables créées)
+    row.data = plan
     session.add(row)
     session.commit()
     session.refresh(row)
@@ -1128,15 +1139,68 @@ def import_reservations_pdf(
     out: List[Dict[str, Any]] = []
 
     import re
+    # Format Albert Brussels: Heure | Pax | Client | Table | Statut | Date | Source
+    # Regex pour détecter une ligne de réservation: commence par heure (HH:MM)
+    re_reservation_line = re.compile(r"^(\d{1,2}:\d{2})\s+(\d{1,2})\s+(.+)$")
     re_time = re.compile(r"(\d{1,2}[:h]\d{2})")
-    re_pax = re.compile(r"(\d{1,2})\s*(pax|pers|couverts?)", re.IGNORECASE)
-
+    
     default_time = dtime(12, 30) if (service_label or "").lower() == "lunch" else dtime(19, 0)
 
     for ln in lines:
+        # Essayer le format structuré Albert Brussels d'abord
+        match = re_reservation_line.match(ln)
+        if match:
+            time_str = match.group(1)
+            pax_str = match.group(2)
+            rest = match.group(3).strip()
+            
+            # Extraire l'heure
+            try:
+                hh, mm = time_str.split(":")
+                at = dtime(int(hh), int(mm))
+            except Exception:
+                at = default_time
+            
+            # Extraire pax
+            try:
+                pax = int(pax_str)
+            except Exception:
+                continue
+            
+            # Le reste contient: Client | Table | Statut | Date | Source
+            # Extraire le nom du client (avant "Confirmé" ou "Table" ou date)
+            client_name = rest
+            # Retirer les parties après le nom (Confirmé, dates, etc.)
+            for sep in ["Confirmé", "Annulé", "En attente", "Table", "202"]:
+                if sep in client_name:
+                    client_name = client_name.split(sep)[0].strip()
+            # Retirer les numéros de téléphone (commencent souvent par +32 ou 04)
+            client_name = re.sub(r"\+?\d{2,}[\d\s-]+", "", client_name).strip()
+            # Retirer les caractères de séparation en fin
+            client_name = client_name.strip(" -,|")
+            
+            if not client_name:
+                client_name = "Client"
+            
+            item = {
+                "client_name": client_name,
+                "pax": pax,
+                "service_date": service_date.isoformat(),
+                "arrival_time": f"{at.hour:02d}:{at.minute:02d}",
+                "drink_formula": "",
+                "notes": "",
+                "status": "confirmed",
+                "final_version": False,
+                "on_invoice": False,
+                "allergens": "",
+                "items": [],
+            }
+            out.append(item)
+            continue
+        
+        # Fallback: ancien parsing pour autres formats
         nm = ln
         tm = re_time.search(ln)
-        px = re_pax.search(ln)
         pax = None
         at = None
         if tm:
@@ -1147,9 +1211,11 @@ def import_reservations_pdf(
             except Exception:
                 at = None
             nm = nm.replace(tm.group(1), "").strip(" -,")
-        if px:
-            pax = int(px.group(1))
-            nm = nm.replace(px.group(0), "").strip(" -,")
+        # Chercher pax dans le texte
+        m_pax = re.search(r"(\d{1,2})\s*(pax|pers|couverts?)", nm, re.IGNORECASE)
+        if m_pax:
+            pax = int(m_pax.group(1))
+            nm = nm.replace(m_pax.group(0), "").strip(" -,")
         if not pax:
             # try trailing number
             m2 = re.search(r"(\d{1,2})$", ln)
