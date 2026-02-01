@@ -678,6 +678,10 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       menuY = window.innerHeight - menuHeight - 10
     }
     
+    console.log('[ContextMenu] Window size:', window.innerWidth, window.innerHeight)
+    console.log('[ContextMenu] Original click:', e.clientX, e.clientY)
+    console.log('[ContextMenu] Adjusted position:', menuX, menuY)
+    
     // Détecter ce qui est cliqué (priorité: zones > fixtures > tables)
     const rz = roundZoneHit(x, y)
     if (rz) {
@@ -1169,19 +1173,33 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       {contextMenu && createPortal(
         <>
           <div 
-            className="fixed inset-0" 
-            style={{ zIndex: 9998 }}
+            style={{ 
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 9998,
+              backgroundColor: 'transparent'
+            }}
             onClick={() => setContextMenu(null)}
           />
           <div 
-            className="fixed bg-white rounded-lg shadow-2xl border-2 border-gray-300 py-1 min-w-[180px]"
             style={{ 
+              position: 'fixed',
               left: contextMenu.x, 
               top: contextMenu.y, 
-              zIndex: 9999
+              zIndex: 9999,
+              backgroundColor: 'white',
+              borderRadius: '8px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              border: '2px solid #d1d5db',
+              paddingTop: '4px',
+              paddingBottom: '4px',
+              minWidth: '180px'
             }}
           >
-            <div className="px-3 py-2 text-xs font-semibold text-gray-500 border-b border-gray-100">
+            <div style={{ padding: '12px', fontSize: '12px', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #f3f4f6' }}>
               {contextMenu.target.type === 'roundZone' && 'Zone Tables Rondes (R)'}
               {contextMenu.target.type === 'rectZone' && 'Zone Tables Rect (T)'}
               {contextMenu.target.type === 'noGo' && 'Zone Interdite'}
@@ -1190,7 +1208,9 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
             </div>
             {contextMenu.target.type === 'roundZone' && (
               <button
-                className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 transition-colors"
+                style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 onClick={() => {
                   const next = roundOnlyZones.filter((z: any) => z.id !== contextMenu.target.data.id)
                   onChange && onChange({ ...data, round_only_zones: next } as any)
@@ -1202,7 +1222,9 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
             )}
             {contextMenu.target.type === 'rectZone' && (
               <button
-                className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 transition-colors"
+                style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 onClick={() => {
                   const next = rectOnlyZones.filter((z: any) => z.id !== contextMenu.target.data.id)
                   onChange && onChange({ ...data, rect_only_zones: next } as any)
@@ -1214,7 +1236,9 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
             )}
             {contextMenu.target.type === 'noGo' && (
               <button
-                className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 transition-colors"
+                style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 onClick={() => {
                   const next = noGo.filter(z => z.id !== contextMenu.target.data.id)
                   onChange && onChange({ ...data, no_go: next })
@@ -1226,7 +1250,9 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
             )}
             {contextMenu.target.type === 'fixture' && (
               <button
-                className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 transition-colors"
+                style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 onClick={() => {
                   const next = fixtures.filter((f: any) => f.id !== contextMenu.target.data.id)
                   onChange && onChange({ ...data, fixtures: next })
@@ -1239,7 +1265,9 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
             {contextMenu.target.type === 'table' && (
               <>
                 <button
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 text-blue-600 transition-colors"
+                  style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#2563eb', border: 'none', background: 'none', cursor: 'pointer' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#eff6ff'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   onClick={() => {
                     const t = tables.find(tt => tt.id === contextMenu.target.data.id)
                     if (t) {
@@ -1252,7 +1280,9 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
                   {contextMenu.target.data.locked ? '🔓 Déverrouiller' : '🔒 Verrouiller'}
                 </button>
                 <button
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 transition-colors"
+                  style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   onClick={() => {
                     const next = tables.filter(t => t.id !== contextMenu.target.data.id)
                     onChange && onChange({ ...data, tables: next })

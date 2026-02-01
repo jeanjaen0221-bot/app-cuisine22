@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlmodel import Session, select
 
 from ..database import get_session  # unused, but keeps pattern consistent
@@ -120,10 +120,10 @@ def upsert_allergen(key: str, payload: AllergenUpsert, session: Session = Depend
     # Upsert in DB as well
     row = session.get(AllergenModel, key)
     if row is None:
-        row = AllergenModel(key=key, label=meta[key]["label"], icon_bytes=None, updated_at=datetime.utcnow())
+        row = AllergenModel(key=key, label=meta[key]["label"], icon_bytes=None, updated_at=datetime.now(UTC))
     else:
         row.label = meta[key]["label"]
-        row.updated_at = datetime.utcnow()
+        row.updated_at = datetime.now(UTC)
     session.add(row)
     session.commit()
     has_icon = os.path.isfile(_icon_path_for(key))
@@ -149,12 +149,12 @@ def upload_icon(key: str, file: UploadFile = File(...), session: Session = Depen
     # Upsert icon bytes in DB
     row = session.get(AllergenModel, key)
     if row is None:
-        row = AllergenModel(key=key, label=label, icon_bytes=normalized, updated_at=datetime.utcnow())
+        row = AllergenModel(key=key, label=label, icon_bytes=normalized, updated_at=datetime.now(UTC))
     else:
         row.icon_bytes = normalized
         if not row.label:
             row.label = label
-        row.updated_at = datetime.utcnow()
+        row.updated_at = datetime.now(UTC)
     session.add(row)
     session.commit()
     return AllergenResponse(key=key, label=label, has_icon=True, icon_url=_icon_url_for(key))

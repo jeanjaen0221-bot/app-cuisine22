@@ -306,7 +306,7 @@ logger.setLevel(logging.DEBUG)
 
 # --- In-memory debug buffer for UI tail ---
 from collections import deque
-from datetime import datetime
+from datetime import datetime, UTC
 
 _dbg_buffer: "deque[dict]" = deque(maxlen=1000)
 _dbg_seq: int = 0
@@ -319,7 +319,7 @@ class _BufferHandler(logging.Handler):
             msg = self.format(record)
             _dbg_buffer.append({
                 "id": _dbg_seq,
-                "ts": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "ts": datetime.now(UTC).isoformat(timespec="seconds") + "Z",
                 "lvl": record.levelname,
                 "msg": msg,
             })
@@ -339,7 +339,7 @@ def _dbg_add(level: str, msg: str) -> None:
         _dbg_seq += 1
         _dbg_buffer.append({
             "id": _dbg_seq,
-            "ts": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "ts": datetime.now(UTC).isoformat(timespec="seconds") + "Z",
             "lvl": level,
             "msg": msg,
         })
@@ -978,6 +978,16 @@ def export_instance_annotated(
     if PdfReader is None:
         raise HTTPException(501, "PDF annotation not available (pypdf not installed)")
     
+    # Security: Validate file type and size
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(400, "Only PDF files are accepted")
+    
+    # Read original PDF with size limit (10MB max)
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    original_pdf_bytes = file.file.read(MAX_FILE_SIZE + 1)
+    if len(original_pdf_bytes) > MAX_FILE_SIZE:
+        raise HTTPException(413, "File size exceeds 10MB limit")
+    
     # Si l'instance n'a pas de plan, copier depuis le plan de base
     plan = row.data or {}
     if not plan.get("tables"):
@@ -1313,12 +1323,26 @@ def import_reservations_pdf(
     create: bool = Form(False),  # Deprecated: kept for API compatibility but ignored
     session: Session = Depends(get_session),
 ):
+    """Parse a reservation PDF and store the parsed reservations in the instance.
+    Does NOT create reservations in the main reservation table.
+    """
+    logger.info("POST /import-pdf -> service_date=%s service_label=%s", service_date, service_label)
+    _dbg_add("INFO", f"POST /import-pdf -> service_date={service_date} service_label={service_label}")
+    
+    # Security: Validate file type and size
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(400, "Only PDF files are accepted")
+    
+    # Read file with size limit (10MB max)
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    blob = file.file.read(MAX_FILE_SIZE + 1)
+    if len(blob) > MAX_FILE_SIZE:
+        raise HTTPException(413, "File size exceeds 10MB limit")
     try:
         from pdfminer.high_level import extract_text
     except Exception:
         raise HTTPException(500, "pdfminer.six non installé côté serveur")
 
-    blob = file.file.read()
     try:
         text = extract_text(io.BytesIO(blob))
     except Exception as e:
@@ -1527,7 +1551,7 @@ def import_reservations_pdf(
     if instance:
         # Stocker les réservations parsées dans l'instance
         instance.reservations = {"items": out}
-        instance.updated_at = datetime.utcnow()
+        instance.updated_at = datetime.now(UTC)
         session.add(instance)
         session.commit()
         logger.info("POST /import-pdf -> stored %d reservations in instance %s", len(out), instance.id)

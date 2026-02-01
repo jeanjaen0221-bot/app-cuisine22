@@ -255,10 +255,15 @@ async def import_from_upload(
     unit: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
+    """Upload a CSV file with drink names and import them."""
+    # Security: Validate file size
+    MAX_FILE_SIZE = 1 * 1024 * 1024  # 1MB
+    raw = await file.read(MAX_FILE_SIZE + 1)
+    if len(raw) > MAX_FILE_SIZE:
+        raise HTTPException(413, "File size exceeds 1MB limit")
+    text = raw.decode("utf-8", errors="ignore")
     fname = file.filename or ""
     ext = fname.lower().rsplit(".", 1)[-1] if "." in fname else ""
-    raw = await file.read()
-    text = raw.decode("utf-8", errors="ignore")
     if ext in {"txt"} or (file.content_type or "").startswith("text/"):
         payload = DrinksImportTextIn(text=text, default_category=default_category, unit=unit)
         return import_from_text(payload, session)
