@@ -1182,12 +1182,12 @@ def import_reservations_pdf(
     out: List[Dict[str, Any]] = []
 
     import re
-    # Format Albert Brussels: Heure | Pax | Client | Table | Statut | Date | Source
-    # Regex pour détecter une ligne de réservation: commence par heure (HH:MM)
-    re_reservation_line = re.compile(r"^(\d{1,2}:\d{2})\s+(\d{1,2})\s+(.+)$")
-    re_time = re.compile(r"(\d{1,2}[:h]\d{2})")
     
-    # Lignes à ignorer (totaux, en-têtes, téléphones, etc.)
+    # Format Albert Brussels: Heure | Pax | Client | Table | Statut | Date | Source
+    # Regex stricte: HH:MM suivi de 1-2 chiffres (pax) puis du reste
+    re_reservation_line = re.compile(r"^(\d{1,2}:\d{2})\s+(\d{1,2})\s+([A-Za-zÀ-ÿ].+)$")
+    
+    # Patterns pour ignorer les lignes non-réservations
     skip_patterns = [
         r"^Nombre de couverts",
         r"^Brunch\s*-\s*Nombre",
@@ -1198,128 +1198,103 @@ def import_reservations_pdf(
         r"^Pax$",
         r"^Client$",
         r"^Statut$",
-        r"Téléphone:",  # Lignes de numéro de téléphone
-        r"^\+\d{2}",    # Lignes commençant par +32, +33, etc.
-        r"^0\d{1,2}\s", # Lignes commençant par 04, 02, etc.
+        r"^Date",
+        r"^Source$",
+        r"Téléphone:",
+        r"^\+\d{2}",     # +32...
+        r"^0\d{1,2}\s",  # 04..., 02...
+        r"^\d{4}-\d{2}-\d{2}",  # Dates YYYY-MM-DD
+        r"^\d{2}/\d{2}/\d{4}",  # Dates DD/MM/YYYY
     ]
     
     default_time = dtime(12, 30) if (service_label or "").lower() == "lunch" else dtime(19, 0)
+    
+    def clean_client_name(raw: str) -> str:
+        """Nettoie le nom du client en retirant tout sauf le nom."""
+        name = raw
+        
+        # Retirer tout après le statut (première occurrence)
+        for sep in ["Confirmé", "Annulé", "En attente", "Pending", "Confirmed", "Cancelled"]:
+            if sep in name:
+                name = name.split(sep)[0]
+                break
+        
+        # Retirer "Table" et tout ce qui suit
+        if "Table" in name:
+            name = name.split("Table")[0]
+        
+        # Retirer les dates
+        name = re.sub(r"\d{4}-\d{2}-\d{2}", "", name)
+        name = re.sub(r"\d{2}/\d{2}/\d{4}", "", name)
+        name = re.sub(r"\d{2}:\d{2}", "", name)
+        
+        # Retirer les téléphones
+        name = re.sub(r"\+\d{2,}[\d\s()-]+", "", name)
+        name = re.sub(r"\b0\d[\d\s()-]{7,}", "", name)
+        
+        # Retirer les sources
+        for src in ["Web", "Google", "Phone", "Téléphone", "Email"]:
+            name = name.replace(src, "")
+        
+        # Nettoyer les espaces et caractères spéciaux
+        name = name.strip(" -,|")
+        name = re.sub(r"\s+", " ", name)  # Normaliser espaces multiples
+        name = re.sub(r"\s+\d{1,3}$", "", name)  # Retirer chiffres en fin
+        
+        return name.strip()
 
+    parsed_count = 0
+    skipped_count = 0
+    
     for ln in lines:
-        # Ignorer les lignes d'en-tête et de totaux
+        # Ignorer les lignes d'en-tête, totaux, téléphones
         if any(re.search(pat, ln, re.IGNORECASE) for pat in skip_patterns):
+            skipped_count += 1
             continue
         
-        # Essayer le format structuré Albert Brussels d'abord
+        # Parser le format structuré Albert Brussels: HH:MM PAX NOM...
         match = re_reservation_line.match(ln)
-        if match:
-            time_str = match.group(1)
-            pax_str = match.group(2)
-            rest = match.group(3).strip()
-            
-            # Extraire l'heure
-            try:
-                hh, mm = time_str.split(":")
-                at = dtime(int(hh), int(mm))
-            except Exception as e:
-                logger.debug("POST /import-pdf -> failed to parse time '%s': %s", time_str, str(e))
-                at = default_time
-            
-            # Extraire pax
-            try:
-                pax = int(pax_str)
-            except Exception as e:
-                logger.warning("POST /import-pdf -> failed to parse pax '%s': %s (line: %s)", pax_str, str(e), ln[:100])
-                _dbg_add("WARNING", f"POST /import-pdf -> invalid pax '{pax_str}': {str(e)[:50]}")
-                continue
-            
-            # Vérifier que pax est raisonnable (1-20 pour une réservation individuelle)
-            # Les lignes de totaux ont souvent des pax > 20 (ex: 97, 94, 91)
-            if pax > 20:
-                logger.debug("POST /import-pdf -> skipping line with pax=%d (likely a total line): %s", pax, ln[:100])
-                continue
-            
-            # Le reste contient: Client | Table | Statut | Date | Source
-            # Extraire le nom du client (avant "Confirmé" ou "Table" ou date)
-            client_name = rest
-            
-            # Retirer tout ce qui vient après le statut (Confirmé, Annulé, etc.)
-            for sep in ["Confirmé", "Annulé", "En attente", "Pending", "Confirmed"]:
-                if sep in client_name:
-                    client_name = client_name.split(sep)[0].strip()
-                    break
-            
-            # Retirer les dates au format YYYY-MM-DD ou DD/MM/YYYY
-            client_name = re.sub(r"\d{4}-\d{2}-\d{2}", "", client_name)
-            client_name = re.sub(r"\d{2}/\d{2}/\d{4}", "", client_name)
-            # Retirer les timestamps HH:MM
-            client_name = re.sub(r"\d{2}:\d{2}", "", client_name)
-            # Retirer "Table" et tout ce qui suit
-            if "Table" in client_name:
-                client_name = client_name.split("Table")[0].strip()
-            # Retirer les numéros de téléphone (commencent par +32, 04, ou 10 chiffres)
-            client_name = re.sub(r"\+\d{2,}[\d\s()-]+", "", client_name)
-            client_name = re.sub(r"\b0\d[\d\s()-]{7,}", "", client_name)
-            # Retirer "Web", "Google", "Phone" (sources)
-            for src in ["Web", "Google", "Phone", "Téléphone"]:
-                client_name = client_name.replace(src, "")
-            # Retirer les caractères de séparation en fin
-            client_name = client_name.strip(" -,|")
-            # Retirer les chiffres isolés en fin (probablement des IDs)
-            client_name = re.sub(r"\s+\d{1,3}$", "", client_name)
-            
-            # Si pas de nom après nettoyage, c'est probablement une ligne de total
-            if not client_name or len(client_name) < 2:
-                logger.debug("POST /import-pdf -> skipping line with no client name (likely a total): %s", ln[:100])
-                continue
-            
-            item = {
-                "client_name": client_name,
-                "pax": pax,
-                "service_date": service_date.isoformat(),
-                "arrival_time": f"{at.hour:02d}:{at.minute:02d}",
-                "drink_formula": "",
-                "notes": "",
-                "status": "confirmed",
-                "final_version": False,
-                "on_invoice": False,
-                "allergens": "",
-                "items": [],
-            }
-            out.append(item)
+        if not match:
             continue
         
-        # Fallback: ancien parsing pour autres formats
-        nm = ln
-        tm = re_time.search(ln)
-        pax = None
-        at = None
-        if tm:
-            raw = tm.group(1).replace("h", ":")
-            try:
-                hh, mm = raw.split(":")
-                at = dtime(int(hh), int(mm))
-            except Exception as e:
-                logger.debug("POST /import-pdf -> fallback time parse failed '%s': %s", raw, str(e))
-                at = None
-            nm = nm.replace(tm.group(1), "").strip(" -,")
-        # Chercher pax dans le texte
-        m_pax = re.search(r"(\d{1,2})\s*(pax|pers|couverts?)", nm, re.IGNORECASE)
-        if m_pax:
-            pax = int(m_pax.group(1))
-            nm = nm.replace(m_pax.group(0), "").strip(" -,")
-        if not pax:
-            # try trailing number
-            m2 = re.search(r"(\d{1,2})$", ln)
-            if m2:
-                pax = int(m2.group(1))
-                nm = nm[: ln.rfind(m2.group(1))].strip(" -,")
-        if not pax:
-            continue
-        if not at:
+        time_str = match.group(1)
+        pax_str = match.group(2)
+        rest = match.group(3).strip()
+        
+        # Parser l'heure
+        try:
+            hh, mm = time_str.split(":")
+            at = dtime(int(hh), int(mm))
+        except Exception:
+            logger.debug("POST /import-pdf -> invalid time '%s', using default", time_str)
             at = default_time
+        
+        # Parser pax
+        try:
+            pax = int(pax_str)
+        except Exception:
+            logger.debug("POST /import-pdf -> invalid pax '%s', skipping line", pax_str)
+            skipped_count += 1
+            continue
+        
+        # Valider pax (1-20 pour réservations individuelles)
+        if pax < 1 or pax > 20:
+            logger.debug("POST /import-pdf -> pax=%d out of range [1-20], skipping (likely total line)", pax)
+            skipped_count += 1
+            continue
+        
+        # Nettoyer le nom du client
+        client_name = clean_client_name(rest)
+        
+        # Valider le nom
+        if not client_name or len(client_name) < 2:
+            logger.debug("POST /import-pdf -> no valid client name after cleaning, skipping")
+            skipped_count += 1
+            continue
+        
+        # Créer la réservation
         item = {
-            "client_name": nm or "Client",
+            "client_name": client_name,
             "pax": pax,
             "service_date": service_date.isoformat(),
             "arrival_time": f"{at.hour:02d}:{at.minute:02d}",
@@ -1332,9 +1307,13 @@ def import_reservations_pdf(
             "items": [],
         }
         out.append(item)
+        parsed_count += 1
+        
+        if parsed_count <= 5:  # Log les 5 premières pour debug
+            logger.debug("POST /import-pdf -> parsed: %s @ %s (%d pax)", client_name, time_str, pax)
 
-    logger.info("POST /import-pdf -> filename=%s bytes=%d parsed_lines=%d parsed_reservations=%d", getattr(file, 'filename', ''), len(blob or b""), len(lines), len(out))
-    _dbg_add("INFO", f"POST /import-pdf -> parsed={len(out)} reservations (stored in instance, NOT in main reservation table)")
+    logger.info("POST /import-pdf -> filename=%s bytes=%d total_lines=%d skipped=%d parsed=%d", getattr(file, 'filename', ''), len(blob or b""), len(lines), skipped_count, parsed_count)
+    _dbg_add("INFO", f"POST /import-pdf -> total_lines={len(lines)} skipped={skipped_count} parsed={parsed_count} (stored in instance, NOT in main table)")
     
     # NOTE: L'outil floorplan est complètement indépendant.
     # Il ne crée JAMAIS de réservations dans la table principale.
