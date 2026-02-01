@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
-import { Plus, Printer, Pencil, Filter, Search, User, CalendarDays, Clock, Users, Wine } from 'lucide-react'
+import { Plus, Printer, Pencil, Filter, Search, User, CalendarDays, Clock, Users, Wine, Trash2 } from 'lucide-react'
 
 // Fonction pour formater la date au format français
 const formatDate = (dateString: string) => {
@@ -76,6 +76,18 @@ export default function ReservationList() {
   const [selectedMonth, setSelectedMonth] = useState<string>('')
   const [expanded, setExpanded] = useState<Record<string, { entries?: boolean; mains?: boolean; desserts?: boolean; notes?: boolean; allergens?: boolean }>>({})
   const [viewMode, setViewMode] = useState<'cards' | 'compact'>('cards')
+
+  async function deleteReservation(id: string, clientName: string) {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer la réservation de ${clientName} ?`)) return
+    try {
+      await api.delete(`/api/reservations/${id}`)
+      setRows(prev => prev.filter(r => r.id !== id))
+      setAllRows(prev => prev.filter(r => r.id !== id))
+      alert('Réservation supprimée avec succès')
+    } catch (err: any) {
+      alert(`Erreur lors de la suppression: ${err?.response?.data?.detail || err.message}`)
+    }
+  }
 
   // Initialize view mode from URL (?view=cards|compact) or localStorage; fallback to cards on small screens
   useEffect(() => {
@@ -438,6 +450,7 @@ export default function ReservationList() {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <Link to={`/reservation/${r.id}`} className="btn btn-sm btn-outline w-full sm:w-auto"><Pencil className="w-4 h-4"/> Modifier</Link>
                   <button onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)} className="btn btn-sm btn-outline w-full sm:w-auto"><Printer className="w-4 h-4"/> PDF</button>
+                  <button onClick={() => deleteReservation(r.id, r.client_name)} className="btn btn-sm btn-outline text-red-600 hover:bg-red-50 w-full sm:w-auto"><Trash2 className="w-4 h-4"/> Supprimer</button>
                 </div>
               </div>
             </div>

@@ -1096,7 +1096,26 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     row = session.get(FloorPlanInstance, instance_id)
     if not row:
         raise HTTPException(404, "Instance not found")
-    reservations = _load_reservations(session, row.service_date, row.service_label)
+    
+    # Utiliser les réservations stockées dans l'instance (parsées du PDF)
+    # au lieu de charger depuis la table reservation principale
+    res_data = (row.reservations or {}).get("items", [])
+    if not res_data:
+        logger.warning("POST /instances/%s/auto-assign -> no reservations in instance, import PDF first", instance_id)
+        _dbg_add("WARNING", f"POST /instances/{instance_id}/auto-assign -> no reservations, import PDF first")
+        raise HTTPException(400, "No reservations found. Import PDF first.")
+    
+    # Convertir les données dict en objets Reservation pour compatibilité avec _auto_assign
+    from types import SimpleNamespace
+    reservations = []
+    for item in res_data:
+        res = SimpleNamespace(
+            id=item.get("client_name", "unknown") + "_" + str(item.get("pax", 0)),  # Fake ID
+            client_name=item.get("client_name", "Client"),
+            pax=int(item.get("pax", 0)),
+            arrival_time=dtime.fromisoformat(item.get("arrival_time", "12:00") + (":00" if len(item.get("arrival_time", "12:00")) == 5 else ""))
+        )
+        reservations.append(res)
     
     # Si l'instance n'a pas de plan, copier depuis le plan de base
     plan = row.data or {}
@@ -1116,8 +1135,8 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     fixed_count = sum(1 for t in tables if t.get("kind") == "fixed" or t.get("locked"))
     rect_count = sum(1 for t in tables if t.get("kind") == "rect")
     round_count = sum(1 for t in tables if t.get("kind") == "round")
-    logger.info("POST /instances/%s/auto-assign -> reservations=%d tables=%d (fixed=%d rect=%d round=%d)", instance_id, len(reservations), len(tables), fixed_count, rect_count, round_count)
-    _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> reservations={len(reservations)} tables={len(tables)} (fixed={fixed_count} rect={rect_count} round={round_count})")
+    logger.info("POST /instances/%s/auto-assign -> reservations=%d (from instance PDF) tables=%d (fixed=%d rect=%d round=%d)", instance_id, len(reservations), len(tables), fixed_count, rect_count, round_count)
+    _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> reservations={len(reservations)} (from PDF) tables={len(tables)} (fixed={fixed_count} rect={rect_count} round={round_count})")
     # Sauvegarder le plan avec les tables du base avant auto-assign
     row.data = plan
     row.assignments = _auto_assign(plan, reservations)
@@ -1126,8 +1145,9 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     session.add(row)
     session.commit()
     session.refresh(row)
-    logger.info("POST /instances/%s/auto-assign -> assigned_tables=%d", instance_id, len((row.assignments or {}).get("tables", {})))
-    _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> assigned_tables={len((row.assignments or {}).get('tables', {}))}")
+    assigned_count = len((row.assignments or {}).get("tables", {}))
+    logger.info("POST /instances/%s/auto-assign -> assigned_tables=%d (floorplan independent, not in main reservation table)", instance_id, assigned_count)
+    _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> assigned_tables={assigned_count} (independent)")
     return FloorPlanInstanceRead(**row.model_dump())
 
 
@@ -1138,7 +1158,7 @@ def import_reservations_pdf(
     file: UploadFile = File(...),
     service_date: date = Form(...),
     service_label: Optional[str] = Form(None),
-    create: bool = Form(False),
+    create: bool = Form(False),  # Deprecated: kept for API compatibility but ignored
     session: Session = Depends(get_session),
 ):
     try:
@@ -1281,52 +1301,32 @@ def import_reservations_pdf(
         }
         out.append(item)
 
-    logger.info("POST /import-pdf -> filename=%s bytes=%d parsed_lines=%d create=%s", getattr(file, 'filename', ''), len(blob or b""), len(lines), create)
-    _dbg_add("INFO", f"POST /import-pdf -> parsed={len(out)} create={create}")
-    created_ids: List[str] = []
+    logger.info("POST /import-pdf -> filename=%s bytes=%d parsed_lines=%d parsed_reservations=%d", getattr(file, 'filename', ''), len(blob or b""), len(lines), len(out))
+    _dbg_add("INFO", f"POST /import-pdf -> parsed={len(out)} reservations (stored in instance, NOT in main reservation table)")
     
-    # Supprimer les anciennes réservations du même service avant d'importer
-    if create and out:
-        try:
-            from sqlmodel import delete
-            stmt = delete(Reservation).where(
-                Reservation.service_date == service_date
-            )
-            if service_label:
-                # Filter by service label based on arrival time
-                if service_label.lower() == "lunch":
-                    stmt = stmt.where(Reservation.arrival_time < dtime(17, 0))
-                else:
-                    stmt = stmt.where(Reservation.arrival_time >= dtime(17, 0))
-            result = session.exec(stmt)
-            deleted_count = result.rowcount if hasattr(result, 'rowcount') else 0
-            session.commit()
-            logger.info("POST /import-pdf -> deleted %d existing reservations for %s/%s", deleted_count, service_date, service_label or 'all')
-            _dbg_add("INFO", f"POST /import-pdf -> deleted {deleted_count} existing reservations")
-        except Exception as e:
-            logger.warning("POST /import-pdf -> failed to delete existing reservations: %s", str(e))
-            session.rollback()
+    # NOTE: L'outil floorplan est complètement indépendant.
+    # Il ne crée JAMAIS de réservations dans la table principale.
+    # Les données parsées sont stockées dans l'instance pour usage temporaire.
     
-    if create and out:
-        for idx, it in enumerate(out):
-            try:
-                res = Reservation(
-                    client_name=it["client_name"],
-                    pax=int(it["pax"]),
-                    service_date=service_date,
-                    arrival_time=dtime.fromisoformat(it["arrival_time"] + (":00" if len(it["arrival_time"]) == 5 else "")),
-                    drink_formula=it["drink_formula"],
-                    notes=it["notes"],
-                )
-                session.add(res)
-                session.commit()
-                created_ids.append(str(res.id))
-            except Exception as e:
-                session.rollback()
-                logger.warning("POST /import-pdf -> failed to create reservation %d: %s (client=%s pax=%s time=%s)", idx, str(e), it.get("client_name"), it.get("pax"), it.get("arrival_time"))
-                _dbg_add("WARNING", f"POST /import-pdf -> failed reservation {idx}: {str(e)[:100]} (client={it.get('client_name')} pax={it.get('pax')})")
-                continue
-
-    logger.info("POST /import-pdf -> created=%d", len(created_ids))
-    _dbg_add("INFO", f"POST /import-pdf -> created={len(created_ids)}")
-    return {"parsed": out, "created_ids": created_ids}
+    # Trouver ou créer l'instance pour ce service
+    from sqlmodel import select
+    stmt = select(FloorPlanInstance).where(
+        FloorPlanInstance.service_date == service_date
+    )
+    if service_label:
+        stmt = stmt.where(FloorPlanInstance.service_label == service_label)
+    instance = session.exec(stmt).first()
+    
+    if instance:
+        # Stocker les réservations parsées dans l'instance
+        instance.reservations = {"items": out}
+        instance.updated_at = datetime.utcnow()
+        session.add(instance)
+        session.commit()
+        logger.info("POST /import-pdf -> stored %d reservations in instance %s", len(out), instance.id)
+        _dbg_add("INFO", f"POST /import-pdf -> stored in instance {instance.id}")
+    else:
+        logger.warning("POST /import-pdf -> no instance found for %s/%s, reservations not stored", service_date, service_label)
+        _dbg_add("WARNING", f"POST /import-pdf -> no instance found, create one first")
+    
+    return {"parsed": out, "message": f"Parsed {len(out)} reservations from PDF (stored in instance)"}

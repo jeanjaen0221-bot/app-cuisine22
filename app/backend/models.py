@@ -452,6 +452,7 @@ class FloorPlanInstance(SQLModel, table=True):
     template_id: uuid.UUID = Field(foreign_key="floorplanbase.id")
     data: dict = Field(default_factory=dict, sa_column=Column(JSON))
     assignments: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    reservations: dict = Field(default_factory=dict, sa_column=Column(JSON))  # Parsed PDF data (not in main reservation table)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     __table_args__ = (
@@ -466,6 +467,7 @@ class FloorPlanInstanceRead(SQLModel):
     template_id: uuid.UUID
     data: dict
     assignments: dict
+    reservations: dict
     created_at: datetime
     updated_at: datetime
 
@@ -478,3 +480,4 @@ class FloorPlanInstanceCreate(SQLModel):
 class FloorPlanInstanceUpdate(SQLModel):
     data: Optional[dict] = None
     assignments: Optional[dict] = None
+    reservations: Optional[dict] = None

@@ -254,7 +254,7 @@ export default function FloorPlanPage() {
               <div style={{padding:'8px',background:'#f5f5f5',borderRadius:4,marginBottom:8}}>
                 <strong>2. Importer PDF réservations</strong>
                 <label style={{display:'block',marginTop:4}}>
-                  <input type="file" accept="application/pdf" onChange={(e)=>doImport(e, true)} />
+                  <input type="file" accept="application/pdf" onChange={(e)=>doImport(e, false)} />
                 </label>
                 {pdfFile && <div style={{fontSize:12,color:'#0a0',fontWeight:'bold',marginTop:4}}>✓ {pdfFile.name}</div>}
               </div>
