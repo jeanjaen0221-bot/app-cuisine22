@@ -349,13 +349,12 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
     // Zones interdites
     ctx.save()
+    ctx.fillStyle = 'rgba(231, 76, 60, 0.15)'
     for (const r of noGo) {
-      const isHovered = hoveredItem?.type === 'noGo' && hoveredItem?.id === r.id
-      ctx.fillStyle = isHovered ? 'rgba(231, 76, 60, 0.3)' : 'rgba(231, 76, 60, 0.15)'
       ctx.fillRect(r.x, r.y, r.w, r.h)
       // Bordure
-      ctx.strokeStyle = isHovered ? 'rgba(192, 57, 43, 0.8)' : 'rgba(192, 57, 43, 0.5)'
-      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
+      ctx.strokeStyle = 'rgba(192, 57, 43, 0.5)'
+      ctx.lineWidth = 2 / scale
       ctx.setLineDash([8 / scale, 4 / scale])
       ctx.strokeRect(r.x, r.y, r.w, r.h)
       ctx.setLineDash([])
@@ -386,13 +385,12 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
     // Zones round-only (tables rondes uniquement)
     ctx.save()
+    ctx.fillStyle = 'rgba(52, 152, 219, 0.12)'  // Bleu transparent
     for (const r of roundOnlyZones) {
-      const isHovered = hoveredItem?.type === 'roundZone' && hoveredItem?.id === r.id
-      ctx.fillStyle = isHovered ? 'rgba(52, 152, 219, 0.25)' : 'rgba(52, 152, 219, 0.12)'  // Bleu transparent
       ctx.fillRect(r.x, r.y, r.w, r.h)
       // Bordure bleue
-      ctx.strokeStyle = isHovered ? 'rgba(41, 128, 185, 0.9)' : 'rgba(41, 128, 185, 0.6)'
-      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
+      ctx.strokeStyle = 'rgba(41, 128, 185, 0.6)'
+      ctx.lineWidth = 2 / scale
       ctx.setLineDash([10 / scale, 5 / scale])
       ctx.strokeRect(r.x, r.y, r.w, r.h)
       ctx.setLineDash([])
@@ -430,13 +428,12 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
     // Zones rect-only (tables rectangulaires uniquement)
     ctx.save()
+    ctx.fillStyle = 'rgba(46, 204, 113, 0.12)'  // Vert transparent
     for (const r of rectOnlyZones) {
-      const isHovered = hoveredItem?.type === 'rectZone' && hoveredItem?.id === r.id
-      ctx.fillStyle = isHovered ? 'rgba(46, 204, 113, 0.25)' : 'rgba(46, 204, 113, 0.12)'  // Vert transparent
       ctx.fillRect(r.x, r.y, r.w, r.h)
       // Bordure verte
-      ctx.strokeStyle = isHovered ? 'rgba(39, 174, 96, 0.9)' : 'rgba(39, 174, 96, 0.6)'
-      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
+      ctx.strokeStyle = 'rgba(39, 174, 96, 0.6)'
+      ctx.lineWidth = 2 / scale
       ctx.setLineDash([10 / scale, 5 / scale])
       ctx.strokeRect(r.x, r.y, r.w, r.h)
       ctx.setLineDash([])
@@ -544,7 +541,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     ctx.restore()
   }
 
-  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode, hoveredItem])
+  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode])
 
   function onPointerDown(e: React.PointerEvent) {
     // Ignorer le clic droit (bouton 2) - il est géré par onContextMenu
@@ -910,37 +907,15 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       onChange && onChange({ ...data, tables: [...tables] })
       return
     }
-    // Détecter les objets sous le curseur
+    // Détecter les objets sous le curseur pour le curseur uniquement (pas de survol visuel pour éviter la boucle)
     const rz = roundZoneHit(x, y)
     const tz = rectZoneHit(x, y)
     const ng = noGoHit(x, y)
     const fx = fixtureHit(x, y)
     const table = [...tables].reverse().find(t => tableHit(x, y, t))
     
-    // Mettre à jour le survol (seulement si pas en train de drag/resize)
-    if (!draggingId && !fixtureDraggingId && !noGoDraggingId && !roundZoneDraggingId && !rectZoneDraggingId && 
-        !resizeHandle && !fixtureResize && !noGoResize && !roundZoneResize && !rectZoneResize &&
-        !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
-      let newHovered = null
-      if (rz) {
-        newHovered = { type: 'roundZone', id: rz.id }
-      } else if (tz) {
-        newHovered = { type: 'rectZone', id: tz.id }
-      } else if (ng) {
-        newHovered = { type: 'noGo', id: ng.id }
-      } else if (fx) {
-        newHovered = { type: 'fixture', id: (fx as any).id }
-      } else if (table) {
-        newHovered = { type: 'table', id: table.id }
-      }
-      
-      // Ne mettre à jour que si différent
-      if (JSON.stringify(newHovered) !== JSON.stringify(hoveredItem)) {
-        setHoveredItem(newHovered)
-      }
-    } else if (hoveredItem) {
-      setHoveredItem(null)
-    }
+    // DÉSACTIVÉ TEMPORAIREMENT: Le survol cause une boucle infinie de sauvegardes
+    // TODO: Implémenter avec useMemo ou useCallback pour éviter les re-renders
     
     const fr = fixtureHandleAt(sx, sy)
     const ngr = noGoHandleAt(sx, sy)
