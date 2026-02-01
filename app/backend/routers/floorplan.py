@@ -288,6 +288,31 @@ from ..models import (
 
 router = APIRouter(prefix="/api/floorplan", tags=["floorplan"])
 logger = logging.getLogger("app.floorplan")
+logger.propagate = True
+
+# --- In-memory debug buffer for UI tail ---
+from collections import deque
+from datetime import datetime
+
+_dbg_buffer: "deque[dict]" = deque(maxlen=1000)
+
+class _BufferHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            _dbg_buffer.append({
+                "ts": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "lvl": record.levelname,
+                "msg": msg,
+            })
+        except Exception:
+            pass
+
+_buf_handler = _BufferHandler()
+_buf_handler.setLevel(logging.DEBUG)
+_buf_handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+if not any(isinstance(h, _BufferHandler) for h in logger.handlers):
+    logger.addHandler(_buf_handler)
 
 
 # ---- Helpers ----

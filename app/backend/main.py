@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, Response, FileResponse
+from fastapi.responses import JSONResponse, Response, FileResponse, StreamingResponse
 
 from .database import init_db, run_startup_migrations, session_context, backfill_allergen_icons
 from .routers import reservations, menu_items, zenchef, allergens, notes, drinks, suppliers, purchase_orders, floorplan
@@ -68,6 +68,7 @@ async def log_requests(request: Request, call_next):
     req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.request_id = req_id
     is_salle = request.url.path.startswith("/api/floorplan")
+    salle_debug = request.headers.get("X-Salle-Debug") == "1"
     try:
         response = await call_next(request)
         duration_ms = int((time.time() - start) * 1000)
@@ -87,6 +88,17 @@ async def log_requests(request: Request, call_next):
             print(
                 f"SALLE HTTP | id={req_id} | {request.method} {request.url.path}{q} -> {response.status_code} ({duration_ms}ms) | ip={ip} | ua={ua} | len={clen}"
             )
+        if is_salle and salle_debug:
+            try:
+                from .routers.floorplan import _dbg_buffer
+                # dump last ~50 buffer lines to stdout for quick tailing
+                tail = list(_dbg_buffer)[-50:]
+                print("SALLE DEBUG DUMP START")
+                for item in tail:
+                    print(f"{item['ts']} {item['lvl']} {item['msg']}")
+                print("SALLE DEBUG DUMP END")
+            except Exception:
+                pass
         return response
     except Exception as e:
         duration_ms = int((time.time() - start) * 1000)

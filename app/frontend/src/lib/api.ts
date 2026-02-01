@@ -1,8 +1,11 @@
-import axios from 'axios'
+import axios, { AxiosRequestHeaders } from 'axios'
 
 export const api = axios.create({
   baseURL: '',
 })
+
+let _salleDebug = false
+export function setSalleDebug(v: boolean) { _salleDebug = v }
 
 export function fileDownload(url: string) {
   const link = document.createElement('a')
@@ -17,6 +20,13 @@ api.interceptors.request.use((config) => {
   try {
     // lightweight request log
     console.debug('API request', config.method?.toUpperCase(), config.url, config.params || config.data)
+    // Ensure headers object exists with a compatible type
+    if (!config.headers) (config as any).headers = {} as AxiosRequestHeaders
+    if (_salleDebug) {
+      ;(config.headers as any)['X-Salle-Debug'] = '1'
+    } else {
+      try { delete (config.headers as any)['X-Salle-Debug'] } catch {}
+    }
   } catch {}
   return config
 })
@@ -92,8 +102,17 @@ export async function numberBaseTables() {
   return r.data
 }
 
-export function exportBasePdf() {
-  fileDownload('/api/floorplan/base/export-pdf')
+export async function exportBasePdf() {
+  const r = await api.get('/api/floorplan/base/export-pdf', { responseType: 'blob' })
+  const blob = new Blob([r.data], { type: 'application/pdf' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'base_floorplan.pdf'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }
 
 export async function numberInstanceTables(id: string) {
@@ -101,8 +120,17 @@ export async function numberInstanceTables(id: string) {
   return r.data
 }
 
-export function exportInstancePdf(id: string) {
-  fileDownload(`/api/floorplan/instances/${id}/export-pdf`)
+export async function exportInstancePdf(id: string) {
+  const r = await api.get(`/api/floorplan/instances/${id}/export-pdf`, { responseType: 'blob' })
+  const blob = new Blob([r.data], { type: 'application/pdf' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'floorplan_instance.pdf'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }
 
 export async function exportInstanceAnnotatedPdf(
