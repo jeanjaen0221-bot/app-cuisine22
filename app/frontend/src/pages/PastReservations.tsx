@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
-import { Search, Filter, Printer, Pencil } from 'lucide-react'
+import { Search, Filter, Printer, Pencil, Trash2 } from 'lucide-react'
 
 export default function PastReservations() {
   const [rows, setRows] = useState<Reservation[]>([])
@@ -13,6 +13,16 @@ export default function PastReservations() {
     if (q) params.q = q
     const res = await api.get('/api/reservations/past', { params })
     setRows(res.data)
+  }
+
+  async function deleteReservation(id: string) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette réservation ?')) return
+    try {
+      await api.delete(`/api/reservations/${id}`)
+      await load()
+    } catch (e: any) {
+      alert(e?.userMessage || 'Erreur lors de la suppression')
+    }
   }
 
   useEffect(() => { load() }, [])
@@ -75,6 +85,7 @@ export default function PastReservations() {
                     <div className="flex flex-col sm:flex-row gap-2">
                       <Link className="btn btn-sm btn-outline w-full sm:w-auto" to={`/reservation/${r.id}`}><Pencil className="h-4 w-4"/> Modifier</Link>
                       <button className="btn btn-sm btn-outline w-full sm:w-auto" onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)}><Printer className="h-4 w-4"/> PDF</button>
+                      <button className="btn btn-sm btn-danger w-full sm:w-auto" onClick={() => deleteReservation(r.id)}><Trash2 className="h-4 w-4"/> Supprimer</button>
                     </div>
                   </td>
                 </tr>

@@ -1338,202 +1338,41 @@ def import_reservations_pdf(
     blob = file.file.read(MAX_FILE_SIZE + 1)
     if len(blob) > MAX_FILE_SIZE:
         raise HTTPException(413, "File size exceeds 10MB limit")
+    # Use robust v3 parser
     try:
-        from pdfminer.high_level import extract_text
-    except Exception:
-        raise HTTPException(500, "pdfminer.six non installé côté serveur")
-
+        from pdf_parser_v3 import parse_reservation_pdf_v3
+    except ImportError:
+        raise HTTPException(500, "PDF parser module not found")
+    
     try:
-        text = extract_text(io.BytesIO(blob))
+        result = parse_reservation_pdf_v3(
+            pdf_bytes=blob,
+            service_date=service_date,
+            service_label=service_label,
+            debug=False
+        )
+        out = result["reservations"]
+        stats = result["stats"]
     except Exception as e:
-        logger.error("POST /import-pdf -> PDF text extraction failed: %s", str(e))
-        _dbg_add("ERROR", f"POST /import-pdf -> PDF extraction failed: {str(e)[:100]}")
-        text = ""
+        logger.error("POST /import-pdf -> PDF parsing failed: %s", str(e))
+        _dbg_add("ERROR", f"POST /import-pdf -> parsing failed: {str(e)[:100]}")
+        out = []
+        stats = {"total_parsed": 0}
 
-    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
-    out: List[Dict[str, Any]] = []
-
-    import re
-    
-    # Format Albert Brussels: extraction multi-lignes
-    # Ligne N: HH:MM (heure)
-    # Ligne N+1 ou N+2: chiffre 1-30 (pax)
-    # Ligne suivante: Nom du client
-    re_time = re.compile(r"^\d{1,2}:\d{2}$")
-    re_pax = re.compile(r"^\d{1,2}$")
-    re_phone = re.compile(r"Téléphone:|^\+\d{2}|^0\d{1,2}\s")
-    
-    # Patterns pour ignorer les lignes non-réservations
-    skip_patterns = [
-        r"^Nombre de couverts",
-        r"^Brunch\s*-\s*Nombre",
-        r"^albert brussels",
-        r"^Standard",
-        r"^\d{2}/\d{2}/\d{4}$",  # Dates seules
-        r"^Heure$",
-        r"^Pax$",
-        r"^Client$",
-        r"^Table$",
-        r"^Statut$",
-        r"^Source$",
-    ]
-    
-    default_time = dtime(12, 30) if (service_label or "").lower() == "lunch" else dtime(19, 0)
-    
-    def clean_client_name(raw: str) -> str:
-        """Nettoie le nom du client en retirant tout sauf le nom."""
-        name = raw
-        
-        # Retirer tout après le statut (première occurrence)
-        for sep in ["Confirmé", "Annulé", "En attente", "Pending", "Confirmed", "Cancelled"]:
-            if sep in name:
-                name = name.split(sep)[0]
-                break
-        
-        # Retirer "Table" et tout ce qui suit
-        if "Table" in name:
-            name = name.split("Table")[0]
-        
-        # Retirer les dates
-        name = re.sub(r"\d{4}-\d{2}-\d{2}", "", name)
-        name = re.sub(r"\d{2}/\d{2}/\d{4}", "", name)
-        name = re.sub(r"\d{2}:\d{2}", "", name)
-        
-        # Retirer les téléphones
-        name = re.sub(r"\+\d{2,}[\d\s()-]+", "", name)
-        name = re.sub(r"\b0\d[\d\s()-]{7,}", "", name)
-        
-        # Retirer les sources
-        for src in ["Web", "Google", "Phone", "Téléphone", "Email"]:
-            name = name.replace(src, "")
-        
-        # Nettoyer les espaces et caractères spéciaux
-        name = name.strip(" -,|")
-        name = re.sub(r"\s+", " ", name)  # Normaliser espaces multiples
-        name = re.sub(r"\s+\d{1,3}$", "", name)  # Retirer chiffres en fin
-        
-        return name.strip()
-
-    parsed_count = 0
-    skipped_count = 0
-    no_pax_count = 0
-    no_name_count = 0
-    i = 0
-    import hashlib
-    
-    logger.info("POST /import-pdf -> starting parse, total_lines=%d", len(lines))
-    
-    while i < len(lines):
-        ln = lines[i]
-        
-        # Ignorer les lignes d'en-tête, totaux, téléphones
-        if any(re.search(pat, ln, re.IGNORECASE) for pat in skip_patterns):
-            skipped_count += 1
-            i += 1
-            continue
-        
-        # Chercher une heure (HH:MM seule sur une ligne)
-        if not re_time.match(ln):
-            i += 1
-            continue
-        
-        time_str = ln
-        
-        # Chercher le pax dans les 5 lignes suivantes (peut être plus loin)
-        pax = None
-        pax_idx = None
-        for j in range(i+1, min(i+6, len(lines))):
-            if re_pax.match(lines[j]):
-                try:
-                    pax_val = int(lines[j])
-                    if 1 <= pax_val <= 30:
-                        pax = pax_val
-                        pax_idx = j
-                        break
-                except ValueError:
-                    pass
-        
-        if pax is None:
-            no_pax_count += 1
-            if no_pax_count <= 3:
-                logger.debug("POST /import-pdf -> time=%s but no pax found in next 5 lines", time_str)
-            i += 1
-            continue
-        
-        # Chercher le nom du client dans les 5 lignes suivantes après pax
-        client_name = None
-        for j in range(pax_idx+1, min(pax_idx+6, len(lines))):
-            candidate = lines[j]
-            # Ignorer les lignes vides, téléphones, commentaires, statuts
-            if not candidate or len(candidate) < 2:
-                continue
-            if re_phone.search(candidate):
-                continue
-            if candidate in ["Commentaire du client", "Confirmé", "Annulé", "-", "Web", "Google", "Phone"]:
-                continue
-            if re.match(r"^\d{4}-\d{2}-\d{2}", candidate):
-                continue
-            # C'est probablement le nom
-            client_name = clean_client_name(candidate)
-            if client_name and len(client_name) >= 2:
-                break
-        
-        if not client_name:
-            no_name_count += 1
-            if no_name_count <= 3:
-                logger.debug("POST /import-pdf -> time=%s pax=%d but no valid client name found", time_str, pax)
-            i = pax_idx + 1
-            continue
-        
-        # Parser l'heure
-        try:
-            hh, mm = time_str.split(":")
-            at = dtime(int(hh), int(mm))
-        except Exception:
-            at = default_time
-        
-        # Générer un ID déterministe pour cette réservation
-        content = f"{parsed_count}_{client_name}_{pax}_{at.hour:02d}:{at.minute:02d}"
-        hash_val = hashlib.md5(content.encode()).hexdigest()
-        res_id = str(uuid.UUID(hash_val))
-        
-        # Créer la réservation
-        item = {
-            "id": res_id,
-            "client_name": client_name,
-            "pax": pax,
-            "service_date": service_date.isoformat(),
-            "arrival_time": f"{at.hour:02d}:{at.minute:02d}",
-            "drink_formula": "",
-            "notes": "",
-            "status": "confirmed",
-            "final_version": False,
-            "on_invoice": False,
-            "allergens": "",
-            "items": [],
-        }
-        out.append(item)
-        parsed_count += 1
-        
-        if parsed_count <= 5:
-            logger.debug("POST /import-pdf -> parsed: %s @ %s (%d pax)", client_name, time_str, pax)
-        
-        # Avancer après cette réservation
-        i = pax_idx + 1
-
-    logger.info("POST /import-pdf -> filename=%s bytes=%d total_lines=%d skipped=%d no_pax=%d no_name=%d parsed=%d", getattr(file, 'filename', ''), len(blob or b""), len(lines), skipped_count, no_pax_count, no_name_count, parsed_count)
-    _dbg_add("INFO", f"POST /import-pdf -> total_lines={len(lines)} skipped={skipped_count} no_pax={no_pax_count} no_name={no_name_count} parsed={parsed_count}")
+    # Log results
+    parsed_count = stats.get("total_parsed", len(out))
+    logger.info("POST /import-pdf -> filename=%s bytes=%d parsed=%d", 
+                getattr(file, 'filename', ''), len(blob or b""), parsed_count)
+    _dbg_add("INFO", f"POST /import-pdf -> parsed={parsed_count} reservations")
     
     if parsed_count == 0:
-        logger.warning("POST /import-pdf -> NO RESERVATIONS PARSED! no_pax=%d no_name=%d", no_pax_count, no_name_count)
-        _dbg_add("WARNING", f"NO RESERVATIONS PARSED! no_pax={no_pax_count} no_name={no_name_count}")
-        # Log quelques lignes autour des heures trouvées pour debug
-        for i, ln in enumerate(lines[:100]):
-            if re_time.match(ln):
-                logger.warning("  Found time at line %d: %s", i, ln)
-                for j in range(i+1, min(i+6, len(lines))):
-                    logger.warning("    Line %d: %s", j, lines[j][:50])
-                break
+        logger.warning("POST /import-pdf -> NO RESERVATIONS PARSED!")
+        _dbg_add("WARNING", "NO RESERVATIONS PARSED!")
+    else:
+        # Log first few for debugging
+        for i, res in enumerate(out[:5], 1):
+            logger.debug("POST /import-pdf -> #%d: %s @ %s (%d pax)", 
+                        i, res["client_name"], res["arrival_time"], res["pax"])
     
     # NOTE: L'outil floorplan est complètement indépendant.
     # Il ne crée JAMAIS de réservations dans la table principale.
