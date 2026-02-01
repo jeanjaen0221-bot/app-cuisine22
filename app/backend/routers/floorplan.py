@@ -3,22 +3,23 @@ from __future__ import annotations
 # ---- Numbering helpers ----
 
 def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumbers: int = 20, persist: bool = True) -> Tuple[Dict[str, Any], Dict[str, str]]:
-    """Assign labels 1..N to fixed/rect tables and T1..TN to round tables, top-to-bottom then left-to-right.
+    """Assign labels 1..N to fixed/rect tables and T1..TN to round tables.
+    Order: top-left counting DOWN first (i.e., column-major: x asc, then y asc).
     Returns (updated_plan, id_to_label).
     """
     tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
     # Separate pools
     nums = [t for t in tables if (t.get("kind") in ("fixed", "rect"))]
     tees = [t for t in tables if (t.get("kind") == "round")]
-    # Sort top-to-bottom (increasing y), tie by x
+    # Sort column-major: x asc, then y asc (start top-left, count down first)
     def key_rect(t):
-        y = float(t.get("y") or 0)
         x = float(t.get("x") or 0)
-        return (y, x)
+        y = float(t.get("y") or 0)
+        return (x, y)
     def key_round(t):
-        y = float(t.get("y") or 0)
         x = float(t.get("x") or 0)
-        return (y, x)
+        y = float(t.get("y") or 0)
+        return (x, y)
     nums.sort(key=key_rect)
     tees.sort(key=key_round)
     id_to_label: Dict[str, str] = {}
@@ -40,7 +41,7 @@ def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumb
 
 # ---- PDF helpers ----
 
-def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict[str, str]) -> None:
+def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict[str, str], assignments: Optional[Dict[str, Any]] = None) -> None:
     page_w, page_h = A4
     margin = 15 * mm
     room = (plan.get("room") or {"width": 1000, "height": 600})
@@ -116,17 +117,31 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
             if lbl:
                 c.setFont("Helvetica-Bold", 8)
                 c.drawCentredString(tx(x), ty(y) - 3, str(lbl))
+            # draw assignment if any
+            if assignments and isinstance(assignments.get("tables"), dict):
+                a = assignments["tables"].get(str(t.get("id")))
+                if a:
+                    c.setFont("Helvetica", 7)
+                    c.setFillColor(colors.black)
+                    c.drawString(tx(x + r + 4), ty(y) + 2, f"{a.get('name','')} ({a.get('pax',0)})")
         else:
             x = float(t.get("x") or 0)
             y = float(t.get("y") or 0)
             w = float(t.get("w") or 120)
             h = float(t.get("h") or 60)
             c.rect(tx(x), ty(y + h), scale * w, scale * h, stroke=1, fill=0)
+            cx = tx(x + w / 2.0)
+            cy = ty(y + h / 2.0)
             if lbl:
-                cx = tx(x + w / 2.0)
-                cy = ty(y + h / 2.0)
                 c.setFont("Helvetica-Bold", 8)
                 c.drawCentredString(cx, cy - 3, str(lbl))
+            # draw assignment if any
+            if assignments and isinstance(assignments.get("tables"), dict):
+                a = assignments["tables"].get(str(t.get("id")))
+                if a:
+                    c.setFont("Helvetica", 7)
+                    c.setFillColor(colors.black)
+                    c.drawString(tx(x + w + 4), ty(y + 10), f"{a.get('name','')} ({a.get('pax',0)})")
 
     # title
     c.setFont("Helvetica", 10)
@@ -149,7 +164,11 @@ def _draw_table_list_page(c: pdfcanvas.Canvas, id_to_label: Dict[str, str], plan
         lbl = (t.get("label") or id_to_label.get(tid) or "")
         if not lbl:
             continue
-        cap = int(t.get("capacity") or 0)
+        # Derive capacity robustly like runtime logic
+        try:
+            cap = _capacity_for_table(t)
+        except Exception:
+            cap = int(t.get("capacity") or 0)
         kind = str(t.get("kind") or "")
         rows.append((lbl, cap, kind))
     # Sort by label natural (T before numbers later)
@@ -469,7 +488,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 
         best_rect = take_table(avail_rects, predicate=rect_can_fit)
         if best_rect:
-            pax_on_table = min(_capacity_for_table(best_rect), int(r.pax))
+            # seat up to extended capacity for a single rectangle
+            pax_on_table = min(int(r.pax), min(8, _capacity_for_table(best_rect) + 2))
             assignments_by_table.setdefault(best_rect.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
             placed = True
             try:
@@ -484,7 +504,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if combo:
             remaining = int(r.pax)
             for t in combo:
-                pax_on_table = max(0, min(_capacity_for_table(t), remaining))
+                cap_ext = min(8, _capacity_for_table(t) + 2)
+                pax_on_table = max(0, min(cap_ext, remaining))
                 assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
                 remaining -= pax_on_table
                 avail_rects.pop(t.get("id"), None)
@@ -741,7 +762,7 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     _plan, id_to_label = _assign_table_numbers(dict(plan), persist=False)
     buf = io.BytesIO()
     c = pdfcanvas.Canvas(buf, pagesize=A4)
-    _draw_plan_page(c, _plan, id_to_label)
+    _draw_plan_page(c, _plan, id_to_label, assignments=(row.assignments or {}))
     c.showPage()
     _draw_table_list_page(c, id_to_label, _plan)
     c.save()

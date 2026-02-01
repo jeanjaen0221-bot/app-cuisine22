@@ -169,6 +169,16 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         if ('r' in (f as any)) { if (intersectsCircleCircle(c, f as any)) return true }
         else { if (intersectsCircleRect(c, f as any)) return true }
       }
+      // collide with other tables
+      for (const ot of tables) {
+        if (ot.id === t.id) continue
+        if (ot.r) {
+          if (intersectsCircleCircle(c, { id: ot.id, x: ot.x, y: ot.y, r: ot.r })) return true
+        } else {
+          const rr: FloorRect = { id: ot.id, x: ot.x, y: ot.y, w: ot.w || 120, h: ot.h || 60 }
+          if (intersectsCircleRect(c, rr)) return true
+        }
+      }
       return false
     } else {
       const w = t.w || 120
@@ -182,6 +192,17 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       for (const f of fixtures) {
         if ('r' in (f as any)) { if (intersectsCircleRect(f as any, rr)) return true }
         else { if (intersectsRectRect(rr, f as any)) return true }
+      }
+      // collide with other tables
+      for (const ot of tables) {
+        if (ot.id === t.id) continue
+        if (ot.r) {
+          const oc: FloorCircle = { id: ot.id, x: ot.x, y: ot.y, r: ot.r }
+          if (intersectsCircleRect(oc, rr)) return true
+        } else {
+          const orr: FloorRect = { id: ot.id, x: ot.x, y: ot.y, w: ot.w || 120, h: ot.h || 60 }
+          if (intersectsRectRect(rr, orr)) return true
+        }
       }
       return false
     }
@@ -301,14 +322,21 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         ctx.fillRect(t.x, t.y, w, h)
         ctx.strokeRect(t.x, t.y, w, h)
       }
-      const cap = (t.capacity || (t.kind === 'rect' ? 6 : t.kind === 'round' ? 10 : 2)) + ''
-      ctx.fillStyle = '#fff'
-      ctx.font = `${14/scale}px sans-serif`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
       const cx = t.r ? t.x : t.x + (t.w || 120) / 2
       const cy = t.r ? t.y : t.y + (t.h || 60) / 2
-      ctx.fillText(cap, cx, cy)
+      const cap = (t.capacity || (t.kind === 'rect' ? 6 : t.kind === 'round' ? 10 : 2)) + ''
+      const lbl = (t.label || '').toString()
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      if (lbl) {
+        ctx.fillStyle = '#fff'
+        ctx.font = `${16/scale}px sans-serif`
+        ctx.fillText(lbl, cx, cy)
+      } else {
+        ctx.fillStyle = '#fff'
+        ctx.font = `${14/scale}px sans-serif`
+        ctx.fillText(cap, cx, cy)
+      }
       if (assigned) {
         ctx.fillStyle = '#000'
         ctx.font = `${12/scale}px sans-serif`
