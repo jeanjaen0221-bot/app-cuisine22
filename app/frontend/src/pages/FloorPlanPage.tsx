@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, autoAssignInstance, createFloorInstance, getFloorBase, getFloorInstance, importReservationsPdf, updateFloorBase, updateFloorInstance, numberBaseTables, exportBasePdf, numberInstanceTables, exportInstancePdf } from '../lib/api'
+import { api, autoAssignInstance, createFloorInstance, getFloorBase, getFloorInstance, importReservationsPdf, updateFloorBase, updateFloorInstance, numberBaseTables, exportBasePdf, numberInstanceTables, exportInstancePdf, exportInstanceAnnotatedPdf } from '../lib/api'
 import type { AssignmentMap, FloorPlanBase, FloorPlanData, FloorPlanInstance, ServiceLabel } from '../types'
 import FloorCanvas from '../components/FloorCanvas'
 
@@ -12,6 +12,7 @@ export default function FloorPlanPage() {
   const [grid, setGrid] = useState(true)
   const [busy, setBusy] = useState(false)
   const [drawNoGo, setDrawNoGo] = useState(false)
+  const [annotFile, setAnnotFile] = useState<File | null>(null)
 
   useEffect(() => { loadBase() }, [])
 
@@ -38,6 +39,14 @@ export default function FloorPlanPage() {
   function doExportInstance() {
     if (!inst) return
     exportInstancePdf(inst.id as any)
+  }
+
+  async function doExportInstanceAnnotated() {
+    if (!inst || !annotFile) return
+    setBusy(true)
+    try {
+      await exportInstanceAnnotatedPdf(inst.id as any, annotFile)
+    } finally { setBusy(false) }
   }
 
   async function saveBaseData(next: FloorPlanData) {
@@ -187,6 +196,9 @@ export default function FloorPlanPage() {
               <label>Importer & créer
                 <input type="file" accept="application/pdf" onChange={(e)=>doImport(e, true)} />
               </label>
+              <label>PDF original (pour export annoté)
+                <input type="file" accept="application/pdf" onChange={(e)=>setAnnotFile(e.target.files?.[0]||null)} />
+              </label>
               <hr />
               <button onClick={() => addFixture('rect')} disabled={!inst}>Ajouter objet carré</button>
               <button onClick={() => addFixture('round')} disabled={!inst}>Ajouter objet rond</button>
@@ -199,6 +211,7 @@ export default function FloorPlanPage() {
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                   <button onClick={doNumberInstance}>Numéroter (1..20 / T1..T20)</button>
                   <button onClick={doExportInstance}>Exporter PDF</button>
+                  <button onClick={doExportInstanceAnnotated} disabled={!annotFile}>Exporter PDF annoté</button>
                 </div>
                 <FloorCanvas data={inst.data} assignments={inst.assignments} showGrid={grid} editable onChange={saveInstanceData} drawNoGoMode={drawNoGo} />
               </>

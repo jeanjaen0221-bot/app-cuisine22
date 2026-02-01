@@ -104,3 +104,26 @@ export async function numberInstanceTables(id: string) {
 export function exportInstancePdf(id: string) {
   fileDownload(`/api/floorplan/instances/${id}/export-pdf`)
 }
+
+export async function exportInstanceAnnotatedPdf(
+  id: string,
+  file: File,
+  opts?: { page_start?: number; start_y_mm?: number; row_h_mm?: number; table_x_mm?: number }
+) {
+  const fd = new FormData()
+  fd.append('file', file)
+  if (opts?.page_start != null) fd.append('page_start', String(opts.page_start))
+  if (opts?.start_y_mm != null) fd.append('start_y_mm', String(opts.start_y_mm))
+  if (opts?.row_h_mm != null) fd.append('row_h_mm', String(opts.row_h_mm))
+  if (opts?.table_x_mm != null) fd.append('table_x_mm', String(opts.table_x_mm))
+  const r = await api.post(`/api/floorplan/instances/${id}/export-annotated`, fd, { responseType: 'blob' })
+  const blob = new Blob([r.data], { type: 'application/pdf' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'floorplan_instance_annotated.pdf'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}

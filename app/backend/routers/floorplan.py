@@ -4,7 +4,7 @@ from __future__ import annotations
 
 def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumbers: int = 20, persist: bool = True) -> Tuple[Dict[str, Any], Dict[str, str]]:
     """Assign labels 1..N to fixed/rect tables and T1..TN to round tables.
-    Order: top-left counting DOWN first (i.e., column-major: x asc, then y asc).
+    Order: top-left counting DOWN first (i.e., column-major: x asc, then y desc).
     Returns (updated_plan, id_to_label).
     """
     tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
@@ -309,7 +309,9 @@ def _classify_service_label(t: dtime) -> str:
 
 
 def _load_reservations(session: Session, service_date: date, service_label: Optional[str]) -> List[Reservation]:
-    rows = session.exec(select(Reservation).where(Reservation.service_date == service_date)).all()
+    # Preserve insertion/creation order to align with imported PDF rows
+    stmt = select(Reservation).where(Reservation.service_date == service_date).order_by(Reservation.created_at.asc())
+    rows = session.exec(stmt).all()
     if service_label:
         rows = [r for r in rows if _classify_service_label(r.arrival_time) == service_label]
     return rows
@@ -744,6 +746,103 @@ def export_base_pdf(session: Session = Depends(get_session)):
     logger.info("GET /base/export-pdf -> bytes=%d labels=%d", len(pdf_bytes), len(id_to_label))
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
+
+@router.post("/instances/{instance_id}/export-annotated")
+def export_instance_annotated(
+    instance_id: uuid.UUID,
+    file: UploadFile = File(...),
+    page_start: int = Form(0),
+    start_y_mm: float = Form(40.0),
+    row_h_mm: float = Form(6.0),
+    table_x_mm: float = Form(170.0),
+    session: Session = Depends(get_session),
+):
+    row = session.get(FloorPlanInstance, instance_id)
+    if not row:
+        raise HTTPException(404, "Instance not found")
+    if PdfReader is None:
+        raise HTTPException(501, "PDF annotation not available (pypdf not installed)")
+    plan = row.data or {}
+    _plan, id_to_label = _assign_table_numbers(dict(plan), persist=False)
+    # Build labels by reservation id
+    lab_by_res: Dict[str, List[str]] = {}
+    tbl_map: Dict[str, Any] = (row.assignments or {}).get("tables", {})
+    for tid, a in tbl_map.items():
+        rid = str(a.get("res_id"))
+        lbl = id_to_label.get(tid)
+        if lbl:
+            lab_by_res.setdefault(rid, []).append(lbl)
+    try:
+        reservations = _load_reservations(session, row.service_date, row.service_label)
+    except Exception:
+        reservations = []
+    # Sort like the list page
+    def rkey(r: Reservation):
+        try:
+            return (r.arrival_time, (r.client_name or "").upper())
+        except Exception:
+            return (None, (r.client_name or "").upper())
+    reservations = sorted(reservations, key=rkey)
+
+    # Read original PDF
+    orig_bytes = file.file.read()
+    reader = PdfReader(io.BytesIO(orig_bytes))
+    writer = PdfWriter()
+
+    # Prepare overlays per page
+    res_idx = 0
+    for pidx in range(len(reader.pages)):
+        page = reader.pages[pidx]
+        pw = float(page.mediabox.width)
+        ph = float(page.mediabox.height)
+        # Build overlay for this page
+        ov_buf = io.BytesIO()
+        cv = pdfcanvas.Canvas(ov_buf, pagesize=(pw, ph))
+        y_top = ph - start_y_mm * mm
+        y = y_top
+        drawn_any = False
+        # Only start drawing from page_start
+        if pidx >= page_start:
+            while res_idx < len(reservations):
+                lbls = ", ".join(sorted(lab_by_res.get(str(reservations[res_idx].id), []), key=lambda s: (s.startswith('T'), s)))
+                if lbls:
+                    cv.setFont("Helvetica-Bold", 9)
+                    cv.drawString(table_x_mm * mm, y, lbls)
+                    drawn_any = True
+                # advance to next reservation after drawing current row
+                res_idx += 1
+                y -= row_h_mm * mm
+                # Stop near bottom
+                if y < 15 * mm:
+                    break
+            # If we broke due to height, keep the same res_idx to continue on next page
+        cv.save()
+        ov_pdf = PdfReader(io.BytesIO(ov_buf.getvalue()))
+        base_page = reader.pages[pidx]
+        if drawn_any and len(ov_pdf.pages) > 0:
+            base_page.merge_page(ov_pdf.pages[0])
+        writer.add_page(base_page)
+
+    # Append the generated plan+lists PDF
+    plan_buf = io.BytesIO()
+    c = pdfcanvas.Canvas(plan_buf, pagesize=A4)
+    _draw_reservations_page(c, reservations, (row.assignments or {}), id_to_label)
+    c.showPage()
+    _draw_plan_page(c, _plan, id_to_label, assignments=(row.assignments or {}))
+    c.showPage()
+    _draw_table_list_page(c, id_to_label, _plan)
+    c.save()
+    plan_reader = PdfReader(io.BytesIO(plan_buf.getvalue()))
+    for pg in plan_reader.pages:
+        writer.add_page(pg)
+
+    out = io.BytesIO()
+    writer.write(out)
+    pdf_bytes = out.getvalue()
+    out.close()
+    headers = {"Content-Disposition": "attachment; filename=floorplan_instance_annotated.pdf"}
+    logger.info("POST /instances/%s/export-annotated -> bytes=%d", instance_id, len(pdf_bytes))
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 # ---- Instances ----
 
