@@ -101,7 +101,10 @@ export default function FloorPlanPage() {
   }
 
   async function doAutoAssign() {
-    if (!inst) return
+    if (!inst) {
+      alert('Veuillez d\'abord importer un PDF de réservations')
+      return
+    }
     setBusy(true)
     try {
       const after = await autoAssignInstance(inst.id)
@@ -117,12 +120,22 @@ export default function FloorPlanPage() {
     if (!f) return
     setBusy(true)
     try {
+      // Créer l'instance si elle n'existe pas
+      let currentInst = inst
+      if (!currentInst) {
+        const row = await createFloorInstance({ service_date: date, service_label: label })
+        const full = await getFloorInstance(row.id)
+        setInst(full)
+        setMode('service')
+        currentInst = full
+      }
       // Stocker le fichier pour l'export annoté
       setPdfFile(f)
       await importReservationsPdf(f, date, label, createRes)
-      if (inst) {
-        const full = await getFloorInstance(inst.id)
-        setInst(full)
+      // Rafraîchir l'instance après import
+      if (currentInst) {
+        const refreshed = await getFloorInstance(currentInst.id)
+        setInst(refreshed)
       }
     } finally { setBusy(false) }
   }
@@ -131,9 +144,9 @@ export default function FloorPlanPage() {
     const next: FloorPlanData = { ...(mode === 'base' ? base?.data : inst?.data) } as any
     if (!next.tables) next.tables = []
     const id = `t_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-    if (kind === 'round') next.tables.push({ id, kind: 'round', x: 200, y: 200, r: 50, capacity: 10, label: 'Ronde' })
-    else if (kind === 'rect') next.tables.push({ id, kind: 'rect', x: 200, y: 200, w: 120, h: 60, capacity: 6, label: 'Rect' })
-    else next.tables.push({ id, kind: 'fixed', x: 200, y: 200, w: 120, h: 60, capacity: 4, locked: true, label: 'Fixe' })
+    if (kind === 'round') next.tables.push({ id, kind: 'round', x: 200, y: 200, r: 50, capacity: 10 })
+    else if (kind === 'rect') next.tables.push({ id, kind: 'rect', x: 200, y: 200, w: 120, h: 60, capacity: 6 })
+    else next.tables.push({ id, kind: 'fixed', x: 200, y: 200, w: 120, h: 60, capacity: 4, locked: true })
     if (mode === 'base' && base) saveBaseData(next)
     if (mode === 'service' && inst) saveInstanceData(next)
   }
@@ -216,22 +229,27 @@ export default function FloorPlanPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16, height: 'calc(100vh - 140px)' }}>
           <div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <label>Date <input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
-              <label>Service
-                <select value={label || ''} onChange={(e) => setLabel((e.target.value || 'lunch') as ServiceLabel)}>
-                  <option value="lunch">Midi</option>
-                  <option value="dinner">Soir</option>
-                </select>
-              </label>
-              <button onClick={ensureInstance}>Créer/Charger</button>
-              <button disabled={!inst} onClick={doAutoAssign}>Auto-attribuer</button>
-              <label>Importer PDF (parse seulement)
-                <input type="file" accept="application/pdf" onChange={(e)=>doImport(e, false)} />
-              </label>
-              <label>Importer & créer réservations
-                <input type="file" accept="application/pdf" onChange={(e)=>doImport(e, true)} />
-              </label>
-              {pdfFile && <div style={{fontSize:12,color:'#666'}}>PDF chargé: {pdfFile.name}</div>}
+              <div style={{padding:'8px',background:'#f5f5f5',borderRadius:4,marginBottom:8}}>
+                <strong>1. Choisir date et service</strong>
+                <label style={{display:'block',marginTop:4}}>Date <input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+                <label style={{display:'block',marginTop:4}}>Service
+                  <select value={label || ''} onChange={(e) => setLabel((e.target.value || 'lunch') as ServiceLabel)}>
+                    <option value="lunch">Midi</option>
+                    <option value="dinner">Soir</option>
+                  </select>
+                </label>
+              </div>
+              <div style={{padding:'8px',background:'#f5f5f5',borderRadius:4,marginBottom:8}}>
+                <strong>2. Importer PDF réservations</strong>
+                <label style={{display:'block',marginTop:4}}>
+                  <input type="file" accept="application/pdf" onChange={(e)=>doImport(e, true)} />
+                </label>
+                {pdfFile && <div style={{fontSize:12,color:'#0a0',fontWeight:'bold',marginTop:4}}>✓ {pdfFile.name}</div>}
+              </div>
+              <div style={{padding:'8px',background:'#f5f5f5',borderRadius:4,marginBottom:8}}>
+                <strong>3. Auto-attribuer les tables</strong>
+                <button style={{marginTop:4,width:'100%'}} disabled={!inst} onClick={doAutoAssign}>Auto-attribuer</button>
+              </div>
               <hr />
               <button onClick={() => addFixture('rect')} disabled={!inst}>Ajouter objet carré</button>
               <button onClick={() => addFixture('round')} disabled={!inst}>Ajouter objet rond</button>
@@ -242,7 +260,6 @@ export default function FloorPlanPage() {
             {inst && (
               <>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <button onClick={doNumberInstance}>Numéroter (1..20 / T1..T20)</button>
                   <button onClick={doExportInstance}>Exporter PDF</button>
                   <button onClick={doExportInstanceAnnotated} disabled={!pdfFile}>Exporter PDF annoté</button>
                 </div>
