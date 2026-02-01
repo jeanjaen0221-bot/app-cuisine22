@@ -663,10 +663,25 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const sy = e.clientY - rect.top
     const { x, y } = screenToWorld(sx, sy)
     
+    // Ajuster la position pour que le menu reste visible
+    const menuWidth = 200
+    const menuHeight = 100
+    let menuX = e.clientX
+    let menuY = e.clientY
+    
+    // Si trop à droite, afficher à gauche du curseur
+    if (menuX + menuWidth > window.innerWidth) {
+      menuX = window.innerWidth - menuWidth - 10
+    }
+    // Si trop en bas, afficher au-dessus du curseur
+    if (menuY + menuHeight > window.innerHeight) {
+      menuY = window.innerHeight - menuHeight - 10
+    }
+    
     // Détecter ce qui est cliqué (priorité: zones > fixtures > tables)
     const rz = roundZoneHit(x, y)
     if (rz) {
-      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'roundZone', data: rz } })
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'roundZone', data: rz } })
       return
     }
     const tz = rectZoneHit(x, y)
