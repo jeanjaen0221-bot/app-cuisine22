@@ -539,6 +539,9 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode])
 
   function onPointerDown(e: React.PointerEvent) {
+    // Ignorer le clic droit (bouton 2) - il est géré par onContextMenu
+    if (e.button === 2) return
+    
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
