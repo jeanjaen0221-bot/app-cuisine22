@@ -1153,6 +1153,17 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         </div>
       </div>
 
+      {/* Bouton de test pour le menu contextuel */}
+      <button
+        className="absolute top-20 left-4 bg-purple-500 text-white px-3 py-1 rounded text-xs"
+        onClick={() => {
+          console.log('[TEST] Forcing context menu')
+          setContextMenu({ x: 200, y: 200, target: { type: 'noGo', data: { id: 'test' } } })
+        }}
+      >
+        Test Menu
+      </button>
+
       {/* Menu contextuel */}
       {contextMenu && (
         <>
