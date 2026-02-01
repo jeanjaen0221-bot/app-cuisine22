@@ -970,6 +970,7 @@ def create_instance(payload: FloorPlanInstanceCreate, session: Session = Depends
         template_id=base.id,
         data=base.data or {},
         assignments={"tables": {}},
+        reservations={"items": []},  # Initialize empty reservations
     )
     session.add(row)
     session.commit()

@@ -35,6 +35,7 @@ def init_db() -> None:
     ensure_on_invoice_column()
     ensure_drink_unique_index()
     ensure_floorplan_columns()
+    ensure_floorplan_reservations_column()
 
 
 def run_startup_migrations() -> None:
@@ -140,6 +141,45 @@ def ensure_final_version_column() -> None:
                     pass
     except Exception:
         # Non-fatal
+        pass
+
+
+def ensure_floorplan_reservations_column() -> None:
+    """Ensure 'reservations' JSONB column exists on floorplaninstance table (idempotent)."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                try:
+                    res = conn.exec_driver_sql("PRAGMA table_info(floorplaninstance);")
+                    cols = [row[1] for row in res.fetchall()]
+                    if 'reservations' not in cols:
+                        # SQLite: use TEXT to store JSON payloads
+                        conn.exec_driver_sql("ALTER TABLE floorplaninstance ADD COLUMN reservations TEXT DEFAULT '{}'::text;")
+                except Exception:
+                    pass
+            elif backend == 'postgresql':
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='floorplaninstance' AND column_name='reservations'
+                      ) THEN
+                        ALTER TABLE floorplaninstance ADD COLUMN reservations JSONB DEFAULT '{}'::jsonb;
+                      END IF;
+                    END$$;
+                    """
+                ))
+            else:
+                # Best-effort generic ALTER for other backends
+                try:
+                    conn.execute(text("ALTER TABLE floorplaninstance ADD COLUMN reservations JSON DEFAULT '{}'"))
+                except Exception:
+                    pass
+    except Exception:
+        # Non-fatal; will be surfaced by API if still missing
         pass
 
 
@@ -282,6 +322,10 @@ def ensure_floorplan_columns() -> None:
                     pass
                 try:
                     conn.execute(text("ALTER TABLE floorplaninstance ADD COLUMN assignments JSON"))
+                except Exception:
+                    pass
+                try:
+                    conn.execute(text("ALTER TABLE floorplaninstance ADD COLUMN template_id TEXT"))
                 except Exception:
                     pass
     except Exception:
