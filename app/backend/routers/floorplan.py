@@ -172,16 +172,16 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
     tables: List[Dict[str, Any]] = list(plan_data.get("tables") or [])
     # Partition tables
     fixed = [t for t in tables if (t.get("kind") == "fixed" or t.get("locked") is True)]
-    rects = [t for t in tables if (t.get("kind") == "rect")]
-    rounds = [t for t in tables if (t.get("kind") == "round")]
+    rects = [t for t in tables if (t.get("kind") == "rect" and not (t.get("locked") is True))]
+    rounds = [t for t in tables if (t.get("kind") == "round" and not (t.get("locked") is True))]
 
     # Available pools (copy ids)
     avail_fixed = {t.get("id"): t for t in fixed}
     avail_rects = {t.get("id"): t for t in rects}
     avail_rounds = {t.get("id"): t for t in rounds}
 
-    # Sort reservations largest first to minimize waste
-    groups = sorted(reservations, key=lambda r: (r.arrival_time or dtime(0, 0), -int(r.pax)))
+    # Sort reservations largest first to minimize waste; tie-breaker by arrival time
+    groups = sorted(reservations, key=lambda r: (-int(r.pax), r.arrival_time or dtime(0, 0)))
 
     assignments_by_table: Dict[str, Dict[str, Any]] = {}
 
@@ -216,13 +216,31 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 cap_b = max(6, int(b.get("capacity") or 6))
                 base_cap = cap_a + cap_b
                 # Allow +2 head extension on each table up to 8
-                cap_a_ext = min(8, cap_a)
-                cap_b_ext = min(8, cap_b)
+                # Allow +2 head extension on each table up to 8
+                cap_a_ext = min(8, cap_a + 2)
+                cap_b_ext = min(8, cap_b + 2)
                 cap_pair = max(base_cap, cap_a_ext + cap_b_ext)
                 if cap_pair >= pax and cap_pair < best_cap:
                     best = [a, b]
                     best_cap = cap_pair
         return best
+
+    def pack_from_pool(pool: Dict[str, Dict[str, Any]], target: int) -> Optional[List[Dict[str, Any]]]:
+        items = list(pool.values())
+        if not items:
+            return None
+        # Greedy: pick largest capacities first to minimize number of tables
+        items.sort(key=lambda t: _capacity_for_table(t), reverse=True)
+        chosen: List[Dict[str, Any]] = []
+        total = 0
+        for t in items:
+            if total >= target:
+                break
+            chosen.append(t)
+            total += _capacity_for_table(t)
+        if total >= target:
+            return chosen
+        return None
 
     for r in groups:
         placed = False
@@ -232,7 +250,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             predicate=lambda t: _capacity_for_table(t) >= r.pax,
         )
         if best_fixed:
-            assignments_by_table.setdefault(best_fixed.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": r.pax})
+            pax_on_table = min(_capacity_for_table(best_fixed), int(r.pax))
+            assignments_by_table.setdefault(best_fixed.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
             placed = True
         if placed:
             continue
@@ -240,12 +259,14 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         # 2) Rect single table (6 or 8 with head) best-fit
         def rect_can_fit(t):
             cap = _capacity_for_table(t)
-            cap_ext = min(8, max(6, cap))
+            # Allow +2 head extension up to 8 for a single rectangle
+            cap_ext = min(8, cap + 2)
             return cap_ext >= r.pax
 
         best_rect = take_table(avail_rects, predicate=rect_can_fit)
         if best_rect:
-            assignments_by_table.setdefault(best_rect.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": r.pax})
+            pax_on_table = min(_capacity_for_table(best_rect), int(r.pax))
+            assignments_by_table.setdefault(best_rect.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
             placed = True
         if placed:
             continue
@@ -253,9 +274,51 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         # 3) Rect combo (two tables)
         combo = take_best_rect_combo(r.pax)
         if combo:
+            remaining = int(r.pax)
             for t in combo:
-                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": r.pax})
+                pax_on_table = max(0, min(_capacity_for_table(t), remaining))
+                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                remaining -= pax_on_table
                 avail_rects.pop(t.get("id"), None)
+            placed = True
+        if placed:
+            continue
+
+        # 3b) Pack multiple fixed tables if needed
+        chosen = pack_from_pool(avail_fixed, int(r.pax))
+        if chosen:
+            remaining = int(r.pax)
+            for t in chosen:
+                pax_on_table = max(0, min(_capacity_for_table(t), remaining))
+                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                remaining -= pax_on_table
+                avail_fixed.pop(t.get("id"), None)
+            placed = True
+        if placed:
+            continue
+
+        # 3c) Pack multiple rect tables if needed
+        chosen = pack_from_pool(avail_rects, int(r.pax))
+        if chosen:
+            remaining = int(r.pax)
+            for t in chosen:
+                pax_on_table = max(0, min(_capacity_for_table(t), remaining))
+                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                remaining -= pax_on_table
+                avail_rects.pop(t.get("id"), None)
+            placed = True
+        if placed:
+            continue
+
+        # 3d) Pack multiple round tables if needed
+        chosen = pack_from_pool(avail_rounds, int(r.pax))
+        if chosen:
+            remaining = int(r.pax)
+            for t in chosen:
+                pax_on_table = max(0, min(_capacity_for_table(t), remaining))
+                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                remaining -= pax_on_table
+                avail_rounds.pop(t.get("id"), None)
             placed = True
         if placed:
             continue
@@ -266,30 +329,41 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             predicate=lambda t: _capacity_for_table(t) >= r.pax,
         )
         if best_round:
-            assignments_by_table.setdefault(best_round.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": r.pax, "last_resort": True})
+            pax_on_table = min(_capacity_for_table(best_round), int(r.pax))
+            assignments_by_table.setdefault(best_round.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "last_resort": True})
             placed = True
 
         # 5) Create and place a new non-fixed table if still not placed
         if not placed:
-            # Prefer a rectangle for <= 8 pax; otherwise round
-            if r.pax <= 8:
-                # try rectangle 120x60, capacity ~ pax
+            # Create non-fixed tables to cover remaining pax using 6-seat rectangles first
+            remaining = int(r.pax)
+            created_any = False
+            while remaining > 0:
                 spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
-                if spot:
-                    new_id = str(uuid.uuid4())
-                    new_tbl = {"id": new_id, "kind": "rect", "capacity": int(r.pax), **spot}
-                    (plan_data.setdefault("tables", [])).append(new_tbl)
-                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": r.pax})
-                    placed = True
-            if not placed:
-                # try round with r=50
+                if not spot:
+                    break
+                new_id = str(uuid.uuid4())
+                cap = 6
+                new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot}
+                (plan_data.setdefault("tables", [])).append(new_tbl)
+                pax_on_table = max(0, min(cap, remaining))
+                assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                remaining -= pax_on_table
+                created_any = True
+            if remaining > 0:
+                # try to add a 10-seat round if space allows
                 spot = _find_spot_for_table(plan_data, "round", r=50)
                 if spot:
                     new_id = str(uuid.uuid4())
-                    new_tbl = {"id": new_id, "kind": "round", "capacity": int(r.pax), **spot}
+                    cap = 10
+                    new_tbl = {"id": new_id, "kind": "round", "capacity": cap, **spot}
                     (plan_data.setdefault("tables", [])).append(new_tbl)
-                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": r.pax})
-                    placed = True
+                    pax_on_table = max(0, min(cap, remaining))
+                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                    remaining -= pax_on_table
+                    created_any = True
+            if remaining <= 0 and created_any:
+                placed = True
 
         # If not placed, leave unassigned; frontend will show conflict
 
