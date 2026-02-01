@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ZoomIn, ZoomOut, Maximize2, Move } from 'lucide-react'
 import type { AssignmentMap, FloorCircle, FloorPlanData, FloorRect, FloorTable } from '../types'
 
 type Props = {
@@ -14,8 +15,9 @@ type Props = {
 export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
-  const [scale, setScale] = useState(1)
-  const [offset, setOffset] = useState({ x: 50, y: 50 })
+  const [scale, setScale] = useState(0.8)
+  const [offset, setOffset] = useState({ x: 100, y: 100 })
+  const [showMinimap, setShowMinimap] = useState(true)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [isPanning, setIsPanning] = useState(false)
   const dragDelta = useRef({ x: 0, y: 0 })
@@ -221,12 +223,22 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       const g = room.grid || 50
       ctx.save()
       ctx.translate(offset.x % (g * scale), offset.y % (g * scale))
-      ctx.strokeStyle = 'rgba(180,180,200,0.4)'
+      // Grille principale
+      ctx.strokeStyle = 'rgba(200,210,220,0.3)'
       ctx.lineWidth = 1
       for (let x = 0; x < W + g * scale; x += g * scale) {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke()
       }
       for (let y = 0; y < H + g * scale; y += g * scale) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke()
+      }
+      // Grille secondaire (tous les 5 carreaux)
+      ctx.strokeStyle = 'rgba(180,190,200,0.5)'
+      ctx.lineWidth = 1.5
+      for (let x = 0; x < W + g * scale * 5; x += g * scale * 5) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke()
+      }
+      for (let y = 0; y < H + g * scale * 5; y += g * scale * 5) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke()
       }
       ctx.restore()
@@ -236,8 +248,19 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     ctx.translate(offset.x, offset.y)
     ctx.scale(scale, scale)
 
-    ctx.strokeStyle = '#222'
-    ctx.lineWidth = 2 / scale
+    // Ombre de la salle
+    ctx.save()
+    ctx.shadowColor = 'rgba(0,0,0,0.15)'
+    ctx.shadowBlur = 20 / scale
+    ctx.shadowOffsetX = 4 / scale
+    ctx.shadowOffsetY = 4 / scale
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, room.width, room.height)
+    ctx.restore()
+    
+    // Bordure de la salle
+    ctx.strokeStyle = '#2c3e50'
+    ctx.lineWidth = 3 / scale
     ctx.strokeRect(0, 0, room.width, room.height)
 
     const hs = 8 / scale
@@ -246,15 +269,33 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     ctx.fillRect(room.width - hs / 2, room.height / 2 - hs / 2, hs, hs)
     ctx.fillRect(room.width / 2 - hs / 2, room.height - hs / 2, hs, hs)
 
-    ctx.fillStyle = '#999'
+    // Murs avec ombre
+    ctx.save()
+    ctx.shadowColor = 'rgba(0,0,0,0.2)'
+    ctx.shadowBlur = 8 / scale
+    ctx.fillStyle = '#7f8c8d'
     for (const w of walls) ctx.fillRect(w.x, w.y, w.w, w.h)
+    ctx.restore()
 
-    ctx.fillStyle = '#666'
+    // Colonnes avec ombre
+    ctx.save()
+    ctx.shadowColor = 'rgba(0,0,0,0.25)'
+    ctx.shadowBlur = 10 / scale
+    ctx.fillStyle = '#34495e'
     for (const c of cols) { ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.fill() }
+    ctx.restore()
 
-    ctx.fillStyle = '#bbb'
+    // Zones interdites
+    ctx.save()
+    ctx.fillStyle = 'rgba(231, 76, 60, 0.15)'
     for (const r of noGo) {
       ctx.fillRect(r.x, r.y, r.w, r.h)
+      // Bordure
+      ctx.strokeStyle = 'rgba(192, 57, 43, 0.5)'
+      ctx.lineWidth = 2 / scale
+      ctx.setLineDash([8 / scale, 4 / scale])
+      ctx.strokeRect(r.x, r.y, r.w, r.h)
+      ctx.setLineDash([])
       if (editable) {
         const hs2 = 6 / scale
         ctx.fillStyle = '#555'
@@ -279,10 +320,15 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       ctx.restore()
     }
 
+    // Fixtures (décorations) avec ombre
     for (const fx of fixtures) {
-      ctx.fillStyle = '#8b8'
+      ctx.save()
+      ctx.shadowColor = 'rgba(0,0,0,0.15)'
+      ctx.shadowBlur = 6 / scale
+      ctx.fillStyle = '#27ae60'
       if ('r' in fx) { ctx.beginPath(); ctx.arc((fx as any).x, (fx as any).y, (fx as any).r, 0, Math.PI * 2); ctx.fill() }
       else ctx.fillRect((fx as any).x, (fx as any).y, (fx as any).w, (fx as any).h)
+      ctx.restore()
       const label = (fx as any).label
       if (label) {
         ctx.fillStyle = '#111'
@@ -509,6 +555,15 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     if (draggingId) {
       const t = tables.find(t => t.id === draggingId)
       if (!t) return
+      if (isPanning && dragStart.current) {
+        const dx = sx - dragStart.current.x
+        const dy = sy - dragStart.current.y
+        setOffset({ x: offset.x + dx, y: offset.y + dy })
+        dragStart.current = { x: sx, y: sy }
+        const el = canvasRef.current
+        if (el) el.style.cursor = 'grabbing'
+        return
+      }
       const nx = x - dragDelta.current.x
       const ny = y - dragDelta.current.y
       const snapGrid = showGrid && room.grid && room.grid > 0
@@ -610,9 +665,10 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
   function onWheel(e: React.WheelEvent) {
     e.preventDefault()
+    e.stopPropagation()
     const delta = -e.deltaY
-    const factor = delta > 0 ? 1.1 : 0.9
-    const newScale = Math.min(4, Math.max(0.25, scale * factor))
+    const factor = delta > 0 ? 1.15 : 0.85
+    const newScale = Math.min(5, Math.max(0.1, scale * factor))
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
@@ -624,11 +680,46 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     setScale(newScale)
   }
 
+  function zoomIn() {
+    const newScale = Math.min(5, scale * 1.3)
+    const cx = size.w / 2
+    const cy = size.h / 2
+    const wx1 = (cx - offset.x) / scale
+    const wy1 = (cy - offset.y) / scale
+    const wx2 = (cx - offset.x) / newScale
+    const wy2 = (cy - offset.y) / newScale
+    setOffset({ x: offset.x + (wx2 - wx1) * newScale, y: offset.y + (wy2 - wy1) * newScale })
+    setScale(newScale)
+  }
+
+  function zoomOut() {
+    const newScale = Math.max(0.1, scale * 0.7)
+    const cx = size.w / 2
+    const cy = size.h / 2
+    const wx1 = (cx - offset.x) / scale
+    const wy1 = (cy - offset.y) / scale
+    const wx2 = (cx - offset.x) / newScale
+    const wy2 = (cy - offset.y) / newScale
+    setOffset({ x: offset.x + (wx2 - wx1) * newScale, y: offset.y + (wy2 - wy1) * newScale })
+    setScale(newScale)
+  }
+
+  function resetView() {
+    setScale(0.8)
+    setOffset({ x: 100, y: 100 })
+  }
+
   return (
-    <div className={className} style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div className={className} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
       <canvas
         ref={canvasRef}
-        style={{ width: '100%', height: '100%', touchAction: 'none', background: '#fafafa' }}
+        style={{ 
+          width: '100%', 
+          height: '100%', 
+          touchAction: 'none', 
+          background: 'linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%)',
+          cursor: isPanning ? 'grabbing' : draggingId || fixtureDraggingId || noGoDraggingId ? 'move' : 'default'
+        }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -636,6 +727,53 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         onWheel={onWheel}
         onDoubleClick={onDoubleClick}
       />
+      
+      {/* Contrôles de navigation */}
+      <div className="absolute top-4 right-4 flex flex-col gap-2 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-2 border border-gray-200">
+        <button
+          onClick={zoomIn}
+          className="p-2 hover:bg-gray-100 rounded transition-colors"
+          title="Zoom avant (molette souris)"
+        >
+          <ZoomIn className="w-5 h-5 text-gray-700" />
+        </button>
+        <button
+          onClick={zoomOut}
+          className="p-2 hover:bg-gray-100 rounded transition-colors"
+          title="Zoom arrière (molette souris)"
+        >
+          <ZoomOut className="w-5 h-5 text-gray-700" />
+        </button>
+        <button
+          onClick={resetView}
+          className="p-2 hover:bg-gray-100 rounded transition-colors"
+          title="Réinitialiser la vue"
+        >
+          <Maximize2 className="w-5 h-5 text-gray-700" />
+        </button>
+        <div className="border-t border-gray-200 my-1" />
+        <div className="text-xs text-center text-gray-600 font-mono px-1">
+          {Math.round(scale * 100)}%
+        </div>
+      </div>
+
+      {/* Indicateur de mode */}
+      {drawNoGoMode && (
+        <div className="absolute top-4 left-4 bg-orange-500 text-white px-4 py-2 rounded-lg shadow-lg font-medium">
+          Mode dessin zone interdite
+        </div>
+      )}
+
+      {/* Légende */}
+      <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-3 border border-gray-200 text-xs">
+        <div className="font-semibold mb-2 text-gray-700">Contrôles</div>
+        <div className="space-y-1 text-gray-600">
+          <div>• <strong>Molette</strong>: Zoom</div>
+          <div>• <strong>Clic droit + glisser</strong>: Déplacer</div>
+          <div>• <strong>Double-clic</strong>: Verrouiller/Déverrouiller</div>
+          {editable && <div>• <strong>Glisser</strong>: Déplacer objets</div>}
+        </div>
+      </div>
     </div>
   )
 }
