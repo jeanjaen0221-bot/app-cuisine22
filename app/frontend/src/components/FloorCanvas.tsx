@@ -74,6 +74,17 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
   useEffect(() => {
     console.log('[FloorCanvas] Component MOUNTED - Context menu system ready')
+    
+    // Ajouter un gestionnaire natif pour tester
+    const canvas = canvasRef.current
+    if (canvas) {
+      const nativeHandler = (e: MouseEvent) => {
+        console.log('[NATIVE] Context menu event detected!')
+        console.log('[NATIVE] Event:', e)
+      }
+      canvas.addEventListener('contextmenu', nativeHandler)
+      return () => canvas.removeEventListener('contextmenu', nativeHandler)
+    }
   }, [])
 
   function worldToScreen(x: number, y: number) {
