@@ -656,6 +656,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   }
 
   function onContextMenu(e: React.MouseEvent) {
+    console.log('[ContextMenu] ========== FUNCTION CALLED ==========')
+    console.log('[ContextMenu] Event:', e)
     e.preventDefault()
     e.stopPropagation()
     
@@ -1082,7 +1084,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   }
 
   return (
-    <div className={className} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+    <div 
+      className={className} 
+      style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
+      onContextMenu={onContextMenu}
+    >
       <canvas
         ref={canvasRef}
         style={{ 
