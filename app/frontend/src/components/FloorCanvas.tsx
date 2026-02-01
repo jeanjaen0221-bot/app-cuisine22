@@ -686,22 +686,22 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     }
     const tz = rectZoneHit(x, y)
     if (tz) {
-      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'rectZone', data: tz } })
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'rectZone', data: tz } })
       return
     }
     const ng = noGoHit(x, y)
     if (ng) {
-      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'noGo', data: ng } })
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'noGo', data: ng } })
       return
     }
     const fx = fixtureHit(x, y)
     if (fx) {
-      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'fixture', data: fx } })
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'fixture', data: fx } })
       return
     }
     const table = [...tables].reverse().find(t => tableHit(x, y, t))
     if (table) {
-      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'table', data: table } })
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'table', data: table } })
       return
     }
   }
