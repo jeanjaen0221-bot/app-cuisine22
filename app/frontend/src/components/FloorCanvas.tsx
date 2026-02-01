@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ZoomIn, ZoomOut, Maximize2, Move } from 'lucide-react'
 import type { AssignmentMap, FloorCircle, FloorPlanData, FloorRect, FloorTable } from '../types'
 
@@ -67,25 +68,12 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     return () => ro.disconnect()
   }, [])
 
+  // Menu contextuel state tracking
   useEffect(() => {
-    console.log('[FloorCanvas] Component mounted/updated')
-    console.log('[ContextMenu] State changed:', contextMenu)
-  }, [contextMenu])
-
-  useEffect(() => {
-    console.log('[FloorCanvas] Component MOUNTED - Context menu system ready')
-    
-    // Ajouter un gestionnaire natif pour tester
-    const canvas = canvasRef.current
-    if (canvas) {
-      const nativeHandler = (e: MouseEvent) => {
-        console.log('[NATIVE] Context menu event detected!')
-        console.log('[NATIVE] Event:', e)
-      }
-      canvas.addEventListener('contextmenu', nativeHandler)
-      return () => canvas.removeEventListener('contextmenu', nativeHandler)
+    if (contextMenu) {
+      console.log('[ContextMenu] Menu opened at:', contextMenu.x, contextMenu.y)
     }
-  }, [])
+  }, [contextMenu])
 
   function worldToScreen(x: number, y: number) {
     return { x: x * scale + offset.x, y: y * scale + offset.y }
@@ -667,8 +655,6 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   }
 
   function onContextMenu(e: React.MouseEvent) {
-    console.log('[ContextMenu] ========== FUNCTION CALLED ==========')
-    console.log('[ContextMenu] Event:', e)
     e.preventDefault()
     e.stopPropagation()
     
@@ -677,43 +663,32 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const sy = e.clientY - rect.top
     const { x, y } = screenToWorld(sx, sy)
     
-    console.log('[ContextMenu] Click at screen:', sx, sy, 'world:', x, y)
-    
     // Détecter ce qui est cliqué (priorité: zones > fixtures > tables)
     const rz = roundZoneHit(x, y)
     if (rz) {
-      console.log('[ContextMenu] Round zone hit:', rz)
-      const menuData = { x: e.clientX, y: e.clientY, target: { type: 'roundZone', data: rz } }
-      console.log('[ContextMenu] Setting menu:', menuData)
-      setContextMenu(menuData)
+      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'roundZone', data: rz } })
       return
     }
     const tz = rectZoneHit(x, y)
     if (tz) {
-      console.log('[ContextMenu] Rect zone hit:', tz)
       setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'rectZone', data: tz } })
       return
     }
     const ng = noGoHit(x, y)
     if (ng) {
-      console.log('[ContextMenu] NoGo zone hit:', ng)
       setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'noGo', data: ng } })
       return
     }
     const fx = fixtureHit(x, y)
     if (fx) {
-      console.log('[ContextMenu] Fixture hit:', fx)
       setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'fixture', data: fx } })
       return
     }
     const table = [...tables].reverse().find(t => tableHit(x, y, t))
     if (table) {
-      console.log('[ContextMenu] Table hit:', table)
       setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'table', data: table } })
       return
     }
-    
-    console.log('[ContextMenu] No object hit')
   }
 
   function snap(v: number) {
@@ -1175,19 +1150,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         </div>
       </div>
 
-      {/* Bouton de test pour le menu contextuel */}
-      <button
-        className="absolute top-20 left-4 bg-purple-500 text-white px-3 py-1 rounded text-xs"
-        onClick={() => {
-          console.log('[TEST] Forcing context menu')
-          setContextMenu({ x: 200, y: 200, target: { type: 'noGo', data: { id: 'test' } } })
-        }}
-      >
-        Test Menu
-      </button>
-
-      {/* Menu contextuel */}
-      {contextMenu && (
+      {/* Menu contextuel - Rendu via Portal pour éviter overflow:hidden */}
+      {contextMenu && createPortal(
         <>
           <div 
             className="fixed inset-0" 
@@ -1196,7 +1160,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
           />
           <div 
             className="fixed bg-white rounded-lg shadow-2xl border-2 border-gray-300 py-1 min-w-[180px]"
-            style={{ left: contextMenu.x, top: contextMenu.y, zIndex: 9999 }}
+            style={{ 
+              left: contextMenu.x, 
+              top: contextMenu.y, 
+              zIndex: 9999
+            }}
           >
             <div className="px-3 py-2 text-xs font-semibold text-gray-500 border-b border-gray-100">
               {contextMenu.target.type === 'roundZone' && 'Zone Tables Rondes (R)'}
@@ -1281,7 +1249,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
               </>
             )}
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   )
