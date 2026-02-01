@@ -68,8 +68,13 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   }, [])
 
   useEffect(() => {
+    console.log('[FloorCanvas] Component mounted/updated')
     console.log('[ContextMenu] State changed:', contextMenu)
   }, [contextMenu])
+
+  useEffect(() => {
+    console.log('[FloorCanvas] Component MOUNTED - Context menu system ready')
+  }, [])
 
   function worldToScreen(x: number, y: number) {
     return { x: x * scale + offset.x, y: y * scale + offset.y }
