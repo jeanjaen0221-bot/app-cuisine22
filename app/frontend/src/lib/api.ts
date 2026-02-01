@@ -84,3 +84,23 @@ export async function importReservationsPdf(file: File, service_date: string, se
   const r = await api.post('/api/floorplan/import-pdf', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
   return r.data
 }
+
+// ----- Numbering & PDF -----
+
+export async function numberBaseTables() {
+  const r = await api.post('/api/floorplan/base/number-tables')
+  return r.data
+}
+
+export function exportBasePdf() {
+  fileDownload('/api/floorplan/base/export-pdf')
+}
+
+export async function numberInstanceTables(id: string) {
+  const r = await api.post(`/api/floorplan/instances/${id}/number-tables`)
+  return r.data
+}
+
+export function exportInstancePdf(id: string) {
+  fileDownload(`/api/floorplan/instances/${id}/export-pdf`)
+}

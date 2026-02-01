@@ -237,10 +237,20 @@ def _capacity_for_table(tbl: Dict[str, Any]) -> int:
     cap = int(tbl.get("capacity") or 0)
     kind = (tbl.get("kind") or "").lower()
     if cap <= 0:
+        # Try to infer from label if numeric (e.g., label "4")
+        try:
+            lbl = str(tbl.get("label") or "").strip()
+            if lbl.isdigit():
+                cap = int(lbl)
+        except Exception:
+            pass
+    if cap <= 0:
         if kind == "rect":
             cap = 6
         elif kind == "round":
             cap = 10
+        elif kind == "fixed" or (tbl.get("locked") is True):
+            cap = 4
         else:
             cap = 2
     return cap
@@ -577,6 +587,38 @@ def update_base(payload: FloorPlanBaseUpdate, session: Session = Depends(get_ses
     return FloorPlanBaseRead(**row.model_dump())
 
 
+# ---- Numbering and PDF (Base) ----
+
+@router.post("/base/number-tables", response_model=FloorPlanBaseRead)
+def number_base_tables(session: Session = Depends(get_session)):
+    row = _get_or_create_base(session)
+    plan = row.data or {}
+    plan, _ = _assign_table_numbers(plan, max_numbers=20, max_tnumbers=20, persist=True)
+    row.data = plan
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return FloorPlanBaseRead(**row.model_dump())
+
+
+@router.get("/base/export-pdf")
+def export_base_pdf(session: Session = Depends(get_session)):
+    row = _get_or_create_base(session)
+    plan = row.data or {}
+    # Do not mutate DB; compute labels transiently if missing
+    _plan, id_to_label = _assign_table_numbers(dict(plan), persist=False)
+    buf = io.BytesIO()
+    c = pdfcanvas.Canvas(buf, pagesize=A4)
+    _draw_plan_page(c, _plan, id_to_label)
+    c.showPage()
+    _draw_table_list_page(c, id_to_label, _plan)
+    c.save()
+    pdf_bytes = buf.getvalue()
+    buf.close()
+    headers = {"Content-Disposition": "attachment; filename=base_floorplan.pdf"}
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+
 # ---- Instances ----
 
 @router.post("/instances", response_model=FloorPlanInstanceRead)
@@ -622,6 +664,39 @@ def get_instance(instance_id: uuid.UUID, session: Session = Depends(get_session)
     if not row:
         raise HTTPException(404, "Instance not found")
     return FloorPlanInstanceRead(**row.model_dump())
+
+
+@router.post("/instances/{instance_id}/number-tables", response_model=FloorPlanInstanceRead)
+def number_instance_tables(instance_id: uuid.UUID, session: Session = Depends(get_session)):
+    row = session.get(FloorPlanInstance, instance_id)
+    if not row:
+        raise HTTPException(404, "Instance not found")
+    plan = row.data or {}
+    plan, _ = _assign_table_numbers(plan, max_numbers=20, max_tnumbers=20, persist=True)
+    row.data = plan
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return FloorPlanInstanceRead(**row.model_dump())
+
+
+@router.get("/instances/{instance_id}/export-pdf")
+def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_session)):
+    row = session.get(FloorPlanInstance, instance_id)
+    if not row:
+        raise HTTPException(404, "Instance not found")
+    plan = row.data or {}
+    _plan, id_to_label = _assign_table_numbers(dict(plan), persist=False)
+    buf = io.BytesIO()
+    c = pdfcanvas.Canvas(buf, pagesize=A4)
+    _draw_plan_page(c, _plan, id_to_label)
+    c.showPage()
+    _draw_table_list_page(c, id_to_label, _plan)
+    c.save()
+    pdf_bytes = buf.getvalue()
+    buf.close()
+    headers = {"Content-Disposition": "attachment; filename=floorplan_instance.pdf"}
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
 @router.put("/instances/{instance_id}", response_model=FloorPlanInstanceRead)

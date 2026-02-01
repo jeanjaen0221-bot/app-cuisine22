@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, autoAssignInstance, createFloorInstance, getFloorBase, getFloorInstance, importReservationsPdf, updateFloorBase, updateFloorInstance } from '../lib/api'
+import { api, autoAssignInstance, createFloorInstance, getFloorBase, getFloorInstance, importReservationsPdf, updateFloorBase, updateFloorInstance, numberBaseTables, exportBasePdf, numberInstanceTables, exportInstancePdf } from '../lib/api'
 import type { AssignmentMap, FloorPlanBase, FloorPlanData, FloorPlanInstance, ServiceLabel } from '../types'
 import FloorCanvas from '../components/FloorCanvas'
 
@@ -18,6 +18,26 @@ export default function FloorPlanPage() {
   async function loadBase() {
     setBusy(true)
     try { setBase(await getFloorBase()) } finally { setBusy(false) }
+  }
+
+  async function doNumberBase() {
+    setBusy(true)
+    try { setBase(await numberBaseTables()) } finally { setBusy(false) }
+  }
+
+  function doExportBase() {
+    exportBasePdf()
+  }
+
+  async function doNumberInstance() {
+    if (!inst) return
+    setBusy(true)
+    try { setInst(await numberInstanceTables(inst.id as any)) } finally { setBusy(false) }
+  }
+
+  function doExportInstance() {
+    if (!inst) return
+    exportInstancePdf(inst.id as any)
   }
 
   async function saveBaseData(next: FloorPlanData) {
@@ -45,7 +65,13 @@ export default function FloorPlanPage() {
   async function doAutoAssign() {
     if (!inst) return
     setBusy(true)
-    try { setInst(await autoAssignInstance(inst.id)) } finally { setBusy(false) }
+    try {
+      const after = await autoAssignInstance(inst.id)
+      setInst(after)
+      // enchaîner la numérotation après auto-assign
+      const numbered = await numberInstanceTables(after.id as any)
+      setInst(numbered)
+    } finally { setBusy(false) }
   }
 
   async function doImport(e: React.ChangeEvent<HTMLInputElement>, createRes: boolean) {
@@ -130,7 +156,13 @@ export default function FloorPlanPage() {
           </div>
           <div style={{ minHeight: 400 }}>
             {base && (
-              <FloorCanvas data={base.data} showGrid={grid} editable onChange={saveBaseData} drawNoGoMode={drawNoGo} />
+              <>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <button onClick={doNumberBase}>Numéroter (1..20 / T1..T20)</button>
+                  <button onClick={doExportBase}>Exporter PDF</button>
+                </div>
+                <FloorCanvas data={base.data} showGrid={grid} editable onChange={saveBaseData} drawNoGoMode={drawNoGo} />
+              </>
             )}
           </div>
         </div>
@@ -163,7 +195,13 @@ export default function FloorPlanPage() {
           </div>
           <div>
             {inst && (
-              <FloorCanvas data={inst.data} assignments={inst.assignments} showGrid={grid} editable onChange={saveInstanceData} drawNoGoMode={drawNoGo} />
+              <>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <button onClick={doNumberInstance}>Numéroter (1..20 / T1..T20)</button>
+                  <button onClick={doExportInstance}>Exporter PDF</button>
+                </div>
+                <FloorCanvas data={inst.data} assignments={inst.assignments} showGrid={grid} editable onChange={saveInstanceData} drawNoGoMode={drawNoGo} />
+              </>
             )}
           </div>
         </div>
