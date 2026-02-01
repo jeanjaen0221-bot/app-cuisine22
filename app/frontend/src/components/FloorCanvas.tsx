@@ -67,6 +67,10 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     return () => ro.disconnect()
   }, [])
 
+  useEffect(() => {
+    console.log('[ContextMenu] State changed:', contextMenu)
+  }, [contextMenu])
+
   function worldToScreen(x: number, y: number) {
     return { x: x * scale + offset.x, y: y * scale + offset.y }
   }
@@ -664,7 +668,9 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const rz = roundZoneHit(x, y)
     if (rz) {
       console.log('[ContextMenu] Round zone hit:', rz)
-      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'roundZone', data: rz } })
+      const menuData = { x: e.clientX, y: e.clientY, target: { type: 'roundZone', data: rz } }
+      console.log('[ContextMenu] Setting menu:', menuData)
+      setContextMenu(menuData)
       return
     }
     const tz = rectZoneHit(x, y)
@@ -904,24 +910,35 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       onChange && onChange({ ...data, tables: [...tables] })
       return
     }
-    // Détecter le survol pour feedback visuel
+    // Détecter les objets sous le curseur
     const rz = roundZoneHit(x, y)
     const tz = rectZoneHit(x, y)
     const ng = noGoHit(x, y)
     const fx = fixtureHit(x, y)
     const table = [...tables].reverse().find(t => tableHit(x, y, t))
     
-    if (rz) {
-      setHoveredItem({ type: 'roundZone', id: rz.id })
-    } else if (tz) {
-      setHoveredItem({ type: 'rectZone', id: tz.id })
-    } else if (ng) {
-      setHoveredItem({ type: 'noGo', id: ng.id })
-    } else if (fx) {
-      setHoveredItem({ type: 'fixture', id: (fx as any).id })
-    } else if (table) {
-      setHoveredItem({ type: 'table', id: table.id })
-    } else {
+    // Mettre à jour le survol (seulement si pas en train de drag/resize)
+    if (!draggingId && !fixtureDraggingId && !noGoDraggingId && !roundZoneDraggingId && !rectZoneDraggingId && 
+        !resizeHandle && !fixtureResize && !noGoResize && !roundZoneResize && !rectZoneResize &&
+        !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
+      let newHovered = null
+      if (rz) {
+        newHovered = { type: 'roundZone', id: rz.id }
+      } else if (tz) {
+        newHovered = { type: 'rectZone', id: tz.id }
+      } else if (ng) {
+        newHovered = { type: 'noGo', id: ng.id }
+      } else if (fx) {
+        newHovered = { type: 'fixture', id: (fx as any).id }
+      } else if (table) {
+        newHovered = { type: 'table', id: table.id }
+      }
+      
+      // Ne mettre à jour que si différent
+      if (JSON.stringify(newHovered) !== JSON.stringify(hoveredItem)) {
+        setHoveredItem(newHovered)
+      }
+    } else if (hoveredItem) {
       setHoveredItem(null)
     }
     
@@ -1165,12 +1182,13 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       {contextMenu && (
         <>
           <div 
-            className="fixed inset-0 z-40" 
+            className="fixed inset-0" 
+            style={{ zIndex: 9998 }}
             onClick={() => setContextMenu(null)}
           />
           <div 
-            className="fixed z-50 bg-white rounded-lg shadow-2xl border border-gray-200 py-1 min-w-[180px]"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
+            className="fixed bg-white rounded-lg shadow-2xl border-2 border-gray-300 py-1 min-w-[180px]"
+            style={{ left: contextMenu.x, top: contextMenu.y, zIndex: 9999 }}
           >
             <div className="px-3 py-2 text-xs font-semibold text-gray-500 border-b border-gray-100">
               {contextMenu.target.type === 'roundZone' && 'Zone Tables Rondes (R)'}
