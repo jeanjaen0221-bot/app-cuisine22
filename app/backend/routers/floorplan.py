@@ -1187,9 +1187,29 @@ def import_reservations_pdf(
     re_reservation_line = re.compile(r"^(\d{1,2}:\d{2})\s+(\d{1,2})\s+(.+)$")
     re_time = re.compile(r"(\d{1,2}[:h]\d{2})")
     
+    # Lignes à ignorer (totaux, en-têtes, téléphones, etc.)
+    skip_patterns = [
+        r"^Nombre de couverts",
+        r"^Brunch\s*-\s*Nombre",
+        r"^albert brussels",
+        r"^Standard",
+        r"^Table$",
+        r"^Heure$",
+        r"^Pax$",
+        r"^Client$",
+        r"^Statut$",
+        r"Téléphone:",  # Lignes de numéro de téléphone
+        r"^\+\d{2}",    # Lignes commençant par +32, +33, etc.
+        r"^0\d{1,2}\s", # Lignes commençant par 04, 02, etc.
+    ]
+    
     default_time = dtime(12, 30) if (service_label or "").lower() == "lunch" else dtime(19, 0)
 
     for ln in lines:
+        # Ignorer les lignes d'en-tête et de totaux
+        if any(re.search(pat, ln, re.IGNORECASE) for pat in skip_patterns):
+            continue
+        
         # Essayer le format structuré Albert Brussels d'abord
         match = re_reservation_line.match(ln)
         if match:
@@ -1211,6 +1231,12 @@ def import_reservations_pdf(
             except Exception as e:
                 logger.warning("POST /import-pdf -> failed to parse pax '%s': %s (line: %s)", pax_str, str(e), ln[:100])
                 _dbg_add("WARNING", f"POST /import-pdf -> invalid pax '{pax_str}': {str(e)[:50]}")
+                continue
+            
+            # Vérifier que pax est raisonnable (1-20 pour une réservation individuelle)
+            # Les lignes de totaux ont souvent des pax > 20 (ex: 97, 94, 91)
+            if pax > 20:
+                logger.debug("POST /import-pdf -> skipping line with pax=%d (likely a total line): %s", pax, ln[:100])
                 continue
             
             # Le reste contient: Client | Table | Statut | Date | Source
@@ -1242,8 +1268,10 @@ def import_reservations_pdf(
             # Retirer les chiffres isolés en fin (probablement des IDs)
             client_name = re.sub(r"\s+\d{1,3}$", "", client_name)
             
+            # Si pas de nom après nettoyage, c'est probablement une ligne de total
             if not client_name or len(client_name) < 2:
-                client_name = "Client"
+                logger.debug("POST /import-pdf -> skipping line with no client name (likely a total): %s", ln[:100])
+                continue
             
             item = {
                 "client_name": client_name,
