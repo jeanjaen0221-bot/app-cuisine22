@@ -11,15 +11,15 @@ def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumb
     # Separate pools
     nums = [t for t in tables if (t.get("kind") in ("fixed", "rect"))]
     tees = [t for t in tables if (t.get("kind") == "round")]
-    # Sort column-major: x asc, then y asc (start top-left, count down first)
+    # Sort column-major: x asc, then y DESC (start top-left, count DOWN first)
     def key_rect(t):
         x = float(t.get("x") or 0)
         y = float(t.get("y") or 0)
-        return (x, y)
+        return (x, -y)
     def key_round(t):
         x = float(t.get("x") or 0)
         y = float(t.get("y") or 0)
-        return (x, y)
+        return (x, -y)
     nums.sort(key=key_rect)
     tees.sort(key=key_round)
     id_to_label: Dict[str, str] = {}
@@ -108,7 +108,8 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
     tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
     for t in tables:
         kind = (t.get("kind") or "rect")
-        lbl = t.get("label") or id_to_label.get(str(t.get("id")) or "", "")
+        # Prefer computed numbering over any existing text label
+        lbl = id_to_label.get(str(t.get("id")) or "", "") or t.get("label")
         if kind == "round" and t.get("r"):
             x = float(t.get("x") or 0)
             y = float(t.get("y") or 0)
@@ -161,7 +162,8 @@ def _draw_table_list_page(c: pdfcanvas.Canvas, id_to_label: Dict[str, str], plan
     rows: List[Tuple[str, int, str]] = []
     for t in tables:
         tid = str(t.get("id"))
-        lbl = (t.get("label") or id_to_label.get(tid) or "")
+        # Prefer computed numbering over any existing text label
+        lbl = (id_to_label.get(tid) or t.get("label") or "")
         if not lbl:
             continue
         # Derive capacity robustly like runtime logic
@@ -201,6 +203,58 @@ def _draw_table_list_page(c: pdfcanvas.Canvas, id_to_label: Dict[str, str], plan
             else:
                 y = page_h - margin - 10 * mm
 
+
+def _draw_reservations_page(
+    c: pdfcanvas.Canvas,
+    reservations: List[Reservation],
+    assignments: Dict[str, Any],
+    id_to_label: Dict[str, str],
+) -> None:
+    page_w, page_h = A4
+    margin = 15 * mm
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margin, page_h - margin, "Liste du service avec numéros de table")
+    c.setFont("Helvetica", 9)
+    y = page_h - margin - 10 * mm
+    line_h = 6 * mm
+    # Build mapping res_id -> labels list
+    lab_by_res: Dict[str, List[str]] = {}
+    tbl_map: Dict[str, Any] = (assignments or {}).get("tables", {})
+    for tid, a in tbl_map.items():
+        res_id = str(a.get("res_id"))
+        lbl = id_to_label.get(tid) or ""
+        if not lbl:
+            continue
+        lab_by_res.setdefault(res_id, []).append(lbl)
+    # Sort reservations by time then name
+    def tkey(r: Reservation):
+        try:
+            return (r.arrival_time, (r.client_name or "").upper())
+        except Exception:
+            return (None, (r.client_name or "").upper())
+    rows = sorted(reservations, key=tkey)
+    # Header
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(margin, y, "Heure")
+    c.drawString(margin + 25 * mm, y, "Client")
+    c.drawString(margin + 110 * mm, y, "Pax")
+    c.drawString(margin + 125 * mm, y, "Table(s)")
+    y -= line_h
+    c.setFont("Helvetica", 9)
+    for r in rows:
+        t = getattr(r, "arrival_time", None)
+        tstr = str(t)[:5] if t else ""
+        c.drawString(margin, y, tstr)
+        c.drawString(margin + 25 * mm, y, (r.client_name or "").upper())
+        c.drawString(margin + 110 * mm, y, str(r.pax or 0))
+        lst = ", ".join(sorted(lab_by_res.get(str(r.id), []), key=lambda s: (s.startswith('T'), s)))
+        c.drawString(margin + 125 * mm, y, lst)
+        y -= line_h
+        if y < margin + 2 * line_h:
+            c.showPage()
+            c.setFont("Helvetica", 9)
+            y = page_h - margin - 10 * mm
+
 import io
 import uuid
 from datetime import date, time as dtime
@@ -213,6 +267,12 @@ from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
+try:
+    from pypdf import PdfReader, PdfWriter, PdfMerger
+except Exception:
+    PdfReader = None  # type: ignore
+    PdfWriter = None  # type: ignore
+    PdfMerger = None  # type: ignore
 
 from ..database import get_session
 from ..models import (
@@ -762,8 +822,17 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     _plan, id_to_label = _assign_table_numbers(dict(plan), persist=False)
     buf = io.BytesIO()
     c = pdfcanvas.Canvas(buf, pagesize=A4)
+    # 1) Reservations + assigned tables
+    try:
+        reservations = _load_reservations(session, row.service_date, row.service_label)
+    except Exception:
+        reservations = []
+    _draw_reservations_page(c, reservations, (row.assignments or {}), id_to_label)
+    c.showPage()
+    # 2) Floor plan with labels and assignments
     _draw_plan_page(c, _plan, id_to_label, assignments=(row.assignments or {}))
     c.showPage()
+    # 3) Numbered tables list
     _draw_table_list_page(c, id_to_label, _plan)
     c.save()
     pdf_bytes = buf.getvalue()
