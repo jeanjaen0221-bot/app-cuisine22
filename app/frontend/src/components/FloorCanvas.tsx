@@ -46,6 +46,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const [draftRectZone, setDraftRectZone] = useState<FloorRect | null>(null)
   const drawStartRectZone = useRef<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; target: any } | null>(null)
+  const [hoveredItem, setHoveredItem] = useState<{ type: string; id: string } | null>(null)
 
   const room = data.room || { width: 1200, height: 800, grid: 50 }
   const tables = data.tables || []
@@ -344,12 +345,13 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
     // Zones interdites
     ctx.save()
-    ctx.fillStyle = 'rgba(231, 76, 60, 0.15)'
     for (const r of noGo) {
+      const isHovered = hoveredItem?.type === 'noGo' && hoveredItem?.id === r.id
+      ctx.fillStyle = isHovered ? 'rgba(231, 76, 60, 0.3)' : 'rgba(231, 76, 60, 0.15)'
       ctx.fillRect(r.x, r.y, r.w, r.h)
       // Bordure
-      ctx.strokeStyle = 'rgba(192, 57, 43, 0.5)'
-      ctx.lineWidth = 2 / scale
+      ctx.strokeStyle = isHovered ? 'rgba(192, 57, 43, 0.8)' : 'rgba(192, 57, 43, 0.5)'
+      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
       ctx.setLineDash([8 / scale, 4 / scale])
       ctx.strokeRect(r.x, r.y, r.w, r.h)
       ctx.setLineDash([])
@@ -380,12 +382,13 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
     // Zones round-only (tables rondes uniquement)
     ctx.save()
-    ctx.fillStyle = 'rgba(52, 152, 219, 0.12)'  // Bleu transparent
     for (const r of roundOnlyZones) {
+      const isHovered = hoveredItem?.type === 'roundZone' && hoveredItem?.id === r.id
+      ctx.fillStyle = isHovered ? 'rgba(52, 152, 219, 0.25)' : 'rgba(52, 152, 219, 0.12)'  // Bleu transparent
       ctx.fillRect(r.x, r.y, r.w, r.h)
       // Bordure bleue
-      ctx.strokeStyle = 'rgba(41, 128, 185, 0.6)'
-      ctx.lineWidth = 2 / scale
+      ctx.strokeStyle = isHovered ? 'rgba(41, 128, 185, 0.9)' : 'rgba(41, 128, 185, 0.6)'
+      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
       ctx.setLineDash([10 / scale, 5 / scale])
       ctx.strokeRect(r.x, r.y, r.w, r.h)
       ctx.setLineDash([])
@@ -423,12 +426,13 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
     // Zones rect-only (tables rectangulaires uniquement)
     ctx.save()
-    ctx.fillStyle = 'rgba(46, 204, 113, 0.12)'  // Vert transparent
     for (const r of rectOnlyZones) {
+      const isHovered = hoveredItem?.type === 'rectZone' && hoveredItem?.id === r.id
+      ctx.fillStyle = isHovered ? 'rgba(46, 204, 113, 0.25)' : 'rgba(46, 204, 113, 0.12)'  // Vert transparent
       ctx.fillRect(r.x, r.y, r.w, r.h)
       // Bordure verte
-      ctx.strokeStyle = 'rgba(39, 174, 96, 0.6)'
-      ctx.lineWidth = 2 / scale
+      ctx.strokeStyle = isHovered ? 'rgba(39, 174, 96, 0.9)' : 'rgba(39, 174, 96, 0.6)'
+      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
       ctx.setLineDash([10 / scale, 5 / scale])
       ctx.strokeRect(r.x, r.y, r.w, r.h)
       ctx.setLineDash([])
@@ -536,7 +540,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     ctx.restore()
   }
 
-  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode])
+  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode, hoveredItem])
 
   function onPointerDown(e: React.PointerEvent) {
     // Ignorer le clic droit (bouton 2) - il est géré par onContextMenu
@@ -647,37 +651,48 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
   function onContextMenu(e: React.MouseEvent) {
     e.preventDefault()
+    e.stopPropagation()
+    
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
     const { x, y } = screenToWorld(sx, sy)
     
+    console.log('[ContextMenu] Click at screen:', sx, sy, 'world:', x, y)
+    
     // Détecter ce qui est cliqué (priorité: zones > fixtures > tables)
     const rz = roundZoneHit(x, y)
     if (rz) {
+      console.log('[ContextMenu] Round zone hit:', rz)
       setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'roundZone', data: rz } })
       return
     }
     const tz = rectZoneHit(x, y)
     if (tz) {
+      console.log('[ContextMenu] Rect zone hit:', tz)
       setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'rectZone', data: tz } })
       return
     }
     const ng = noGoHit(x, y)
     if (ng) {
+      console.log('[ContextMenu] NoGo zone hit:', ng)
       setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'noGo', data: ng } })
       return
     }
     const fx = fixtureHit(x, y)
     if (fx) {
+      console.log('[ContextMenu] Fixture hit:', fx)
       setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'fixture', data: fx } })
       return
     }
     const table = [...tables].reverse().find(t => tableHit(x, y, t))
     if (table) {
+      console.log('[ContextMenu] Table hit:', table)
       setContextMenu({ x: e.clientX, y: e.clientY, target: { type: 'table', data: table } })
       return
     }
+    
+    console.log('[ContextMenu] No object hit')
   }
 
   function snap(v: number) {
@@ -889,6 +904,27 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       onChange && onChange({ ...data, tables: [...tables] })
       return
     }
+    // Détecter le survol pour feedback visuel
+    const rz = roundZoneHit(x, y)
+    const tz = rectZoneHit(x, y)
+    const ng = noGoHit(x, y)
+    const fx = fixtureHit(x, y)
+    const table = [...tables].reverse().find(t => tableHit(x, y, t))
+    
+    if (rz) {
+      setHoveredItem({ type: 'roundZone', id: rz.id })
+    } else if (tz) {
+      setHoveredItem({ type: 'rectZone', id: tz.id })
+    } else if (ng) {
+      setHoveredItem({ type: 'noGo', id: ng.id })
+    } else if (fx) {
+      setHoveredItem({ type: 'fixture', id: (fx as any).id })
+    } else if (table) {
+      setHoveredItem({ type: 'table', id: table.id })
+    } else {
+      setHoveredItem(null)
+    }
+    
     const fr = fixtureHandleAt(sx, sy)
     const ngr = noGoHandleAt(sx, sy)
     const rzr = roundZoneHandleAt(sx, sy)
@@ -906,6 +942,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         el.style.cursor = tzr.handle === 'corner' ? 'nwse-resize' : tzr.handle === 'right' ? 'ew-resize' : 'ns-resize'
       } else if (drawNoGoMode || drawRoundOnlyMode || drawRectOnlyMode) {
         el.style.cursor = 'crosshair'
+      } else if (rz || tz || ng || fx || table) {
+        el.style.cursor = 'context-menu'  // Indique qu'un clic droit est possible
       } else {
         el.style.cursor = h === 'corner' ? 'nwse-resize' : h === 'right' ? 'ew-resize' : h === 'bottom' ? 'ns-resize' : 'default'
       }
