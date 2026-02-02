@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response, FileResponse, StreamingResponse
 
 from .database import init_db, run_startup_migrations, session_context, backfill_allergen_icons
-from .routers import reservations, menu_items, zenchef, allergens, notes, drinks, suppliers, purchase_orders, salle
+from .routers import reservations, menu_items, zenchef, allergens, notes, drinks, suppliers, purchase_orders, floorplan
 
 load_dotenv()
 
@@ -55,7 +55,7 @@ app.include_router(notes.router)
 app.include_router(drinks.router)
 app.include_router(suppliers.router)
 app.include_router(purchase_orders.router)
-app.include_router(salle.router)
+app.include_router(floorplan.router)
 
 # Ensure DB
 init_db()
@@ -88,6 +88,8 @@ async def log_requests(request: Request, call_next):
     start = time.time()
     req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.request_id = req_id
+    is_salle = request.url.path.startswith("/api/floorplan")
+    salle_debug = request.headers.get("X-Salle-Debug") == "1"
     try:
         response = await call_next(request)
         duration_ms = int((time.time() - start) * 1000)
@@ -98,10 +100,37 @@ async def log_requests(request: Request, call_next):
             pass
         # Basic structured log with correlation id
         print(f"REQ {req_id} {request.method} {request.url.path} -> {response.status_code} ({duration_ms}ms)")
+        # Salle-specific HTTP log line for Railway
+        if is_salle:
+            ua = request.headers.get("user-agent", "-")
+            ip = (request.client.host if request.client else "-")
+            q = ("?" + request.url.query) if request.url.query else ""
+            clen = response.headers.get("content-length", "-")
+            print(
+                f"SALLE HTTP | id={req_id} | {request.method} {request.url.path}{q} -> {response.status_code} ({duration_ms}ms) | ip={ip} | ua={ua} | len={clen}"
+            )
+        if is_salle and salle_debug:
+            try:
+                from .routers.floorplan import _dbg_buffer
+                # dump last ~50 buffer lines to stdout for quick tailing
+                tail = list(_dbg_buffer)[-50:]
+                print("SALLE DEBUG DUMP START")
+                for item in tail:
+                    print(f"{item['ts']} {item['lvl']} {item['msg']}")
+                print("SALLE DEBUG DUMP END")
+            except Exception:
+                pass
         return response
     except Exception as e:
         duration_ms = int((time.time() - start) * 1000)
         print(f"REQ {req_id} {request.method} {request.url.path} -> 500 ({duration_ms}ms) EXC: {e}")
+        if is_salle:
+            ua = request.headers.get("user-agent", "-")
+            ip = (request.client.host if request.client else "-")
+            q = ("?" + request.url.query) if request.url.query else ""
+            print(
+                f"SALLE HTTP | id={req_id} | {request.method} {request.url.path}{q} -> 500 ({duration_ms}ms) | ip={ip} | ua={ua} | err={e}"
+            )
         raise
 
 

@@ -34,6 +34,8 @@ def init_db() -> None:
     ensure_reservation_last_pdf_column()
     ensure_on_invoice_column()
     ensure_drink_unique_index()
+    ensure_floorplan_columns()
+    ensure_floorplan_reservations_column()
 
 
 def run_startup_migrations() -> None:
@@ -142,8 +144,193 @@ def ensure_final_version_column() -> None:
         pass
 
 
+def ensure_floorplan_reservations_column() -> None:
+    """Ensure 'reservations' JSONB column exists on floorplaninstance table (idempotent)."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                try:
+                    res = conn.exec_driver_sql("PRAGMA table_info(floorplaninstance);")
+                    cols = [row[1] for row in res.fetchall()]
+                    if 'reservations' not in cols:
+                        # SQLite: use TEXT to store JSON payloads
+                        conn.exec_driver_sql("ALTER TABLE floorplaninstance ADD COLUMN reservations TEXT DEFAULT '{}'::text;")
+                except Exception:
+                    pass
+            elif backend == 'postgresql':
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='floorplaninstance' AND column_name='reservations'
+                      ) THEN
+                        ALTER TABLE floorplaninstance ADD COLUMN reservations JSONB DEFAULT '{}'::jsonb;
+                      END IF;
+                    END$$;
+                    """
+                ))
+            else:
+                # Best-effort generic ALTER for other backends
+                try:
+                    conn.execute(text("ALTER TABLE floorplaninstance ADD COLUMN reservations JSON DEFAULT '{}'"))
+                except Exception:
+                    pass
+    except Exception:
+        # Non-fatal; will be surfaced by API if still missing
+        pass
 
 
+def ensure_floorplan_columns() -> None:
+    """Ensure JSON/JSONB columns exist for floorplan tables (idempotent)."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                # floorplanbase.data
+                try:
+                    res = conn.exec_driver_sql("PRAGMA table_info(floorplanbase);")
+                    cols = [row[1] for row in res.fetchall()]
+                    if 'data' not in cols:
+                        # SQLite: use TEXT to store JSON payloads
+                        conn.exec_driver_sql("ALTER TABLE floorplanbase ADD COLUMN data TEXT;")
+                except Exception:
+                    pass
+                # floorplaninstance.data & assignments
+                try:
+                    res = conn.exec_driver_sql("PRAGMA table_info(floorplaninstance);")
+                    cols = [row[1] for row in res.fetchall()]
+                    if 'data' not in cols:
+                        conn.exec_driver_sql("ALTER TABLE floorplaninstance ADD COLUMN data TEXT;")
+                    if 'assignments' not in cols:
+                        conn.exec_driver_sql("ALTER TABLE floorplaninstance ADD COLUMN assignments TEXT;")
+                    if 'template_id' not in cols:
+                        # Add column and best-effort backfill from first base row
+                        conn.exec_driver_sql("ALTER TABLE floorplaninstance ADD COLUMN template_id TEXT;")
+                        try:
+                            base_id_res = conn.exec_driver_sql("SELECT id FROM floorplanbase ORDER BY created_at ASC LIMIT 1;")
+                            row = base_id_res.fetchone()
+                            if row and row[0]:
+                                conn.exec_driver_sql("UPDATE floorplaninstance SET template_id = ? WHERE template_id IS NULL;", (str(row[0]),))
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            elif backend == 'postgresql':
+                # Use JSONB for PG and default to empty object to avoid null issues
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='floorplanbase' AND column_name='data'
+                      ) THEN
+                        ALTER TABLE floorplanbase ADD COLUMN data JSONB DEFAULT '{}'::jsonb;
+                      END IF;
+                    END$$;
+                    """
+                ))
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='floorplaninstance' AND column_name='data'
+                      ) THEN
+                        ALTER TABLE floorplaninstance ADD COLUMN data JSONB DEFAULT '{}'::jsonb;
+                      END IF;
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='floorplaninstance' AND column_name='assignments'
+                      ) THEN
+                        ALTER TABLE floorplaninstance ADD COLUMN assignments JSONB DEFAULT '{}'::jsonb;
+                      END IF;
+                    END$$;
+                    """
+                ))
+                # Ensure template_id exists, backfill from oldest base, set NOT NULL
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='floorplaninstance' AND column_name='template_id'
+                      ) THEN
+                        ALTER TABLE floorplaninstance ADD COLUMN template_id UUID;
+                      END IF;
+                    END$$;
+                    """
+                ))
+                # Backfill template_id to the oldest base id
+                conn.execute(text(
+                    """
+                    UPDATE floorplaninstance SET template_id = (
+                      SELECT id FROM floorplanbase ORDER BY created_at ASC LIMIT 1
+                    )
+                    WHERE template_id IS NULL;
+                    """
+                ))
+                # Set NOT NULL if column exists
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='floorplaninstance' AND column_name='template_id'
+                      ) THEN
+                        ALTER TABLE floorplaninstance ALTER COLUMN template_id SET NOT NULL;
+                      END IF;
+                    END$$;
+                    """
+                ))
+                # Drop any old FK (e.g., pointing to floorplantemplate) and add correct FK to floorplanbase(id)
+                conn.execute(text(
+                    """
+                    ALTER TABLE floorplaninstance DROP CONSTRAINT IF EXISTS floorplaninstance_template_id_fkey;
+                    """
+                ))
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = 'fk_floorplaninstance_template'
+                      ) THEN
+                        ALTER TABLE floorplaninstance
+                          ADD CONSTRAINT fk_floorplaninstance_template
+                          FOREIGN KEY (template_id) REFERENCES floorplanbase(id);
+                      END IF;
+                    END$$;
+                    """
+                ))
+            else:
+                # Best-effort generic ALTERs for other backends
+                try:
+                    conn.execute(text("ALTER TABLE floorplanbase ADD COLUMN data JSON"))
+                except Exception:
+                    pass
+                try:
+                    conn.execute(text("ALTER TABLE floorplaninstance ADD COLUMN data JSON"))
+                except Exception:
+                    pass
+                try:
+                    conn.execute(text("ALTER TABLE floorplaninstance ADD COLUMN assignments JSON"))
+                except Exception:
+                    pass
+                try:
+                    conn.execute(text("ALTER TABLE floorplaninstance ADD COLUMN template_id TEXT"))
+                except Exception:
+                    pass
+    except Exception:
+        # Non-fatal; will be surfaced by API if still missing
+        pass
 
 
 def ensure_on_invoice_column() -> None:

@@ -134,31 +134,53 @@ export type PurchaseOrderCreate = {
 
 export type ServiceLabel = 'lunch' | 'dinner' | (string & {})
 
-// ---- Salle Types ----
-
-export type SalleReservation = {
+export type FloorTable = {
   id: string
-  client_name: string
-  pax: number
-  arrival_time: string
-  notes?: string
-  status: string
+  kind: 'fixed' | 'rect' | 'round'
+  x: number
+  y: number
+  w?: number
+  h?: number
+  r?: number
+  capacity?: number
+  locked?: boolean
+  label?: string
 }
 
-export type SalleService = {
+export type FloorRect = { id: string; x: number; y: number; w: number; h: number }
+export type FloorCircle = { id: string; x: number; y: number; r: number }
+
+export type FloorPlanData = {
+  room?: { width: number; height: number; grid?: number }
+  walls?: FloorRect[]
+  columns?: FloorCircle[]
+  no_go?: FloorRect[]
+  no_go_zones?: FloorRect[]
+  round_only_zones?: FloorRect[]
+  rect_only_zones?: FloorRect[]
+  fixtures?: ((FloorRect & { shape?: 'rect'; label?: string; locked?: boolean }) | (FloorCircle & { shape?: 'round'; label?: string; locked?: boolean }))[]
+  tables: FloorTable[]
+}
+
+export type AssignmentMap = {
+  tables: Record<string, { res_id: string; name: string; pax: number; last_resort?: boolean }>
+}
+
+export type FloorPlanBase = {
+  id: UUID
+  name: string
+  data: FloorPlanData
+  created_at: string
+  updated_at: string
+}
+
+export type FloorPlanInstance = {
   id: UUID
   service_date: string
-  service_label: string
-  reservations: {
-    items: SalleReservation[]
-  }
-  plan_data: {
-    room?: { width: number; height: number }
-    tables: any[]
-  }
-  assignments: {
-    tables: Record<string, { res_id: string; name: string; pax: number }>
-  }
+  service_label?: string | null
+  template_id?: UUID
+  data: FloorPlanData
+  assignments: AssignmentMap
   created_at: string
   updated_at: string
 }
