@@ -424,60 +424,34 @@ class PurchaseOrderRead(SQLModel):
     items: List[PurchaseOrderItemRead] = Field(default_factory=list)
 
 
-class FloorPlanBase(SQLModel, table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
-    name: str = "base"
-    data: dict = Field(default_factory=dict, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+# ---- Salle (Floor Plan) Models ----
 
-
-class FloorPlanBaseRead(SQLModel):
-    id: uuid.UUID
-    name: str
-    data: dict
-    created_at: datetime
-    updated_at: datetime
-
-
-class FloorPlanBaseUpdate(SQLModel):
-    name: Optional[str] = None
-    data: Optional[dict] = None
-
-
-class FloorPlanInstance(SQLModel, table=True):
+class SalleService(SQLModel, table=True):
+    """Service instance with parsed reservations and table assignments."""
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     service_date: date
-    service_label: Optional[str] = None
-    template_id: uuid.UUID = Field(foreign_key="floorplanbase.id")
-    data: dict = Field(default_factory=dict, sa_column=Column(JSON))
-    assignments: dict = Field(default_factory=dict, sa_column=Column(JSON))
-    reservations: dict = Field(default_factory=dict, sa_column=Column(JSON))  # Parsed PDF data (not in main reservation table)
+    service_label: str = "brunch"  # brunch, lunch, dinner
+    reservations: dict = Field(default_factory=dict, sa_column=Column(JSON))  # Parsed PDF data
+    plan_data: dict = Field(default_factory=dict, sa_column=Column(JSON))  # Floor plan with tables
+    assignments: dict = Field(default_factory=dict, sa_column=Column(JSON))  # Table assignments
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     __table_args__ = (
-        UniqueConstraint('service_date', 'service_label', name='uq_floorplan_instance'),
+        UniqueConstraint('service_date', 'service_label', name='uq_salle_service'),
     )
 
 
-class FloorPlanInstanceRead(SQLModel):
+class SalleServiceRead(SQLModel):
     id: uuid.UUID
     service_date: date
-    service_label: Optional[str] = None
-    template_id: uuid.UUID
-    data: dict
-    assignments: dict
+    service_label: str
     reservations: dict
+    plan_data: dict
+    assignments: dict
     created_at: datetime
     updated_at: datetime
 
 
-class FloorPlanInstanceCreate(SQLModel):
+class SalleServiceCreate(SQLModel):
     service_date: date
-    service_label: Optional[str] = None
-
-
-class FloorPlanInstanceUpdate(SQLModel):
-    data: Optional[dict] = None
-    assignments: Optional[dict] = None
-    reservations: Optional[dict] = None
+    service_label: str = "brunch"

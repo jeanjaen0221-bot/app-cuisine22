@@ -9,3 +9,4 @@ reportlab==4.4.9
 aiofiles==25.1.0
 psycopg2-binary==2.9.11
 Pillow==12.1.0
+pdfplumber==0.11.4

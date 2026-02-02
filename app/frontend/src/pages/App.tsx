@@ -10,7 +10,7 @@ import CommandePage from './CommandePage'
 import OrdersListPage from './OrdersListPage'
 import OrderDetailPage from './OrderDetailPage'
 import SuppliersPage from './SuppliersPage'
-import FloorPlanPage from './FloorPlanPage'
+import SallePage from './SallePage'
 
 export default function App() {
   return (
@@ -48,7 +48,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/past" element={<PastReservations />} />
-          <Route path="/salle" element={<FloorPlanPage />} />
+          <Route path="/salle" element={<SallePage />} />
           <Route path="/reservation/new" element={<EditReservation />} />
           <Route path="/reservation/:id" element={<EditReservation />} />
           <Route path="/menu" element={<MenuPage />} />
