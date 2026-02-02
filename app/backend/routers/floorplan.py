@@ -5,16 +5,53 @@ from __future__ import annotations
 def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumbers: int = 20, max_rnumbers: int = 20, persist: bool = True) -> Tuple[Dict[str, Any], Dict[str, str]]:
     """Assign labels:
     - Fixed tables: 1..N
-    - Rect tables: T1..TN
-    - Round tables: R1..RN
+    - Rect tables IN zone T: T1..TN
+    - Rect tables OUTSIDE zone T: Continue normal numbering (N+1, N+2...)
+    - Round tables IN zone R: R1..RN
+    - Round tables OUTSIDE zone R: Continue normal numbering
     Order: top-left counting DOWN first (i.e., column-major: x asc, then y desc).
     Returns (updated_plan, id_to_label).
     """
     tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
+    rect_only_zones = plan.get("rect_only_zones") or []
+    round_only_zones = plan.get("round_only_zones") or []
+    
+    def is_in_rect_zone(t):
+        """Check if table center is in a rect-only zone."""
+        tx = float(t.get("x") or 0)
+        ty = float(t.get("y") or 0)
+        tw = float(t.get("w") or 120)
+        th = float(t.get("h") or 60)
+        cx, cy = tx + tw/2, ty + th/2
+        for z in rect_only_zones:
+            zx, zy, zw, zh = float(z.get("x") or 0), float(z.get("y") or 0), float(z.get("w") or 0), float(z.get("h") or 0)
+            if zx <= cx <= zx + zw and zy <= cy <= zy + zh:
+                return True
+        return False
+    
+    def is_in_round_zone(t):
+        """Check if table center is in a round-only zone."""
+        tx = float(t.get("x") or 0)
+        ty = float(t.get("y") or 0)
+        if "r" in t:
+            cx, cy = tx, ty
+        else:
+            tw = float(t.get("w") or 120)
+            th = float(t.get("h") or 60)
+            cx, cy = tx + tw/2, ty + th/2
+        for z in round_only_zones:
+            zx, zy, zw, zh = float(z.get("x") or 0), float(z.get("y") or 0), float(z.get("w") or 0), float(z.get("h") or 0)
+            if zx <= cx <= zx + zw and zy <= cy <= zy + zh:
+                return True
+        return False
+    
     # Separate pools
     fixed = [t for t in tables if (t.get("kind") == "fixed" or t.get("locked") is True)]
-    rects = [t for t in tables if (t.get("kind") == "rect" and not t.get("locked"))]
-    rounds = [t for t in tables if (t.get("kind") == "round")]
+    rects_in_zone_t = [t for t in tables if t.get("kind") == "rect" and not t.get("locked") and is_in_rect_zone(t)]
+    rects_outside_zone_t = [t for t in tables if t.get("kind") == "rect" and not t.get("locked") and not is_in_rect_zone(t)]
+    rounds_in_zone_r = [t for t in tables if t.get("kind") == "round" and is_in_round_zone(t)]
+    rounds_outside_zone_r = [t for t in tables if t.get("kind") == "round" and not is_in_round_zone(t)]
+    
     # Sort column-major: x asc, then y DESC (start top-left, count DOWN first)
     def key_table(t):
         x = float(t.get("x") or 0)
@@ -22,31 +59,52 @@ def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumb
         return (x, -y)
     
     fixed.sort(key=key_table)
-    rects.sort(key=key_table)
-    rounds.sort(key=key_table)
+    rects_in_zone_t.sort(key=key_table)
+    rects_outside_zone_t.sort(key=key_table)
+    rounds_in_zone_r.sort(key=key_table)
+    rounds_outside_zone_r.sort(key=key_table)
     
     id_to_label: Dict[str, str] = {}
     
-    # Assign numbers 1..max_numbers to fixed tables
-    for i, t in enumerate(fixed[: max_numbers]):
-        lbl = str(i + 1)
+    # Assign numbers 1..N to fixed tables
+    current_number = 1
+    for t in fixed[:max_numbers]:
+        lbl = str(current_number)
         id_to_label[str(t.get("id"))] = lbl
         if persist:
             t["label"] = lbl
+        current_number += 1
     
-    # Assign T1..Tmax_tnumbers to rect tables
-    for i, t in enumerate(rects[: max_tnumbers]):
+    # Continue numbering for rect tables OUTSIDE zone T
+    for t in rects_outside_zone_t:
+        lbl = str(current_number)
+        id_to_label[str(t.get("id"))] = lbl
+        if persist:
+            t["label"] = lbl
+        current_number += 1
+    
+    # Continue numbering for round tables OUTSIDE zone R
+    for t in rounds_outside_zone_r:
+        lbl = str(current_number)
+        id_to_label[str(t.get("id"))] = lbl
+        if persist:
+            t["label"] = lbl
+        current_number += 1
+    
+    # Assign T1..TN to rect tables IN zone T
+    for i, t in enumerate(rects_in_zone_t[:max_tnumbers]):
         lbl = f"T{i + 1}"
         id_to_label[str(t.get("id"))] = lbl
         if persist:
             t["label"] = lbl
     
-    # Assign R1..Rmax_rnumbers to round tables
-    for i, t in enumerate(rounds[: max_rnumbers]):
+    # Assign R1..RN to round tables IN zone R
+    for i, t in enumerate(rounds_in_zone_r[:max_rnumbers]):
         lbl = f"R{i + 1}"
         id_to_label[str(t.get("id"))] = lbl
         if persist:
             t["label"] = lbl
+    
     if persist:
         plan["tables"] = tables
     return plan, id_to_label
@@ -1445,6 +1503,14 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     tables_after = len(plan.get("tables", []))
     logger.info("POST /instances/%s/auto-assign -> plan has %d tables after auto-assign (before: %d)", instance_id, tables_after, len(tables))
     _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> plan has {tables_after} tables after auto-assign")
+    
+    # Auto-number all tables (fixed + created rect/round) immediately after auto-assign
+    plan, id_to_label = _assign_table_numbers(plan, max_numbers=20, max_tnumbers=20, max_rnumbers=20, persist=True)
+    row.data = plan
+    labeled_count = len(id_to_label)
+    logger.info("POST /instances/%s/auto-assign -> auto-numbered %d tables", instance_id, labeled_count)
+    _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> auto-numbered {labeled_count} tables")
+    
     session.add(row)
     session.commit()
     session.refresh(row)
