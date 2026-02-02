@@ -75,7 +75,7 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
     c.rect(ox, oy, scale * W, scale * H, stroke=1, fill=0)
 
     # draw no-go zones
-    for ng in (plan.get("no_go") or []):
+    for ng in (plan.get("no_go_zones") or plan.get("no_go") or []):
         x = float(ng.get("x") or 0)
         y = float(ng.get("y") or 0)
         w = float(ng.get("w") or 0)
@@ -620,7 +620,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
     avail_rects = {t.get("id"): t for t in rects}
     avail_rounds = {t.get("id"): t for t in rounds}
 
-    # Sort reservations largest first to minimize waste; tie-breaker by arrival time
+    # First-Fit Decreasing: Sort reservations largest first to minimize waste
+    # This is proven to be more efficient for bin packing problems
     groups = sorted(reservations, key=lambda r: (-int(r.pax), r.arrival_time or dtime(0, 0)))
 
     assignments_by_table: Dict[str, Dict[str, Any]] = {}
@@ -737,47 +738,92 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 
     for r in groups:
         placed = False
-        # 1) Fixed tables by best-fit
-        best_fixed = take_table(
-            avail_fixed,
-            predicate=lambda t: _capacity_for_table(t) >= r.pax,
-        )
-        if best_fixed:
-            pax_on_table = min(_capacity_for_table(best_fixed), int(r.pax))
-            assignments_by_table.setdefault(best_fixed.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-            placed = True
-            try:
-                logger.debug("assign fixed -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_fixed.get("id"), _capacity_for_table(best_fixed))
-                _dbg_add("DEBUG", f"assign fixed -> res={r.id} pax={r.pax} table={best_fixed.get('id')}")
-            except Exception as e:
-                logger.warning("assign fixed -> log failed: %s", str(e))
-                pass
+        pax = int(r.pax)
+        
+        # Strategy: For small groups (1-4), use fixed tables. For medium/large (5+), prefer rect tables or create new ones
+        
+        # 1) Small groups (1-4 pax): Use fixed tables (best-fit)
+        if pax <= 4:
+            best_fixed = take_table(
+                avail_fixed,
+                predicate=lambda t: _capacity_for_table(t) >= pax,
+            )
+            if best_fixed:
+                pax_on_table = min(_capacity_for_table(best_fixed), pax)
+                assignments_by_table.setdefault(best_fixed.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                placed = True
+                try:
+                    logger.debug("assign fixed -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_fixed.get("id"), _capacity_for_table(best_fixed))
+                    _dbg_add("DEBUG", f"assign fixed -> res={r.id} pax={r.pax} table={best_fixed.get('id')}")
+                except Exception:
+                    pass
         if placed:
             continue
 
-        # 2) Rect single table (6 or 8 with head) best-fit
-        def rect_can_fit(t):
-            cap = _capacity_for_table(t)
-            # Allow +2 head extension up to 8 for a single rectangle
-            cap_ext = min(8, cap + 2)
-            return cap_ext >= r.pax
+        # 2) Medium groups (5-8 pax): Try existing rect single table with extension
+        if pax <= 8:
+            def rect_can_fit(t):
+                cap = _capacity_for_table(t)
+                cap_ext = min(8, cap + 2)
+                return cap_ext >= pax
 
-        best_rect = take_table(avail_rects, predicate=rect_can_fit)
-        if best_rect:
-            # seat up to extended capacity for a single rectangle
-            pax_on_table = min(int(r.pax), min(8, _capacity_for_table(best_rect) + 2))
-            assignments_by_table.setdefault(best_rect.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-            placed = True
-            try:
-                logger.debug("assign rect -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_rect.get("id"), _capacity_for_table(best_rect))
-                _dbg_add("DEBUG", f"assign rect -> res={r.id} pax={r.pax} table={best_rect.get('id')}")
-            except Exception as e:
-                logger.warning("assign rect -> log failed: %s", str(e))
-                pass
+            best_rect = take_table(avail_rects, predicate=rect_can_fit)
+            if best_rect:
+                pax_on_table = min(pax, min(8, _capacity_for_table(best_rect) + 2))
+                assignments_by_table.setdefault(best_rect.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                placed = True
+                try:
+                    logger.debug("assign rect -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_rect.get("id"), _capacity_for_table(best_rect))
+                    _dbg_add("DEBUG", f"assign rect -> res={r.id} pax={r.pax} table={best_rect.get('id')}")
+                except Exception:
+                    pass
         if placed:
             continue
 
-        # 3) Rect combo (two tables)
+        # 3) Medium-large groups (9-14 pax): CREATE new rect6 tables side-by-side (better than using fixed tables)
+        if pax >= 9 and pax <= 14:
+            # Try to create 2 rect6 tables (12-16 pax with extension)
+            num_tables = 2
+            created_tables = []
+            base_spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
+            
+            if base_spot:
+                for i in range(num_tables):
+                    if i == 0:
+                        spot = base_spot
+                    else:
+                        # Place next table to the right with 10px gap
+                        spot = {"x": base_spot["x"] + (i * 130), "y": base_spot["y"], "w": 120, "h": 60}
+                        test_tbl = {"id": "_test", "kind": "rect", **spot}
+                        if _table_collides(plan_data, test_tbl, existing_tables=plan_data.get("tables", []) + created_tables):
+                            # Try below with 10px gap
+                            spot = {"x": base_spot["x"], "y": base_spot["y"] + (i * 70), "w": 120, "h": 60}
+                            test_tbl = {"id": "_test", "kind": "rect", **spot}
+                            if _table_collides(plan_data, test_tbl, existing_tables=plan_data.get("tables", []) + created_tables):
+                                break
+                    
+                    new_id = str(uuid.uuid4())
+                    new_tbl = {"id": new_id, "kind": "rect", "capacity": 6, "w": 120, "h": 60, **spot}
+                    created_tables.append(new_tbl)
+                    (plan_data.setdefault("tables", [])).append(new_tbl)
+                
+                if len(created_tables) >= 2:
+                    # Assign pax across the created tables
+                    remaining = pax
+                    for tbl in created_tables:
+                        pax_on_table = max(0, min(8, remaining))
+                        assignments_by_table.setdefault(tbl["id"], {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                        remaining -= pax_on_table
+                    placed = True
+                    try:
+                        logger.debug("create+assign %d rect6 -> res=%s pax=%s", len(created_tables), r.id, r.pax)
+                        _dbg_add("DEBUG", f"create+assign {len(created_tables)} rect6 -> res={r.id} pax={r.pax}")
+                    except Exception:
+                        pass
+        if placed:
+            continue
+
+        # 4) Try existing rect combo (two tables)
         combo = take_best_rect_combo(r.pax)
         if combo:
             remaining = int(r.pax)
@@ -791,13 +837,12 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             try:
                 logger.debug("assign rect-pair -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in combo])
                 _dbg_add("DEBUG", f"assign rect-pair -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in combo]}")
-            except Exception as e:
-                logger.warning("assign rect-pair -> log failed: %s", str(e))
+            except Exception:
                 pass
         if placed:
             continue
 
-        # 3b) Pack multiple fixed tables if needed (agençables pour grands groupes max 28 pax)
+        # 5) Pack multiple fixed tables if needed (agençables pour grands groupes max 28 pax)
         chosen = pack_from_pool(avail_fixed, int(r.pax), allow_rect_ext=False, max_total_cap=28)
         if chosen:
             remaining = int(r.pax)
@@ -869,42 +914,56 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 logger.warning("assign round -> log failed: %s", str(e))
                 pass
 
-        # 5) Create and place a new non-fixed table if still not placed
+        # 5) Create and place new rect6 tables if still not placed (max 4 tables side-by-side)
         if not placed:
-            # Create non-fixed tables to cover remaining pax using 6-seat rectangles first
             remaining = int(r.pax)
             created_any = False
-            while remaining > 0:
-                # Try standard rect6 (120x60) first
-                spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
-                w, h, cap = 120, 60, 6
-                
-                # If no spot, try smaller rect4 (100x50)
-                if not spot:
-                    spot = _find_spot_for_table(plan_data, "rect", w=100, h=50)
-                    w, h, cap = 100, 50, 4
-                
-                # If still no spot, try even smaller rect2 (80x40)
-                if not spot:
-                    spot = _find_spot_for_table(plan_data, "rect", w=80, h=40)
-                    w, h, cap = 80, 40, 2
-                
-                if not spot:
-                    break
-                
-                new_id = str(uuid.uuid4())
-                new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, "w": w, "h": h, **spot}
-                (plan_data.setdefault("tables", [])).append(new_tbl)
-                pax_on_table = max(0, min(cap, remaining))
-                assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-                remaining -= pax_on_table
-                created_any = True
-                try:
-                    logger.debug("create+assign rect%d -> res=%s table=%s at=%s", cap, r.id, new_id, spot)
-                    _dbg_add("DEBUG", f"create+assign rect{cap} -> res={r.id} table={new_id}")
-                except Exception as e:
-                    logger.warning("create+assign rect -> log failed: %s", str(e))
-                    pass
+            
+            # Calculate how many rect6 tables needed (max 4 tables = 24-32 pax with extension)
+            num_tables = min(4, (remaining + 7) // 8)  # 8 pax per table with extension
+            
+            # Try to place tables side-by-side
+            created_tables = []
+            base_spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
+            
+            if base_spot:
+                # Place first table
+                for i in range(num_tables):
+                    if i == 0:
+                        # First table at base spot
+                        spot = base_spot
+                    else:
+                        # Try to place next table adjacent (to the right)
+                        spot = {"x": base_spot["x"] + (i * 130), "y": base_spot["y"], "w": 120, "h": 60}
+                        # Check if this spot is valid
+                        test_tbl = {"id": "_test", "kind": "rect", **spot}
+                        if _table_collides(plan_data, test_tbl, existing_tables=plan_data.get("tables", []) + created_tables):
+                            # Try below instead
+                            spot = {"x": base_spot["x"], "y": base_spot["y"] + (i * 70), "w": 120, "h": 60}
+                            test_tbl = {"id": "_test", "kind": "rect", **spot}
+                            if _table_collides(plan_data, test_tbl, existing_tables=plan_data.get("tables", []) + created_tables):
+                                break  # Can't place more tables
+                    
+                    new_id = str(uuid.uuid4())
+                    cap = 6
+                    new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, "w": 120, "h": 60, **spot}
+                    created_tables.append(new_tbl)
+                    (plan_data.setdefault("tables", [])).append(new_tbl)
+                    
+                    # Assign pax with extension to 8
+                    pax_on_table = max(0, min(8, remaining))
+                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                    remaining -= pax_on_table
+                    created_any = True
+                    
+                    try:
+                        logger.debug("create+assign rect6 #%d -> res=%s table=%s at=%s", i+1, r.id, new_id, spot)
+                        _dbg_add("DEBUG", f"create+assign rect6 #{i+1} -> res={r.id} table={new_id}")
+                    except Exception as e:
+                        pass
+                    
+                    if remaining <= 0:
+                        break
             if remaining > 0:
                 # try to add a 10-seat round if space allows
                 spot = _find_spot_for_table(plan_data, "round", r=50)
@@ -1422,19 +1481,30 @@ def import_reservations_pdf(
         raise HTTPException(413, "File size exceeds 10MB limit")
     # Use robust v4 parser
     try:
-        from pdf_parser_v4 import parse_reservation_pdf_v4
+        from ..pdf_parser_v4 import ReservationParserV4
     except ImportError:
-        raise HTTPException(500, "PDF parser module not found")
+        raise HTTPException(500, "PDF parser V4 module not found")
     
     try:
-        result = parse_reservation_pdf_v4(
-            pdf_bytes=blob,
-            service_date=service_date,
-            service_label=service_label,
-            debug=False
-        )
-        out = result["reservations"]
-        stats = result["stats"]
+        parser = ReservationParserV4(service_date=service_date, service_label=service_label, debug=False)
+        reservations_list = parser.parse_pdf(blob)
+        
+        # Convert to dict format expected by frontend
+        out = []
+        for res in reservations_list:
+            out.append({
+                "id": res.get("id"),
+                "client_name": res.get("client_name", ""),
+                "pax": res.get("pax", 2),
+                "arrival_time": res.get("arrival_time", "12:00"),
+                "notes": res.get("notes", ""),
+                "status": res.get("status", "confirmed")
+            })
+        
+        stats = {
+            "total_reservations": len(out),
+            "total_covers": sum(r["pax"] for r in out)
+        }
     except Exception as e:
         logger.error("POST /import-pdf -> PDF parsing failed: %s", str(e))
         _dbg_add("ERROR", f"POST /import-pdf -> parsing failed: {str(e)[:100]}")

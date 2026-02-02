@@ -53,7 +53,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const tables = data.tables || []
   const walls = data.walls || []
   const cols = data.columns || []
-  const noGo = data.no_go || []
+  const noGo = data.no_go_zones || data.no_go || []
   const fixtures = data.fixtures || []
   const roundOnlyZones = (data as any).round_only_zones || []
   const rectOnlyZones = (data as any).rect_only_zones || []
@@ -767,7 +767,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         if (showGrid && room.grid && room.grid > 0) { nw = snap(nw); nh = snap(nh) }
         const next = [...noGo]
         next[idx] = { ...r, w: nw, h: nh }
-        onChange && onChange({ ...data, no_go: next })
+        onChange && onChange({ ...data, no_go_zones: next })
       }
       return
     }
@@ -780,7 +780,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         const snapGrid = showGrid && room.grid && room.grid > 0
         const next = [...noGo]
         next[idx] = { ...r, x: snapGrid ? snap(nx) : nx, y: snapGrid ? snap(ny) : ny }
-        onChange && onChange({ ...data, no_go: next })
+        onChange && onChange({ ...data, no_go_zones: next })
       }
       return
     }
@@ -961,7 +961,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       if (draftNoGo.w >= minSize && draftNoGo.h >= minSize) {
         const id = `ng_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
         const next = [...noGo, { id, x: draftNoGo.x, y: draftNoGo.y, w: draftNoGo.w, h: draftNoGo.h }]
-        onChange && onChange({ ...data, no_go: next })
+        onChange && onChange({ ...data, no_go_zones: next })
       }
       drawStartNoGo.current = null
       setDraftNoGo(null)
@@ -1241,7 +1241,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 onClick={() => {
                   const next = noGo.filter(z => z.id !== contextMenu.target.data.id)
-                  onChange && onChange({ ...data, no_go: next })
+                  onChange && onChange({ ...data, no_go_zones: next })
                   setContextMenu(null)
                 }}
               >
