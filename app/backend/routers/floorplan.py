@@ -477,7 +477,8 @@ def _table_collides(plan: Dict[str, Any], t: Dict[str, Any], existing_tables: Op
         if x - r < 0 or y - r < 0 or x + r > float(room.get("width") or 0) or y + r > float(room.get("height") or 0):
             return True
         c = {"x": x, "y": y, "r": r}
-        for rr in (plan.get("no_go") or []):
+        # Check no-go zones (use correct field name)
+        for rr in (plan.get("no_go_zones") or plan.get("no_go") or []):
             if _circle_rect_intersects(c, {"x": float(rr.get("x")), "y": float(rr.get("y")), "w": float(rr.get("w")), "h": float(rr.get("h"))}):
                 return True
         for w in (plan.get("walls") or []):
@@ -510,7 +511,8 @@ def _table_collides(plan: Dict[str, Any], t: Dict[str, Any], existing_tables: Op
         if x < 0 or y < 0 or x + w > float(room.get("width") or 0) or y + h > float(room.get("height") or 0):
             return True
         rr = {"x": x, "y": y, "w": w, "h": h}
-        for ng in (plan.get("no_go") or []):
+        # Check no-go zones (use correct field name)
+        for ng in (plan.get("no_go_zones") or plan.get("no_go") or []):
             if _rect_intersects(rr, {"x": float(ng.get("x")), "y": float(ng.get("y")), "w": float(ng.get("w")), "h": float(ng.get("h"))}):
                 return True
         for w2 in (plan.get("walls") or []):
@@ -576,8 +578,10 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
         max_x = max(0, W - int(r * 2))
     
     # Scan grid row by row, starting from top-left
-    for yy in range(0, max_y, max(1, gw)):
-        for xx in range(0, max_x, max(1, gw)):
+    # Use smaller step for better coverage (divide by 3 for even more positions)
+    step = max(1, gw // 3) if gw >= 30 else max(1, gw // 2)
+    for yy in range(0, max_y, step):
+        for xx in range(0, max_x, step):
             cand: Dict[str, Any]
             if shape == "rect":
                 cand = {"x": float(xx), "y": float(yy), "w": float(w), "h": float(h)}
@@ -704,7 +708,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         
         return None
 
-    def pack_from_pool(pool: Dict[str, Dict[str, Any]], target: int, allow_rect_ext: bool = False) -> Optional[List[Dict[str, Any]]]:
+    def pack_from_pool(pool: Dict[str, Dict[str, Any]], target: int, allow_rect_ext: bool = False, max_total_cap: int = None) -> Optional[List[Dict[str, Any]]]:
         items = list(pool.values())
         if not items:
             return None
@@ -712,15 +716,21 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         items.sort(key=lambda t: _capacity_for_table(t), reverse=True)
         chosen: List[Dict[str, Any]] = []
         total = 0
+        total_base_cap = 0  # Track total base capacity (for max_total_cap check)
         for t in items:
             if total >= target:
                 break
+            base_cap = _capacity_for_table(t)
+            # Check max_total_cap limit (for fixed tables: max 28 pax = 7 tables of 4)
+            if max_total_cap and total_base_cap + base_cap > max_total_cap:
+                break
             chosen.append(t)
-            cap = _capacity_for_table(t)
+            cap = base_cap
             # Allow +2 extension for rect tables
             if allow_rect_ext and t.get("kind") == "rect":
                 cap = min(8, cap + 2)
             total += cap
+            total_base_cap += base_cap
         if total >= target:
             return chosen
         return None
@@ -787,8 +797,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if placed:
             continue
 
-        # 3b) Pack multiple fixed tables if needed (agençables pour grands groupes 28 pax)
-        chosen = pack_from_pool(avail_fixed, int(r.pax), allow_rect_ext=False)
+        # 3b) Pack multiple fixed tables if needed (agençables pour grands groupes max 28 pax)
+        chosen = pack_from_pool(avail_fixed, int(r.pax), allow_rect_ext=False, max_total_cap=28)
         if chosen:
             remaining = int(r.pax)
             for t in chosen:
@@ -865,22 +875,35 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             remaining = int(r.pax)
             created_any = False
             while remaining > 0:
+                # Try standard rect6 (120x60) first
                 spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
+                w, h, cap = 120, 60, 6
+                
+                # If no spot, try smaller rect4 (100x50)
+                if not spot:
+                    spot = _find_spot_for_table(plan_data, "rect", w=100, h=50)
+                    w, h, cap = 100, 50, 4
+                
+                # If still no spot, try even smaller rect2 (80x40)
+                if not spot:
+                    spot = _find_spot_for_table(plan_data, "rect", w=80, h=40)
+                    w, h, cap = 80, 40, 2
+                
                 if not spot:
                     break
+                
                 new_id = str(uuid.uuid4())
-                cap = 6
-                new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot}
+                new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, "w": w, "h": h, **spot}
                 (plan_data.setdefault("tables", [])).append(new_tbl)
                 pax_on_table = max(0, min(cap, remaining))
                 assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
                 remaining -= pax_on_table
                 created_any = True
                 try:
-                    logger.debug("create+assign rect6 -> res=%s table=%s at=%s", r.id, new_id, spot)
-                    _dbg_add("DEBUG", f"create+assign rect6 -> res={r.id} table={new_id}")
+                    logger.debug("create+assign rect%d -> res=%s table=%s at=%s", cap, r.id, new_id, spot)
+                    _dbg_add("DEBUG", f"create+assign rect{cap} -> res={r.id} table={new_id}")
                 except Exception as e:
-                    logger.warning("create+assign rect6 -> log failed: %s", str(e))
+                    logger.warning("create+assign rect -> log failed: %s", str(e))
                     pass
             if remaining > 0:
                 # try to add a 10-seat round if space allows
@@ -1231,6 +1254,52 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     logger.info("GET /instances/%s/export-pdf -> bytes=%d labels=%d", instance_id, len(pdf_bytes), len(id_to_label))
     _dbg_add("INFO", f"GET /instances/{instance_id}/export-pdf -> bytes={len(pdf_bytes)} labels={len(id_to_label)} reservations={len(reservations)}")
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+
+@router.get("/instances/{instance_id}/debug-plan")
+def debug_instance_plan(instance_id: uuid.UUID, session: Session = Depends(get_session)):
+    """Debug endpoint to diagnose auto-assign issues."""
+    row = session.get(FloorPlanInstance, instance_id)
+    if not row:
+        raise HTTPException(404, "Instance not found")
+    
+    plan = row.data or {}
+    room = plan.get("room", {})
+    tables = plan.get("tables", [])
+    
+    # Count tables by type
+    fixed = [t for t in tables if t.get("kind") == "fixed"]
+    rect = [t for t in tables if t.get("kind") == "rect"]
+    round_t = [t for t in tables if t.get("kind") == "round"]
+    
+    # Test _find_spot_for_table
+    test_rect_spot = _find_spot_for_table(plan, "rect", w=120, h=60)
+    test_round_spot = _find_spot_for_table(plan, "round", r=50)
+    
+    return {
+        "instance_id": str(instance_id),
+        "room": {
+            "width": room.get("width"),
+            "height": room.get("height"),
+            "grid": room.get("grid")
+        },
+        "zones": {
+            "no_go": len(plan.get("no_go_zones", [])),
+            "round_only": len(plan.get("round_only_zones", [])),
+            "rect_only": len(plan.get("rect_only_zones", []))
+        },
+        "tables": {
+            "fixed": len(fixed),
+            "rect": len(rect),
+            "round": len(round_t),
+            "total": len(tables)
+        },
+        "test_spots": {
+            "rect_120x60": test_rect_spot,
+            "round_r50": test_round_spot
+        },
+        "reservations_count": len(_load_reservations(session, row.service_date, row.service_label, instance=row))
+    }
 
 
 @router.put("/instances/{instance_id}", response_model=FloorPlanInstanceRead)
