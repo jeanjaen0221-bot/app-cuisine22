@@ -1,6 +1,6 @@
 from __future__ import annotations
 import uuid
-from datetime import datetime, UTC
+from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -46,7 +46,7 @@ def update_note(note_id: uuid.UUID, payload: NoteUpdate, session: Session = Depe
         row.content = (payload.content or "").strip()
         if not row.content:
             raise HTTPException(400, "Le contenu ne peut pas être vide")
-    row.updated_at = datetime.now(UTC)
+    row.updated_at = datetime.utcnow()
     session.add(row)
     session.commit()
     session.refresh(row)

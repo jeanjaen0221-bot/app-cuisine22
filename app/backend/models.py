@@ -1,6 +1,6 @@
 from __future__ import annotations
 import uuid
-from datetime import date, time, datetime, UTC
+from datetime import date, time, datetime
 from enum import Enum
 from typing import List, Optional
 
@@ -137,8 +137,8 @@ class ReservationBase(SQLModel):
 
 class Reservation(ReservationBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_pdf_exported_at: Optional[datetime] = None
     __table_args__ = (
         UniqueConstraint('service_date','arrival_time','client_name','pax', name='uq_reservation_slot'),
@@ -197,7 +197,7 @@ class Setting(SQLModel, table=True):
 # Store processed idempotency keys
 class ProcessedRequest(SQLModel, table=True):
     key: str = Field(primary_key=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # Store allergens metadata and icon bytes in DB (in addition to file assets for compatibility)
@@ -205,15 +205,15 @@ class Allergen(SQLModel, table=True):
     key: str = Field(primary_key=True)
     label: str
     icon_bytes: Optional[bytes] = None
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class Note(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     name: str
     content: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class NoteCreate(SQLModel):
@@ -249,8 +249,8 @@ class BillingInfo(SQLModel, table=True):
     phone: Optional[str] = None
     payment_terms: Optional[str] = None
     notes: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class BillingInfoCreate(SQLModel):
@@ -372,7 +372,7 @@ class PurchaseOrder(SQLModel, table=True):
     supplier_id: Optional[uuid.UUID] = Field(default=None, foreign_key="supplier.id")
     status: PurchaseOrderStatus = PurchaseOrderStatus.draft
     note: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class PurchaseOrderItem(SQLModel, table=True):
@@ -428,8 +428,8 @@ class FloorPlanBase(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     name: str = "base"
     data: dict = Field(default_factory=dict, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class FloorPlanBaseRead(SQLModel):
@@ -453,8 +453,8 @@ class FloorPlanInstance(SQLModel, table=True):
     data: dict = Field(default_factory=dict, sa_column=Column(JSON))
     assignments: dict = Field(default_factory=dict, sa_column=Column(JSON))
     reservations: dict = Field(default_factory=dict, sa_column=Column(JSON))  # Parsed PDF data (not in main reservation table)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
     __table_args__ = (
         UniqueConstraint('service_date', 'service_label', name='uq_floorplan_instance'),
     )

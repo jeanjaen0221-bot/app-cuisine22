@@ -564,7 +564,7 @@ def backfill_allergen_icons() -> None:
         icons_dir = os.path.join(base_dir, "assets", "allergens")
         if not os.path.isdir(icons_dir):
             return
-        from datetime import datetime, UTC
+        from datetime import datetime
         from PIL import Image
         import io
         from .models import Allergen as AllergenModel
@@ -606,11 +606,11 @@ def backfill_allergen_icons() -> None:
                     continue
                 row = session.get(AllergenModel, key)
                 if row is None:
-                    row = AllergenModel(key=key, label=key, icon_bytes=blob, updated_at=datetime.now(UTC))
+                    row = AllergenModel(key=key, label=key, icon_bytes=blob, updated_at=datetime.utcnow())
                 else:
                     if not row.icon_bytes:
                         row.icon_bytes = blob
-                        row.updated_at = datetime.now(UTC)
+                        row.updated_at = datetime.utcnow()
                 session.add(row)
             session.commit()
     except Exception:

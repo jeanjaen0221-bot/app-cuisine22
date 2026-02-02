@@ -1,7 +1,8 @@
 from __future__ import annotations
 import os
 import uuid
-from datetime import date, datetime, time as dtime, timedelta, UTC
+import os
+from datetime import date, datetime, time as dtime, timedelta
 from zoneinfo import ZoneInfo
 from typing import List, Optional
 
@@ -292,7 +293,7 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
         setattr(res, k, v)
     # touch updated_at
     try:
-        setattr(res, 'updated_at', datetime.now(UTC))
+        setattr(res, 'updated_at', datetime.utcnow())
     except Exception:
         pass
     # Any change invalidates last exported PDF state
@@ -395,7 +396,7 @@ def export_reservation_pdf(
         path = generate_reservation_pdf_both(res, items, billing)
     # Mark as exported now
     try:
-        res.last_pdf_exported_at = datetime.now(UTC)
+        res.last_pdf_exported_at = datetime.utcnow()
         session.add(res)
         session.commit()
     except Exception:
@@ -413,7 +414,7 @@ def export_day_pdf(d: date, session: Session = Depends(get_session)):
     path = generate_day_pdf(d, rows, items_by_res)
     # Mark all as exported now
     try:
-        now = datetime.now(UTC)
+        now = datetime.utcnow()
         for r in rows:
             r.last_pdf_exported_at = now
             session.add(r)
@@ -486,7 +487,7 @@ def update_billing(reservation_id: uuid.UUID, payload: BillingInfoUpdate, sessio
     upd = payload.model_dump(exclude_unset=True)
     for k, v in upd.items():
         setattr(row, k, v)
-    row.updated_at = datetime.now(UTC)
+    row.updated_at = datetime.utcnow()
     session.add(row)
     # Ensure reservation is kept on-invoice once billing exists
     try:

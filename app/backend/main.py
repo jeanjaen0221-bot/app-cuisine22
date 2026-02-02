@@ -14,35 +14,14 @@ from .routers import reservations, menu_items, zenchef, allergens, notes, drinks
 
 load_dotenv()
 
-app = FastAPI(
-    title="FicheCuisineManager",
-    docs_url="/docs" if os.getenv("ENVIRONMENT") != "production" else None,
-    redoc_url="/redoc" if os.getenv("ENVIRONMENT") != "production" else None,
-)
+app = FastAPI(title="FicheCuisineManager")
 
-# Security headers middleware
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # Only add HSTS in production with HTTPS
-    if os.getenv("ENVIRONMENT") == "production":
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    return response
-
-# CORS configuration: restrict in production, permissive in dev
-allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "*")
-allowed_origins = (
-    allowed_origins_str.split(",") if allowed_origins_str != "*" else ["*"]
-)
+# CORS for local dev
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
