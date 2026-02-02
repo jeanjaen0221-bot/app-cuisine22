@@ -10,7 +10,6 @@ import CommandePage from './CommandePage'
 import OrdersListPage from './OrdersListPage'
 import OrderDetailPage from './OrderDetailPage'
 import SuppliersPage from './SuppliersPage'
-import FloorPlanPage from './FloorPlanPage'
 
 export default function App() {
   return (
@@ -23,9 +22,6 @@ export default function App() {
           </NavLink>
           <NavLink to="/past" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <History className="w-4 h-4"/> Passées
-          </NavLink>
-          <NavLink to="/salle" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-            <Building2 className="w-4 h-4"/> Salle
           </NavLink>
           <NavLink to="/menu" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <UtensilsCrossed className="w-4 h-4"/> Base de plats
@@ -48,7 +44,6 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/past" element={<PastReservations />} />
-          <Route path="/salle" element={<FloorPlanPage />} />
           <Route path="/reservation/new" element={<EditReservation />} />
           <Route path="/reservation/:id" element={<EditReservation />} />
           <Route path="/menu" element={<MenuPage />} />
