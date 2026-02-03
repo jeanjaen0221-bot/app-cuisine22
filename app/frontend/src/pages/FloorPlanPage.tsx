@@ -314,13 +314,67 @@ export default function FloorPlanPage() {
             </div>
 
             {editMode === 'template' && (
-              <div className="flex gap-2">
-                <div className="input bg-gray-100 cursor-not-allowed">
-                  {baseTemplate?.name || 'Plan de base'}
+              <div className="flex flex-col gap-2 w-full">
+                <div className="flex gap-2">
+                  <div className="input bg-gray-100 cursor-not-allowed">
+                    {baseTemplate?.name || 'Plan de base'}
+                  </div>
+                  <button className="btn btn-sm btn-success" onClick={saveBase} disabled={!baseTemplate}>
+                    <Save className="w-4 h-4" /> Sauvegarder
+                  </button>
                 </div>
-                <button className="btn btn-sm btn-success" onClick={saveBase} disabled={!baseTemplate}>
-                  <Save className="w-4 h-4" /> Sauvegarder
-                </button>
+                <div className="flex gap-4 items-center text-sm">
+                  <span className="font-semibold text-gray-700">📦 Stock tables disponibles:</span>
+                  <label className="flex items-center gap-2">
+                    <span>Tables rect (6-8 pax):</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      className="input input-sm w-20"
+                      value={baseTemplate?.data?.max_dynamic_tables?.rect || 10}
+                      onChange={(e) => {
+                        if (!baseTemplate) return
+                        const val = parseInt(e.target.value) || 0
+                        setBaseTemplate({
+                          ...baseTemplate,
+                          data: {
+                            ...baseTemplate.data,
+                            max_dynamic_tables: {
+                              ...baseTemplate.data?.max_dynamic_tables,
+                              rect: val
+                            }
+                          }
+                        })
+                      }}
+                    />
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span>Tables rondes (10 pax):</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      className="input input-sm w-20"
+                      value={baseTemplate?.data?.max_dynamic_tables?.round || 5}
+                      onChange={(e) => {
+                        if (!baseTemplate) return
+                        const val = parseInt(e.target.value) || 0
+                        setBaseTemplate({
+                          ...baseTemplate,
+                          data: {
+                            ...baseTemplate.data,
+                            max_dynamic_tables: {
+                              ...baseTemplate.data?.max_dynamic_tables,
+                              round: val
+                            }
+                          }
+                        })
+                      }}
+                    />
+                  </label>
+                  <span className="text-xs text-gray-500">(Tables créées automatiquement si besoin lors de l'auto-assign)</span>
+                </div>
               </div>
             )}
 

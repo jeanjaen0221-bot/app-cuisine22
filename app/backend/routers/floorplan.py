@@ -594,6 +594,12 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
 def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> Dict[str, Any]:
     plan = plan_data  # Alias for consistency with helper functions
     tables: List[Dict[str, Any]] = list(plan_data.get("tables") or [])
+    
+    # Limites de tables dynamiques disponibles (stock)
+    max_dynamic = plan_data.get("max_dynamic_tables", {})
+    max_rect_dynamic = int(max_dynamic.get("rect", 10))  # Default: 10 tables rect disponibles
+    max_round_dynamic = int(max_dynamic.get("round", 5))  # Default: 5 tables rondes disponibles
+    
     # Partition tables
     fixed = [t for t in tables if (t.get("kind") == "fixed" or t.get("locked") is True)]
     rects = [t for t in tables if (t.get("kind") == "rect" and not (t.get("locked") is True))]
@@ -603,6 +609,12 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
     avail_fixed = {t.get("id"): t for t in fixed}
     avail_rects = {t.get("id"): t for t in rects}
     avail_rounds = {t.get("id"): t for t in rounds}
+    
+    # Compter les tables rect/round déjà existantes pour calculer combien on peut encore en créer
+    existing_rect_count = len(rects)
+    existing_round_count = len(rounds)
+    rect_dynamic_created = 0
+    round_dynamic_created = 0
 
     # Sort reservations largest first to minimize waste; tie-breaker by arrival time
     groups = sorted(reservations, key=lambda r: (-int(r.pax), r.arrival_time or dtime(0, 0)))
@@ -811,13 +823,15 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if not placed:
             unplaced_count += 1
             logger.info("CREATING DYNAMIC TABLES for res=%s (%s, %d pax) - no existing table available", r.id, r.client_name, r.pax)
-            _dbg_add("INFO", f"CREATING DYNAMIC TABLES for {r.client_name} ({r.pax} pax)")
+            _dbg_add("INFO", f"CREATING DYNAMIC TABLES for {r.client_name} ({r.pax} pax) - stock: rect {max_rect_dynamic-rect_dynamic_created}/{max_rect_dynamic}, round {max_round_dynamic-round_dynamic_created}/{max_round_dynamic}")
             # Create non-fixed tables to cover remaining pax using 6-seat rectangles first
             remaining = int(r.pax)
             created_any = False
-            while remaining > 0:
+            while remaining > 0 and (existing_rect_count + rect_dynamic_created) < max_rect_dynamic:
                 spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
                 if not spot:
+                    logger.warning("No space found for new rect table (tried dynamic creation)")
+                    _dbg_add("WARNING", "No space for new rect table")
                     break
                 new_id = str(uuid.uuid4())
                 cap = 6
@@ -826,15 +840,13 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 pax_on_table = max(0, min(cap, remaining))
                 assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
                 remaining -= pax_on_table
+                rect_dynamic_created += 1
                 created_any = True
-                try:
-                    logger.debug("create+assign rect6 -> res=%s table=%s at=%s", r.id, new_id, spot)
-                    _dbg_add("DEBUG", f"create+assign rect6 -> res={r.id} table={new_id}")
-                except Exception as e:
-                    logger.warning("create+assign rect6 -> log failed: %s", str(e))
-                    pass
-            if remaining > 0:
-                # try to add a 10-seat round if space allows
+                logger.info("✓ Created rect table %d/%d", existing_rect_count + rect_dynamic_created, max_rect_dynamic)
+                _dbg_add("INFO", f"✓ Created rect {existing_rect_count + rect_dynamic_created}/{max_rect_dynamic}")
+            
+            if remaining > 0 and (existing_round_count + round_dynamic_created) < max_round_dynamic:
+                # try to add a 10-seat round if space and stock allows
                 spot = _find_spot_for_table(plan_data, "round", r=50)
                 if spot:
                     new_id = str(uuid.uuid4())
@@ -844,23 +856,32 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     pax_on_table = max(0, min(cap, remaining))
                     assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
                     remaining -= pax_on_table
+                    round_dynamic_created += 1
                     created_any = True
-                    try:
-                        logger.debug("create+assign round10 -> res=%s table=%s at=%s", r.id, new_id, spot)
-                        _dbg_add("DEBUG", f"create+assign round10 -> res={r.id} table={new_id}")
-                    except Exception as e:
-                        logger.warning("create+assign round10 -> log failed: %s", str(e))
-                        pass
+                    logger.info("✓ Created round table %d/%d", existing_round_count + round_dynamic_created, max_round_dynamic)
+                    _dbg_add("INFO", f"✓ Created round {existing_round_count + round_dynamic_created}/{max_round_dynamic}")
+                else:
+                    logger.warning("No space found for new round table")
+                    _dbg_add("WARNING", "No space for new round table")
+            
             if remaining <= 0 and created_any:
                 placed = True
+            elif remaining > 0:
+                if (existing_rect_count + rect_dynamic_created) >= max_rect_dynamic:
+                    logger.warning("⚠️ STOCK LIMIT REACHED: rect tables %d/%d", existing_rect_count + rect_dynamic_created, max_rect_dynamic)
+                    _dbg_add("WARNING", f"STOCK LIMIT: rect {existing_rect_count + rect_dynamic_created}/{max_rect_dynamic}")
+                if (existing_round_count + round_dynamic_created) >= max_round_dynamic:
+                    logger.warning("⚠️ STOCK LIMIT REACHED: round tables %d/%d", existing_round_count + round_dynamic_created, max_round_dynamic)
+                    _dbg_add("WARNING", f"STOCK LIMIT: round {existing_round_count + round_dynamic_created}/{max_round_dynamic}")
 
         # If not placed, leave unassigned; frontend will show conflict
         if not placed:
             logger.warning("UNPLACED reservation: %s (%s, %d pax) - no space found even after trying to create tables", r.id, r.client_name, r.pax)
             _dbg_add("WARNING", f"UNPLACED: {r.client_name} ({r.pax} pax)")
 
-    logger.info("_auto_assign SUMMARY: %d reservations, %d tried dynamic creation, %d assignments", len(reservations), unplaced_count, len(assignments_by_table))
-    _dbg_add("INFO", f"_auto_assign SUMMARY: {len(reservations)} reservations, {unplaced_count} tried dynamic, {len(assignments_by_table)} assignments")
+    logger.info("_auto_assign SUMMARY: %d reservations, %d tried dynamic, %d assignments | STOCK USED: rect %d/%d, round %d/%d", 
+                len(reservations), unplaced_count, len(assignments_by_table), rect_dynamic_created, max_rect_dynamic, round_dynamic_created, max_round_dynamic)
+    _dbg_add("INFO", f"_auto_assign SUMMARY: {len(reservations)} res, {unplaced_count} tried dynamic, {len(assignments_by_table)} assigned | STOCK: rect {rect_dynamic_created}/{max_rect_dynamic}, round {round_dynamic_created}/{max_round_dynamic}")
     return {"tables": assignments_by_table}
 
 
