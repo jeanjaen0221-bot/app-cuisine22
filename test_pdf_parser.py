@@ -176,6 +176,12 @@ def test_parse_pdf(pdf_path: str):
         
         time_str = ln
         
+        # Debug spécial pour 13:00
+        if time_str == "13:00":
+            print(f"\n🔍 DEBUG 13:00 trouvé à ligne {i}:")
+            for j in range(i, min(i+10, len(lines))):
+                print(f"  {j:3d}: {lines[j][:80]}")
+        
         # Chercher pax
         pax = None
         pax_idx = None

@@ -1236,6 +1236,26 @@ def update_instance(instance_id: uuid.UUID, payload: FloorPlanInstanceUpdate, se
     return FloorPlanInstanceRead(**row.model_dump())
 
 
+@router.delete("/instances/{instance_id}")
+def delete_instance(instance_id: uuid.UUID, session: Session = Depends(get_session)):
+    """Supprime une instance de floorplan."""
+    _dbg_add("INFO", f"DELETE /instances/{instance_id}")
+    row = session.get(FloorPlanInstance, instance_id)
+    if not row:
+        raise HTTPException(404, "Instance not found")
+    
+    # Supprimer les réservations associées (si nécessaire)
+    # Note: Si Reservation a une foreign key vers FloorPlanInstance avec cascade, SQLAlchemy gère automatiquement
+    # Sinon, il faut supprimer manuellement:
+    # session.exec(delete(Reservation).where(Reservation.instance_id == instance_id))
+    
+    session.delete(row)
+    session.commit()
+    logger.info("DELETE /instances/%s -> deleted", instance_id)
+    _dbg_add("INFO", f"DELETE /instances/{instance_id} -> deleted successfully")
+    return {"message": "Instance deleted", "id": str(instance_id)}
+
+
 @router.post("/instances/{instance_id}/auto-assign", response_model=FloorPlanInstanceRead)
 def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session)):
     _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign")
