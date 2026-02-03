@@ -148,7 +148,23 @@ export default function FloorPlanPage() {
     try {
       const res = await api.post(`/api/floorplan/instances/${selectedInstance.id}/auto-assign`)
       const assigned = Object.keys(res.data.assignments?.tables || {}).length
-      alert(`${assigned} tables assignées`)
+      const tablesBefore = selectedInstance?.data?.tables?.length || 0
+      const tablesAfter = res.data?.data?.tables?.length || 0
+      const newTablesCreated = tablesAfter - tablesBefore
+      
+      console.log('[AUTO-ASSIGN] Résultat:', {
+        assigned,
+        tablesBefore,
+        tablesAfter,
+        newTablesCreated,
+        instanceData: res.data
+      })
+      
+      if (newTablesCreated > 0) {
+        alert(`${assigned} tables assignées (${newTablesCreated} nouvelle(s) table(s) créée(s))`)
+      } else {
+        alert(`${assigned} tables assignées`)
+      }
       setSelectedInstance(res.data)
     } catch (err: any) {
       console.error('Failed to auto-assign:', err)
