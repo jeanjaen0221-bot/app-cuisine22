@@ -125,7 +125,9 @@ export default function FloorPlanPage() {
         const res = await api.post('/api/floorplan/import-pdf', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         })
-        alert(`${res.data.parsed || 0} réservations importées`)
+        const count = Array.isArray(res.data.parsed) ? res.data.parsed.length : 0
+        console.log('[IMPORT-PDF] Résultat:', res.data)
+        alert(`${count} réservations importées`)
         await loadInstances()
         // Reload selected instance
         const updated = await api.get(`/api/floorplan/instances/${selectedInstance.id}`)
