@@ -13,9 +13,10 @@ type Props = {
   drawNoGoMode?: boolean
   drawRoundOnlyMode?: boolean
   drawRectOnlyMode?: boolean
+  viewTime?: string
 }
 
-export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false }: Props) {
+export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false, viewTime }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [scale, setScale] = useState(0.8)
@@ -48,7 +49,6 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const drawStartRectZone = useRef<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; target: any } | null>(null)
   const [hoveredItem, setHoveredItem] = useState<{ type: string; id: string } | null>(null)
-  const lastHoveredRef = useRef<string | null>(null)
 
   const room = data.room || { width: 1200, height: 800, grid: 50 }
   const tables = data.tables || []
@@ -58,6 +58,33 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const fixtures = data.fixtures || []
   const roundOnlyZones = (data as any).round_only_zones || []
   const rectOnlyZones = (data as any).rect_only_zones || []
+
+  // ---- Time helpers for assignments ----
+  function parseHHMM(s?: string | null): number | null {
+    if (!s) return null
+    const parts = String(s).split(':')
+    if (parts.length < 2) return null
+    const h = parseInt(parts[0]!, 10)
+    const m = parseInt(parts[1]!, 10)
+    if (Number.isNaN(h) || Number.isNaN(m)) return null
+    return h * 60 + m
+  }
+  function isActiveAt(occ: any, vt?: string): boolean {
+    const v = parseHHMM(vt)
+    if (v == null) return false
+    const s = parseHHMM(occ?.start)
+    const e = parseHHMM(occ?.end)
+    if (s == null || e == null) return false
+    return v >= s && v < e
+  }
+  function pickActive(occ: any, vt?: string): any | undefined {
+    if (!occ) return undefined
+    if (Array.isArray(occ)) {
+      const found = occ.find((o) => isActiveAt(o, vt))
+      return found || occ[0]
+    }
+    return occ
+  }
 
   useEffect(() => {
     const el = canvasRef.current
@@ -354,13 +381,12 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
     // Zones interdites
     ctx.save()
+    ctx.fillStyle = 'rgba(231, 76, 60, 0.15)'
     for (const r of noGo) {
-      const isHovered = hoveredItem?.type === 'ng' && hoveredItem?.id === r.id
-      ctx.fillStyle = isHovered ? 'rgba(231, 76, 60, 0.28)' : 'rgba(231, 76, 60, 0.15)'
       ctx.fillRect(r.x, r.y, r.w, r.h)
       // Bordure
-      ctx.strokeStyle = isHovered ? 'rgba(192, 57, 43, 0.8)' : 'rgba(192, 57, 43, 0.5)'
-      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
+      ctx.strokeStyle = 'rgba(192, 57, 43, 0.5)'
+      ctx.lineWidth = 2 / scale
       ctx.setLineDash([8 / scale, 4 / scale])
       ctx.strokeRect(r.x, r.y, r.w, r.h)
       ctx.setLineDash([])
@@ -391,13 +417,12 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
     // Zones round-only (tables rondes uniquement)
     ctx.save()
+    ctx.fillStyle = 'rgba(52, 152, 219, 0.12)'  // Bleu transparent
     for (const r of roundOnlyZones) {
-      const isHovered = hoveredItem?.type === 'rz' && hoveredItem?.id === r.id
-      ctx.fillStyle = isHovered ? 'rgba(52, 152, 219, 0.25)' : 'rgba(52, 152, 219, 0.12)'
       ctx.fillRect(r.x, r.y, r.w, r.h)
       // Bordure bleue
-      ctx.strokeStyle = isHovered ? 'rgba(41, 128, 185, 0.9)' : 'rgba(41, 128, 185, 0.6)'
-      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
+      ctx.strokeStyle = 'rgba(41, 128, 185, 0.6)'
+      ctx.lineWidth = 2 / scale
       ctx.setLineDash([10 / scale, 5 / scale])
       ctx.strokeRect(r.x, r.y, r.w, r.h)
       ctx.setLineDash([])
@@ -435,13 +460,12 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
     // Zones rect-only (tables rectangulaires uniquement)
     ctx.save()
+    ctx.fillStyle = 'rgba(46, 204, 113, 0.12)'  // Vert transparent
     for (const r of rectOnlyZones) {
-      const isHovered = hoveredItem?.type === 'tz' && hoveredItem?.id === r.id
-      ctx.fillStyle = isHovered ? 'rgba(46, 204, 113, 0.25)' : 'rgba(46, 204, 113, 0.12)'
       ctx.fillRect(r.x, r.y, r.w, r.h)
       // Bordure verte
-      ctx.strokeStyle = isHovered ? 'rgba(39, 174, 96, 0.9)' : 'rgba(39, 174, 96, 0.6)'
-      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
+      ctx.strokeStyle = 'rgba(39, 174, 96, 0.6)'
+      ctx.lineWidth = 2 / scale
       ctx.setLineDash([10 / scale, 5 / scale])
       ctx.strokeRect(r.x, r.y, r.w, r.h)
       ctx.setLineDash([])
@@ -510,7 +534,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     }
 
     for (const t of tables) {
-      const assigned = assignments?.tables?.[t.id]
+      const rawOcc: any = assignments?.tables?.[t.id as any] as any
+      const assigned = pickActive(rawOcc, viewTime)
       const isLocked = !!t.locked
       const coll = tableCollides(t)
       let color = t.kind === 'fixed' ? '#2c7' : t.kind === 'rect' ? '#39f' : '#f93'
@@ -542,14 +567,15 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         ctx.font = `${12/scale}px sans-serif`
         ctx.textAlign = 'left'
         const offsetX = t.r ? (t.r || 0) + 6 : (t.w || 120) + 6
-        ctx.fillText(`${assigned.name} (${assigned.pax})`, t.x + offsetX, t.y + 10)
+        const timeTxt = assigned.start ? ` ${String(assigned.start).slice(0,5)}` : ''
+        ctx.fillText(`${assigned.name} (${assigned.pax})${timeTxt}`, t.x + offsetX, t.y + 10)
       }
     }
 
     ctx.restore()
   }
 
-  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode, hoveredItem])
+  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode])
 
   function onPointerDown(e: React.PointerEvent) {
     // Ignorer le clic droit (bouton 2) - il est géré par onContextMenu
@@ -923,30 +949,15 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       onChange && onChange({ ...data, tables: [...tables] })
       return
     }
-    // Détecter les objets sous le curseur
+    // Détecter les objets sous le curseur pour le curseur uniquement (pas de survol visuel pour éviter la boucle)
     const rz = roundZoneHit(x, y)
     const tz = rectZoneHit(x, y)
     const ng = noGoHit(x, y)
     const fx = fixtureHit(x, y)
     const table = [...tables].reverse().find(t => tableHit(x, y, t))
     
-    // Update hovered item only if changed (prevent re-render loop)
-    let newHoveredKey: string | null = null
-    if (rz) newHoveredKey = `rz-${rz.id}`
-    else if (tz) newHoveredKey = `tz-${tz.id}`
-    else if (ng) newHoveredKey = `ng-${ng.id}`
-    else if (fx) newHoveredKey = `fx-${(fx as any).id}`
-    else if (table) newHoveredKey = `t-${table.id}`
-    
-    if (newHoveredKey !== lastHoveredRef.current) {
-      lastHoveredRef.current = newHoveredKey
-      if (newHoveredKey) {
-        const [type, id] = newHoveredKey.split('-')
-        setHoveredItem({ type, id })
-      } else {
-        setHoveredItem(null)
-      }
-    }
+    // DÉSACTIVÉ TEMPORAIREMENT: Le survol cause une boucle infinie de sauvegardes
+    // TODO: Implémenter avec useMemo ou useCallback pour éviter les re-renders
     
     const fr = fixtureHandleAt(sx, sy)
     const ngr = noGoHandleAt(sx, sy)

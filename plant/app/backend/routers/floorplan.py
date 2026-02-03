@@ -53,7 +53,7 @@ def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumb
 
 # ---- PDF helpers ----
 
-def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict[str, str], assignments: Optional[Dict[str, Any]] = None) -> None:
+def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict[str, str], assignments: Optional[Dict[str, Any]] = None, view_time: Optional[str] = None) -> None:
     page_w, page_h = A4
     margin = 15 * mm
     room = (plan.get("room") or {"width": 1000, "height": 600})
@@ -117,6 +117,26 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
     # tables
     c.setStrokeColor(colors.black)
     c.setFillColor(colors.white)
+    def _parse_hhmm(s: Optional[str]) -> Optional[int]:
+        try:
+            if not s:
+                return None
+            hh, mm = str(s).split(":")[:2]
+            return int(hh) * 60 + int(mm)
+        except Exception:
+            return None
+    def _pick_active(occ: Any, vt: Optional[str]):
+        if isinstance(occ, list):
+            if vt:
+                v = _parse_hhmm(vt)
+                if v is not None:
+                    for o in occ:
+                        s = _parse_hhmm(o.get("start"))
+                        e = _parse_hhmm(o.get("end"))
+                        if s is not None and e is not None and v >= s and v < e:
+                            return o
+            return (occ[0] if occ else None)
+        return occ
     tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
     for t in tables:
         kind = (t.get("kind") or "rect")
@@ -131,13 +151,20 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
                 c.setFillColor(colors.black)
                 c.setFont("Helvetica-Bold", 8)
                 c.drawCentredString(tx(x), ty(y) - 3, str(lbl))
-            # draw assignment if any
+            # draw assignment if any (support list + view_time)
             if assignments and isinstance(assignments.get("tables"), dict):
-                a = assignments["tables"].get(str(t.get("id")))
+                raw = assignments["tables"].get(str(t.get("id")))
+                a = _pick_active(raw, view_time)
                 if a:
                     c.setFont("Helvetica", 7)
                     c.setFillColor(colors.black)
-                    c.drawString(tx(x + r + 4), ty(y) + 2, f"{a.get('name','')} ({a.get('pax',0)})")
+                    extra = ""
+                    try:
+                        if a.get("start"):
+                            extra = f" {str(a.get('start'))[:5]}"
+                    except Exception:
+                        pass
+                    c.drawString(tx(x + r + 4), ty(y) + 2, f"{a.get('name','')} ({a.get('pax',0)}){extra}")
             c.setFillColor(colors.white)
         else:
             x = float(t.get("x") or 0)
@@ -151,13 +178,20 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
                 c.setFillColor(colors.black)
                 c.setFont("Helvetica-Bold", 8)
                 c.drawCentredString(cx, cy - 3, str(lbl))
-            # draw assignment if any
+            # draw assignment if any (support list + view_time)
             if assignments and isinstance(assignments.get("tables"), dict):
-                a = assignments["tables"].get(str(t.get("id")))
+                raw = assignments["tables"].get(str(t.get("id")))
+                a = _pick_active(raw, view_time)
                 if a:
                     c.setFont("Helvetica", 7)
                     c.setFillColor(colors.black)
-                    c.drawString(tx(x + w + 4), ty(y + 10), f"{a.get('name','')} ({a.get('pax',0)})")
+                    extra = ""
+                    try:
+                        if a.get("start"):
+                            extra = f" {str(a.get('start'))[:5]}"
+                    except Exception:
+                        pass
+                    c.drawString(tx(x + w + 4), ty(y + 10), f"{a.get('name','')} ({a.get('pax',0)}){extra}")
             c.setFillColor(colors.white)
 
     # title
@@ -235,15 +269,24 @@ def _draw_reservations_page(
     c.setFont("Helvetica", 9)
     y = page_h - margin - 10 * mm
     line_h = 6 * mm
-    # Build mapping res_id -> labels list
+    # Build mapping res_id -> labels list (support single or list occupancies)
     lab_by_res: Dict[str, List[str]] = {}
     tbl_map: Dict[str, Any] = (assignments or {}).get("tables", {})
-    for tid, a in tbl_map.items():
-        res_id = str(a.get("res_id"))
+    for tid, occ in tbl_map.items():
         lbl = id_to_label.get(tid) or ""
         if not lbl:
             continue
-        lab_by_res.setdefault(res_id, []).append(lbl)
+        if isinstance(occ, list):
+            for a in occ:
+                res_id = str(a.get("res_id"))
+                if not res_id:
+                    continue
+                lab_by_res.setdefault(res_id, []).append(lbl)
+        else:
+            res_id = str(occ.get("res_id"))
+            if not res_id:
+                continue
+            lab_by_res.setdefault(res_id, []).append(lbl)
     # Reservations already sorted by _load_reservations (arrival_time asc, created_at asc)
     rows = reservations
     # Header
@@ -591,8 +634,7 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
     return None
 
 
-def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> Dict[str, Any]:
-    plan = plan_data  # Alias for consistency with helper functions
+def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation], duration_minutes: int = 105) -> Dict[str, Any]:
     tables: List[Dict[str, Any]] = list(plan_data.get("tables") or [])
     # Partition tables
     fixed = [t for t in tables if (t.get("kind") == "fixed" or t.get("locked") is True)]
@@ -607,7 +649,41 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
     # Sort reservations largest first to minimize waste; tie-breaker by arrival time
     groups = sorted(reservations, key=lambda r: (-int(r.pax), r.arrival_time or dtime(0, 0)))
 
-    assignments_by_table: Dict[str, Dict[str, Any]] = {}
+    # assignments now as per-table list of occupancies with time windows
+    assignments_by_table: Dict[str, List[Dict[str, Any]]] = {}
+
+    # occupancy helper for time windows
+    def _to_minutes(t: Any) -> Optional[int]:
+        try:
+            if t is None:
+                return None
+            # dtime or string "HH:MM" or "HH:MM:SS"
+            if isinstance(t, dtime):
+                return int(t.hour) * 60 + int(t.minute)
+            s = str(t)
+            parts = s.split(":")
+            if len(parts) >= 2:
+                return int(parts[0]) * 60 + int(parts[1])
+            return None
+        except Exception:
+            return None
+
+    def _start_end_for_res(r: Reservation) -> Tuple[int, int, str, str]:
+        sm = _to_minutes(getattr(r, "arrival_time", None)) or 0
+        em = sm + max(15, int(duration_minutes or 105))
+        sh = f"{sm // 60:02d}:{sm % 60:02d}"
+        eh = f"{em // 60:02d}:{em % 60:02d}"
+        return sm, em, sh, eh
+
+    def _is_free(tid: str, sm: int, em: int) -> bool:
+        occ = assignments_by_table.get(str(tid)) or []
+        for o in occ:
+            os = _to_minutes(o.get("start")) or 0
+            oe = _to_minutes(o.get("end")) or 0
+            # overlap if not (end <= os or start >= oe)
+            if not (em <= os or sm >= oe):
+                return False
+        return True
 
     def take_table(pool: Dict[str, Dict[str, Any]], predicate=None) -> Optional[Dict[str, Any]]:
         items = list(pool.values())
@@ -617,11 +693,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             return None
         # choose smallest capacity that fits
         items.sort(key=lambda t: _capacity_for_table(t))
-        chosen = items[0]
-        pool.pop(chosen.get("id"), None)
-        return chosen
+        return items[0]
 
-    def take_best_rect_combo(pax: int) -> Optional[List[Dict[str, Any]]]:
+    def take_best_rect_combo(pax: int, sm: int, em: int) -> Optional[List[Dict[str, Any]]]:
         # Try 2-rect combo first for pax > 6
         ids = list(avail_rects.keys())
         best: Optional[List[Dict[str, Any]]] = None
@@ -636,6 +710,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             for j in range(i + 1, len(ids)):
                 a = avail_rects[ids[i]]
                 b = avail_rects[ids[j]]
+                if not _is_free(a.get("id"), sm, em) or not _is_free(b.get("id"), sm, em):
+                    continue
                 cap_a = max(6, int(a.get("capacity") or 6))
                 cap_b = max(6, int(b.get("capacity") or 6))
                 base_cap = cap_a + cap_b
@@ -649,7 +725,50 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     best_cap = cap_pair
         return best
 
-    def pack_from_pool(pool: Dict[str, Dict[str, Any]], target: int, allow_rect_ext: bool = False) -> Optional[List[Dict[str, Any]]]:
+    def is_in_round_only_zone(x: float, y: float) -> bool:
+        """Vérifie si une position est dans une zone round-only."""
+        round_zones = plan.get("round_only_zones", [])
+        for zone in round_zones:
+            zx, zy, zw, zh = zone.get("x", 0), zone.get("y", 0), zone.get("w", 0), zone.get("h", 0)
+            if x >= zx and x <= zx + zw and y >= zy and y <= zy + zh:
+                return True
+        return False
+    
+    def find_free_position_for_table(kind: str, w: float = 120, h: float = 60, r: float = 50) -> Optional[Dict[str, float]]:
+        """Trouve une position libre pour une nouvelle table en respectant les zones round-only."""
+        room_w = plan.get("room", {}).get("width", 1200)
+        room_h = plan.get("room", {}).get("height", 800)
+        grid = plan.get("room", {}).get("grid", 50)
+        
+        # Essayer différentes positions en grille
+        for y in range(100, int(room_h - 100), grid):
+            for x in range(100, int(room_w - 100), grid):
+                in_round_zone = is_in_round_only_zone(x, y)
+                
+                # Si c'est une zone round-only, seules les tables rondes sont autorisées
+                if in_round_zone and kind != "round":
+                    continue
+                
+                # Vérifier qu'il n'y a pas de collision
+                test_table = {"id": "test", "x": x, "y": y}
+                if kind == "round":
+                    test_table["r"] = r
+                else:
+                    test_table["w"] = w
+                    test_table["h"] = h
+                
+                # Ajouter temporairement pour tester les collisions
+                tables = plan.get("tables", [])
+                plan["tables"] = tables + [test_table]
+                collides = tableCollides(test_table)
+                plan["tables"] = tables  # Restaurer
+                
+                if not collides:
+                    return {"x": x, "y": y}
+        
+        return None
+
+    def pack_from_pool(pool: Dict[str, Dict[str, Any]], target: int, allow_rect_ext: bool = False, sm: int = 0, em: int = 0) -> Optional[List[Dict[str, Any]]]:
         items = list(pool.values())
         if not items:
             return None
@@ -658,6 +777,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         chosen: List[Dict[str, Any]] = []
         total = 0
         for t in items:
+            if not _is_free(t.get("id"), sm, em):
+                continue
             if total >= target:
                 break
             chosen.append(t)
@@ -672,14 +793,17 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 
     for r in groups:
         placed = False
+        sm, em, sh, eh = _start_end_for_res(r)
         # 1) Fixed tables by best-fit
         best_fixed = take_table(
             avail_fixed,
-            predicate=lambda t: _capacity_for_table(t) >= r.pax,
+            predicate=lambda t: _capacity_for_table(t) >= r.pax and _is_free(t.get("id"), sm, em),
         )
         if best_fixed:
             pax_on_table = min(_capacity_for_table(best_fixed), int(r.pax))
-            assignments_by_table.setdefault(best_fixed.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+            assignments_by_table.setdefault(best_fixed.get("id"), []).append({
+                "res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "start": sh, "end": eh
+            })
             placed = True
             try:
                 logger.debug("assign fixed -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_fixed.get("id"), _capacity_for_table(best_fixed))
@@ -695,13 +819,15 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             cap = _capacity_for_table(t)
             # Allow +2 head extension up to 8 for a single rectangle
             cap_ext = min(8, cap + 2)
-            return cap_ext >= r.pax
+            return cap_ext >= r.pax and _is_free(t.get("id"), sm, em)
 
         best_rect = take_table(avail_rects, predicate=rect_can_fit)
         if best_rect:
             # seat up to extended capacity for a single rectangle
             pax_on_table = min(int(r.pax), min(8, _capacity_for_table(best_rect) + 2))
-            assignments_by_table.setdefault(best_rect.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+            assignments_by_table.setdefault(best_rect.get("id"), []).append({
+                "res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "start": sh, "end": eh
+            })
             placed = True
             try:
                 logger.debug("assign rect -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_rect.get("id"), _capacity_for_table(best_rect))
@@ -713,15 +839,16 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             continue
 
         # 3) Rect combo (two tables)
-        combo = take_best_rect_combo(r.pax)
+        combo = take_best_rect_combo(r.pax, sm, em)
         if combo:
             remaining = int(r.pax)
             for t in combo:
                 cap_ext = min(8, _capacity_for_table(t) + 2)
                 pax_on_table = max(0, min(cap_ext, remaining))
-                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                assignments_by_table.setdefault(t.get("id"), []).append({
+                    "res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "start": sh, "end": eh
+                })
                 remaining -= pax_on_table
-                avail_rects.pop(t.get("id"), None)
             placed = True
             try:
                 logger.debug("assign rect-pair -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in combo])
@@ -733,14 +860,15 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             continue
 
         # 3b) Pack multiple fixed tables if needed (agençables pour grands groupes 28 pax)
-        chosen = pack_from_pool(avail_fixed, int(r.pax), allow_rect_ext=False)
+        chosen = pack_from_pool(avail_fixed, int(r.pax), allow_rect_ext=False, sm=sm, em=em)
         if chosen:
             remaining = int(r.pax)
             for t in chosen:
                 pax_on_table = max(0, min(_capacity_for_table(t), remaining))
-                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                assignments_by_table.setdefault(t.get("id"), []).append({
+                    "res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "start": sh, "end": eh
+                })
                 remaining -= pax_on_table
-                avail_fixed.pop(t.get("id"), None)
             placed = True
             try:
                 logger.debug("assign fixed-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
@@ -751,16 +879,17 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             continue
 
         # 3c) Pack multiple rect tables if needed (with extension +2 max 8)
-        chosen = pack_from_pool(avail_rects, int(r.pax), allow_rect_ext=True)
+        chosen = pack_from_pool(avail_rects, int(r.pax), allow_rect_ext=True, sm=sm, em=em)
         if chosen:
             remaining = int(r.pax)
             for t in chosen:
                 # Allow +2 extension per rect up to 8
                 cap_ext = min(8, _capacity_for_table(t) + 2)
                 pax_on_table = max(0, min(cap_ext, remaining))
-                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                assignments_by_table.setdefault(t.get("id"), []).append({
+                    "res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "start": sh, "end": eh
+                })
                 remaining -= pax_on_table
-                avail_rects.pop(t.get("id"), None)
             placed = True
             try:
                 logger.debug("assign rect-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
@@ -771,14 +900,15 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             continue
 
         # 3d) Pack multiple round tables if needed (dernier recours)
-        chosen = pack_from_pool(avail_rounds, int(r.pax), allow_rect_ext=False)
+        chosen = pack_from_pool(avail_rounds, int(r.pax), allow_rect_ext=False, sm=sm, em=em)
         if chosen:
             remaining = int(r.pax)
             for t in chosen:
                 pax_on_table = max(0, min(_capacity_for_table(t), remaining))
-                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                assignments_by_table.setdefault(t.get("id"), []).append({
+                    "res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "start": sh, "end": eh
+                })
                 remaining -= pax_on_table
-                avail_rounds.pop(t.get("id"), None)
             placed = True
             try:
                 logger.debug("assign round-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
@@ -791,11 +921,13 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         # 4) Round table single (dernier recours)
         best_round = take_table(
             avail_rounds,
-            predicate=lambda t: _capacity_for_table(t) >= r.pax,
+            predicate=lambda t: _capacity_for_table(t) >= r.pax and _is_free(t.get("id"), sm, em),
         )
         if best_round:
             pax_on_table = min(_capacity_for_table(best_round), int(r.pax))
-            assignments_by_table.setdefault(best_round.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "last_resort": True})
+            assignments_by_table.setdefault(best_round.get("id"), []).append({
+                "res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "start": sh, "end": eh, "last_resort": True
+            })
             placed = True
             try:
                 logger.debug("assign round -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_round.get("id"), _capacity_for_table(best_round))
@@ -818,7 +950,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot}
                 (plan_data.setdefault("tables", [])).append(new_tbl)
                 pax_on_table = max(0, min(cap, remaining))
-                assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                assignments_by_table.setdefault(new_id, []).append({
+                    "res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "start": sh, "end": eh
+                })
                 remaining -= pax_on_table
                 created_any = True
                 try:
@@ -836,7 +970,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     new_tbl = {"id": new_id, "kind": "round", "capacity": cap, **spot}
                     (plan_data.setdefault("tables", [])).append(new_tbl)
                     pax_on_table = max(0, min(cap, remaining))
-                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                    assignments_by_table.setdefault(new_id, []).append({
+                        "res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "start": sh, "end": eh
+                    })
                     remaining -= pax_on_table
                     created_any = True
                     try:
@@ -869,32 +1005,6 @@ def update_base(payload: FloorPlanBaseUpdate, session: Session = Depends(get_ses
     _dbg_add("INFO", "PUT /base")
     row = _get_or_create_base(session)
     data = payload.model_dump(exclude_unset=True)
-    
-    # Validate data if present
-    if "data" in data and data["data"]:
-        plan_data = data["data"]
-        if not isinstance(plan_data, dict):
-            raise HTTPException(400, "Invalid data format: must be dict")
-        if "tables" in plan_data:
-            if not isinstance(plan_data["tables"], list):
-                raise HTTPException(400, "Invalid data.tables format: must be list")
-            # Validate each table
-            for i, table in enumerate(plan_data["tables"]):
-                if not isinstance(table, dict):
-                    raise HTTPException(400, f"Invalid table at index {i}: must be dict")
-                if "id" not in table:
-                    raise HTTPException(400, f"Invalid table at index {i}: missing 'id'")
-                if "x" not in table or "y" not in table:
-                    raise HTTPException(400, f"Invalid table {table.get('id')}: missing x/y coordinates")
-        if "room" in plan_data:
-            room = plan_data["room"]
-            if not isinstance(room, dict):
-                raise HTTPException(400, "Invalid room format: must be dict")
-            if "width" not in room or "height" not in room:
-                raise HTTPException(400, "Invalid room: missing width/height")
-            if room["width"] < 100 or room["height"] < 100:
-                raise HTTPException(400, "Invalid room: dimensions must be >= 100")
-    
     for k, v in data.items():
         setattr(row, k, v)
     session.add(row)
@@ -1153,7 +1263,7 @@ def number_instance_tables(instance_id: uuid.UUID, session: Session = Depends(ge
 
 
 @router.get("/instances/{instance_id}/export-pdf")
-def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_session)):
+def export_instance_pdf(instance_id: uuid.UUID, at: Optional[str] = None, session: Session = Depends(get_session)):
     _dbg_add("INFO", f"GET /instances/{instance_id}/export-pdf")
     row = session.get(FloorPlanInstance, instance_id)
     if not row:
@@ -1181,7 +1291,7 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     _draw_reservations_page(c, reservations, (row.assignments or {}), id_to_label)
     c.showPage()
     # 2) Floor plan with labels and assignments
-    _draw_plan_page(c, _plan, id_to_label, assignments=(row.assignments or {}))
+    _draw_plan_page(c, _plan, id_to_label, assignments=(row.assignments or {}), view_time=at)
     c.showPage()
     # 3) Numbered tables list
     _draw_table_list_page(c, id_to_label, _plan)
@@ -1201,31 +1311,6 @@ def update_instance(instance_id: uuid.UUID, payload: FloorPlanInstanceUpdate, se
     if not row:
         raise HTTPException(404, "Instance not found")
     data = payload.model_dump(exclude_unset=True)
-    
-    # Validate assignments if present
-    if "assignments" in data and data["assignments"]:
-        assignments = data["assignments"]
-        if not isinstance(assignments, dict) or "tables" not in assignments:
-            raise HTTPException(400, "Invalid assignments format: must have 'tables' key")
-        tables_map = assignments.get("tables", {})
-        if not isinstance(tables_map, dict):
-            raise HTTPException(400, "Invalid assignments.tables format: must be dict")
-        for table_id, assignment in tables_map.items():
-            if not isinstance(assignment, dict):
-                raise HTTPException(400, f"Invalid assignment for table {table_id}: must be dict")
-            required_keys = ["res_id", "name", "pax"]
-            for key in required_keys:
-                if key not in assignment:
-                    raise HTTPException(400, f"Invalid assignment for table {table_id}: missing '{key}'")
-    
-    # Validate data if present
-    if "data" in data and data["data"]:
-        plan_data = data["data"]
-        if not isinstance(plan_data, dict):
-            raise HTTPException(400, "Invalid data format: must be dict")
-        if "tables" in plan_data and not isinstance(plan_data["tables"], list):
-            raise HTTPException(400, "Invalid data.tables format: must be list")
-    
     for k, v in data.items():
         setattr(row, k, v)
     session.add(row)
@@ -1247,9 +1332,9 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     # au lieu de charger depuis la table reservation principale
     res_data = (row.reservations or {}).get("items", [])
     if not res_data:
-        logger.error("POST /instances/%s/auto-assign -> no reservations in instance, import PDF first", instance_id)
-        _dbg_add("ERROR", f"POST /instances/{instance_id}/auto-assign -> no reservations, import PDF first")
-        raise HTTPException(400, "Aucune réservation trouvée. Importez d'abord un PDF de réservations via l'interface.")
+        logger.warning("POST /instances/%s/auto-assign -> no reservations in instance, import PDF first", instance_id)
+        _dbg_add("WARNING", f"POST /instances/{instance_id}/auto-assign -> no reservations, import PDF first")
+        raise HTTPException(400, "No reservations found. Import PDF first.")
     
     # Convertir les données dict en objets Reservation pour compatibilité avec _auto_assign
     from types import SimpleNamespace
@@ -1309,13 +1394,6 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     assigned_count = len((row.assignments or {}).get("tables", {}))
     logger.info("POST /instances/%s/auto-assign -> assigned_tables=%d (floorplan independent, not in main reservation table)", instance_id, assigned_count)
     _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> assigned_tables={assigned_count} (independent)")
-    
-    # Log summary for debugging
-    unassigned = len(reservations) - assigned_count
-    if unassigned > 0:
-        logger.warning("POST /instances/%s/auto-assign -> %d reservations NOT assigned (no space or last resort)", instance_id, unassigned)
-        _dbg_add("WARNING", f"POST /instances/{instance_id}/auto-assign -> {unassigned} reservations NOT assigned")
-    
     return FloorPlanInstanceRead(**row.model_dump())
 
 
@@ -1517,16 +1595,15 @@ def import_reservations_pdf(
     _dbg_add("INFO", f"POST /import-pdf -> total_lines={len(lines)} skipped={skipped_count} no_pax={no_pax_count} no_name={no_name_count} parsed={parsed_count}")
     
     if parsed_count == 0:
-        logger.error("POST /import-pdf -> NO RESERVATIONS PARSED! no_pax=%d no_name=%d", no_pax_count, no_name_count)
-        _dbg_add("ERROR", f"NO RESERVATIONS PARSED! no_pax={no_pax_count} no_name={no_name_count}")
+        logger.warning("POST /import-pdf -> NO RESERVATIONS PARSED! no_pax=%d no_name=%d", no_pax_count, no_name_count)
+        _dbg_add("WARNING", f"NO RESERVATIONS PARSED! no_pax={no_pax_count} no_name={no_name_count}")
         # Log quelques lignes autour des heures trouvées pour debug
         for i, ln in enumerate(lines[:100]):
             if re_time.match(ln):
-                logger.error("  Found time at line %d: %s", i, ln)
+                logger.warning("  Found time at line %d: %s", i, ln)
                 for j in range(i+1, min(i+6, len(lines))):
-                    logger.error("    Line %d: %s", j, lines[j][:50])
+                    logger.warning("    Line %d: %s", j, lines[j][:50])
                 break
-        raise HTTPException(400, f"Aucune réservation trouvée dans le PDF. Vérifiez le format. (lignes={len(lines)}, skipped={skipped_count})")
     
     # NOTE: L'outil floorplan est complètement indépendant.
     # Il ne crée JAMAIS de réservations dans la table principale.

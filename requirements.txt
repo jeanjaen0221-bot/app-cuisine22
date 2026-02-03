@@ -9,3 +9,5 @@ reportlab==4.2.5
 aiofiles==24.1.0
 psycopg2-binary==2.9.9
 Pillow==10.4.0
+pdfminer.six==20231228
+pypdf==4.0.1

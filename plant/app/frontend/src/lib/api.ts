@@ -60,12 +60,6 @@ export async function updateFloorBase(payload: { name?: string; data?: any }) {
   return r.data
 }
 
-export async function listFloorBases() {
-  // Backend only has single base, return as array for compatibility
-  const r = await api.get('/api/floorplan/base')
-  return [r.data]
-}
-
 export async function createFloorInstance(payload: { service_date: string; service_label?: string | null }) {
   const r = await api.post('/api/floorplan/instances', payload)
   return r.data
@@ -126,8 +120,8 @@ export async function numberInstanceTables(id: string) {
   return r.data
 }
 
-export async function exportInstancePdf(id: string) {
-  const r = await api.get(`/api/floorplan/instances/${id}/export-pdf`, { responseType: 'blob' })
+export async function exportInstancePdf(id: string, opts?: { at?: string }) {
+  const r = await api.get(`/api/floorplan/instances/${id}/export-pdf`, { responseType: 'blob', params: opts?.at ? { at: opts.at } : undefined })
   const blob = new Blob([r.data], { type: 'application/pdf' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -160,4 +154,9 @@ export async function exportInstanceAnnotatedPdf(
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
+}
+
+export async function getDebugLog(after?: number, limit: number = 200) {
+  const r = await api.get('/api/floorplan/debug-log', { params: { after, limit } })
+  return r.data as { lines: Array<{ id: number; ts: string; lvl: string; msg: string }>; last: number }
 }
