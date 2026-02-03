@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Test local de l'auto-assign pour vérifier la création dynamique de tables
+Simule exactement la situation: 30 réservations, 11 tables existantes
 """
 import sys
 import os
@@ -10,28 +11,44 @@ from backend.routers.floorplan import _auto_assign, _find_spot_for_table
 from datetime import time as dtime
 from types import SimpleNamespace
 
-# Plan de test simple
+# Plan de test réaliste: 11 tables comme dans ton cas
 plan_data = {
-    "room": {"width": 1200, "height": 800, "grid": 50},
+    "room": {"width": 1600, "height": 1000, "grid": 50},
     "tables": [
-        {"id": "t1", "kind": "fixed", "x": 100, "y": 100, "w": 80, "h": 80, "capacity": 4, "locked": False},
-        {"id": "t2", "kind": "fixed", "x": 200, "y": 100, "w": 80, "h": 80, "capacity": 4, "locked": False},
+        # 8 tables fixes (4 pax chacune)
+        {"id": "f1", "kind": "fixed", "x": 50, "y": 50, "w": 80, "h": 80, "capacity": 4, "locked": False},
+        {"id": "f2", "kind": "fixed", "x": 50, "y": 150, "w": 80, "h": 80, "capacity": 4, "locked": False},
+        {"id": "f3", "kind": "fixed", "x": 50, "y": 250, "w": 80, "h": 80, "capacity": 4, "locked": False},
+        {"id": "f4", "kind": "fixed", "x": 50, "y": 350, "w": 80, "h": 80, "capacity": 4, "locked": False},
+        {"id": "f5", "kind": "fixed", "x": 150, "y": 50, "w": 80, "h": 80, "capacity": 4, "locked": False},
+        {"id": "f6", "kind": "fixed", "x": 150, "y": 150, "w": 80, "h": 80, "capacity": 4, "locked": False},
+        {"id": "f7", "kind": "fixed", "x": 150, "y": 250, "w": 80, "h": 80, "capacity": 4, "locked": False},
+        {"id": "f8", "kind": "fixed", "x": 150, "y": 350, "w": 80, "h": 80, "capacity": 4, "locked": False},
+        # 2 tables rect (6 pax)
+        {"id": "r1", "kind": "rect", "x": 250, "y": 50, "w": 120, "h": 60, "capacity": 6, "locked": False},
+        {"id": "r2", "kind": "rect", "x": 250, "y": 150, "w": 120, "h": 60, "capacity": 6, "locked": False},
+        # 1 table ronde (10 pax)
+        {"id": "rnd1", "kind": "round", "x": 450, "y": 150, "r": 50, "capacity": 10, "locked": False},
     ],
     "walls": [],
     "columns": [],
     "fixtures": [],
     "no_go": [],
     "round_only_zones": [],
-    "rect_only_zones": []
+    "rect_only_zones": [],
+    "max_dynamic_tables": {"rect": 10, "round": 5}  # Stock disponible
 }
 
-# Réservations de test (beaucoup plus que les 2 tables existantes)
+# 30 réservations réalistes (différentes tailles)
 reservations = [
-    SimpleNamespace(id="r1", client_name="Client 1", pax=4, arrival_time=dtime(11, 0)),
-    SimpleNamespace(id="r2", client_name="Client 2", pax=6, arrival_time=dtime(11, 15)),
-    SimpleNamespace(id="r3", client_name="Client 3", pax=8, arrival_time=dtime(11, 30)),
-    SimpleNamespace(id="r4", client_name="Client 4", pax=10, arrival_time=dtime(11, 45)),
-    SimpleNamespace(id="r5", client_name="Client 5", pax=12, arrival_time=dtime(12, 0)),
+    SimpleNamespace(id=f"r{i}", client_name=f"Client {i}", pax=pax, arrival_time=dtime(11 + i//6, (i % 6) * 10))
+    for i, pax in enumerate([
+        2, 2, 2, 3, 3, 4, 4, 4, 4, 4,  # 10 petites (2-4 pax)
+        6, 6, 6, 6, 8, 8,              # 6 moyennes (6-8 pax)
+        10, 10, 12, 12,                # 4 grandes (10-12 pax)
+        14, 14, 15, 15,                # 4 très grandes (14-15 pax)
+        1, 1, 2, 3, 5, 7               # 6 variées
+    ])
 ]
 
 print("=" * 80)
@@ -68,8 +85,26 @@ for t in plan_data['tables'][2:]:  # Skip les 2 premières (existantes)
 
 print(f"\n✅ Assignations:")
 print(f"  Tables assignées: {len(assignments.get('tables', {}))}")
+
+# Vérifier si tables réutilisées (BUG!)
+table_usage = {}
 for table_id, assignment in assignments.get('tables', {}).items():
-    print(f"    - Table {table_id}: {assignment.get('name')} ({assignment.get('pax')} pax)")
+    res_id = assignment.get('res_id')
+    if table_id in table_usage:
+        print(f"  ❌ BUG! Table {table_id} RÉUTILISÉE: {table_usage[table_id]} ET {res_id}")
+    else:
+        table_usage[table_id] = res_id
+    print(f"    - Table {table_id}: {assignment.get('name')} ({assignment.get('pax')} pax) [res={res_id}]")
+
+# Vérifier réservations non assignées
+assigned_res_ids = {a.get('res_id') for a in assignments.get('tables', {}).values()}
+unassigned = [r for r in reservations if str(r.id) not in assigned_res_ids]
+if unassigned:
+    print(f"\n❌ {len(unassigned)} réservations NON ASSIGNÉES:")
+    for r in unassigned[:5]:  # Montrer les 5 premières
+        print(f"    - {r.client_name}: {r.pax} pax")
+else:
+    print(f"\n✅ Toutes les réservations assignées!")
 
 print(f"\n📈 Résumé:")
 print(f"  Réservations: {len(reservations)}")
