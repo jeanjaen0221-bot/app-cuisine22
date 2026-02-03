@@ -143,6 +143,10 @@ export type FloorTable = {
   h?: number
   r?: number
   capacity?: number
+  nominal_capacity?: number
+  max_capacity?: number
+  connectable?: boolean
+  group_id?: string
   locked?: boolean
   label?: string
 }
@@ -156,12 +160,13 @@ export type FloorPlanData = {
   columns?: FloorCircle[]
   no_go?: FloorRect[]
   fixtures?: ((FloorRect & { shape?: 'rect'; label?: string; locked?: boolean }) | (FloorCircle & { shape?: 'round'; label?: string; locked?: boolean }))[]
+  round_only_zones?: FloorRect[]
+  rect_only_zones?: FloorRect[]
   tables: FloorTable[]
 }
 
-export type AssignmentMap = {
-  tables: Record<string, { res_id: string; name: string; pax: number; last_resort?: boolean }>
-}
+export type TableOccupancy = { res_id: string; name: string; pax: number; start?: string; end?: string; last_resort?: boolean }
+export type AssignmentMap = { tables: Record<string, TableOccupancy | TableOccupancy[]> }
 
 export type FloorPlanBase = {
   id: UUID

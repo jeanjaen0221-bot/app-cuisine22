@@ -13,9 +13,10 @@ type Props = {
   drawNoGoMode?: boolean
   drawRoundOnlyMode?: boolean
   drawRectOnlyMode?: boolean
+  viewTime?: string
 }
 
-export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false }: Props) {
+export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false, viewTime }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [scale, setScale] = useState(0.8)
@@ -57,6 +58,33 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const fixtures = data.fixtures || []
   const roundOnlyZones = (data as any).round_only_zones || []
   const rectOnlyZones = (data as any).rect_only_zones || []
+
+  // ---- Time helpers for assignments ----
+  function parseHHMM(s?: string | null): number | null {
+    if (!s) return null
+    const parts = String(s).split(':')
+    if (parts.length < 2) return null
+    const h = parseInt(parts[0]!, 10)
+    const m = parseInt(parts[1]!, 10)
+    if (Number.isNaN(h) || Number.isNaN(m)) return null
+    return h * 60 + m
+  }
+  function isActiveAt(occ: any, vt?: string): boolean {
+    const v = parseHHMM(vt)
+    if (v == null) return false
+    const s = parseHHMM(occ?.start)
+    const e = parseHHMM(occ?.end)
+    if (s == null || e == null) return false
+    return v >= s && v < e
+  }
+  function pickActive(occ: any, vt?: string): any | undefined {
+    if (!occ) return undefined
+    if (Array.isArray(occ)) {
+      const found = occ.find((o) => isActiveAt(o, vt))
+      return found || occ[0]
+    }
+    return occ
+  }
 
   useEffect(() => {
     const el = canvasRef.current
@@ -506,7 +534,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     }
 
     for (const t of tables) {
-      const assigned = assignments?.tables?.[t.id]
+      const rawOcc: any = assignments?.tables?.[t.id as any] as any
+      const assigned = pickActive(rawOcc, viewTime)
       const isLocked = !!t.locked
       const coll = tableCollides(t)
       let color = t.kind === 'fixed' ? '#2c7' : t.kind === 'rect' ? '#39f' : '#f93'
@@ -538,7 +567,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         ctx.font = `${12/scale}px sans-serif`
         ctx.textAlign = 'left'
         const offsetX = t.r ? (t.r || 0) + 6 : (t.w || 120) + 6
-        ctx.fillText(`${assigned.name} (${assigned.pax})`, t.x + offsetX, t.y + 10)
+        const timeTxt = assigned.start ? ` ${String(assigned.start).slice(0,5)}` : ''
+        ctx.fillText(`${assigned.name} (${assigned.pax})${timeTxt}`, t.x + offsetX, t.y + 10)
       }
     }
 
