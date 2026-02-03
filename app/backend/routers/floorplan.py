@@ -608,11 +608,14 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
     groups = sorted(reservations, key=lambda r: (-int(r.pax), r.arrival_time or dtime(0, 0)))
 
     assignments_by_table: Dict[str, Dict[str, Any]] = {}
+    unplaced_count = 0  # Compter les réservations non placées
 
     def take_table(pool: Dict[str, Dict[str, Any]], predicate=None) -> Optional[Dict[str, Any]]:
         items = list(pool.values())
         if predicate:
             items = [x for x in items if predicate(x)]
+        # Filter out already assigned tables
+        items = [t for t in items if t.get("id") not in assignments_by_table]
         if not items:
             return None
         # choose smallest capacity that fits
@@ -806,6 +809,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 
         # 5) Create and place a new non-fixed table if still not placed
         if not placed:
+            unplaced_count += 1
+            logger.info("CREATING DYNAMIC TABLES for res=%s (%s, %d pax) - no existing table available", r.id, r.client_name, r.pax)
+            _dbg_add("INFO", f"CREATING DYNAMIC TABLES for {r.client_name} ({r.pax} pax)")
             # Create non-fixed tables to cover remaining pax using 6-seat rectangles first
             remaining = int(r.pax)
             created_any = False
@@ -849,7 +855,12 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 placed = True
 
         # If not placed, leave unassigned; frontend will show conflict
+        if not placed:
+            logger.warning("UNPLACED reservation: %s (%s, %d pax) - no space found even after trying to create tables", r.id, r.client_name, r.pax)
+            _dbg_add("WARNING", f"UNPLACED: {r.client_name} ({r.pax} pax)")
 
+    logger.info("_auto_assign SUMMARY: %d reservations, %d tried dynamic creation, %d assignments", len(reservations), unplaced_count, len(assignments_by_table))
+    _dbg_add("INFO", f"_auto_assign SUMMARY: {len(reservations)} reservations, {unplaced_count} tried dynamic, {len(assignments_by_table)} assignments")
     return {"tables": assignments_by_table}
 
 
