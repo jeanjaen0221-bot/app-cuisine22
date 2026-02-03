@@ -235,6 +235,8 @@ def test_parse_pdf(pdf_path: str):
             i += 1
     
     # Résumé
+    total_pax_found = sum(r['pax'] for r in out)
+    
     print("\n\n" + "=" * 80)
     print("📊 RÉSUMÉ DU PARSING")
     print("=" * 80)
@@ -243,6 +245,52 @@ def test_parse_pdf(pdf_path: str):
     print(f"Réservations parsées (horizontal): {parsed_horizontal}")
     print(f"Réservations parsées (vertical): {parsed_vertical}")
     print(f"TOTAL RÉSERVATIONS: {len(out)}")
+    print(f"TOTAL PAX TROUVÉ: {total_pax_found}")
+    print(f"PAX ATTENDU (selon PDF): 134")
+    print(f"PAX MANQUANT: {134 - total_pax_found}")
+    
+    # Analyser les pax potentiels non parsés
+    print("\n\n" + "=" * 80)
+    print("🔍 ANALYSE DES PAX NON PARSÉS")
+    print("=" * 80)
+    
+    parsed_pax_values = {r['pax'] for r in out}
+    potential_pax_lines = []
+    
+    for i, ln in enumerate(lines):
+        if re_pax.match(ln):
+            pax_val = int(ln)
+            if 1 <= pax_val <= 30:
+                # Vérifier si c'est proche d'une heure (dans les 10 lignes avant)
+                has_nearby_time = False
+                for j in range(max(0, i-10), i):
+                    if re_time.match(lines[j]):
+                        has_nearby_time = True
+                        break
+                
+                if has_nearby_time:
+                    potential_pax_lines.append((i, pax_val, lines[i-3:i+5] if i >= 3 else lines[0:i+5]))
+    
+    print(f"Lignes avec nombres 1-30 (pax potentiels): {len(potential_pax_lines)}")
+    print(f"Pax réellement parsés: {len(out)}")
+    print(f"\nPremiers 10 pax potentiels NON parsés:")
+    shown = 0
+    for idx, pax, context in potential_pax_lines:
+        if shown >= 10:
+            break
+        # Vérifier si ce pax a été parsé
+        already_parsed = False
+        for r in out:
+            if r['pax'] == pax and any(str(pax) in str(context)):
+                already_parsed = True
+                break
+        
+        if not already_parsed:
+            print(f"\n--- Ligne {idx}: pax={pax} ---")
+            for j, ln in enumerate(context):
+                marker = ">>>" if j == 3 else "   "
+                print(f"{marker} {ln[:80]}")
+            shown += 1
     
     if len(out) == 0:
         print("\n❌ AUCUNE RÉSERVATION TROUVÉE!")
