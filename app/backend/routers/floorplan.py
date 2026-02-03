@@ -1376,6 +1376,37 @@ def import_reservations_pdf(
     
     default_time = dtime(12, 30) if (service_label or "").lower() == "lunch" else dtime(19, 0)
     
+    def is_valid_client_name(raw: str) -> bool:
+        """Valide si c'est vraiment un nom de client."""
+        if not raw or len(raw) < 2:
+            return False
+        
+        # Ignorer nombres seuls
+        if raw.isdigit():
+            return False
+        
+        # Ignorer mots-clés commentaires
+        invalid_keywords = [
+            "pregnancy", "végétarien", "vegetarian", "brunch", "formula",
+            "personen", "personne", "commentaire", "carte", "chaise haute",
+            "allergies", "gluten", "lactose", "verjaardag", "birthday",
+            "anniversary", "inschatting", "definitief", "aantal"
+        ]
+        raw_lower = raw.lower()
+        if any(kw in raw_lower for kw in invalid_keywords):
+            return False
+        
+        # Doit contenir au moins 1 lettre majuscule (noms propres)
+        if not any(c.isupper() for c in raw):
+            return False
+        
+        # Doit avoir au moins 2 lettres
+        letter_count = sum(1 for c in raw if c.isalpha())
+        if letter_count < 2:
+            return False
+        
+        return True
+    
     def clean_client_name(raw: str) -> str:
         """Nettoie le nom du client en retirant tout sauf le nom."""
         name = raw
@@ -1506,6 +1537,11 @@ def import_reservations_pdf(
                 continue
             if re.match(r"^\d{4}-\d{2}-\d{2}", candidate):
                 continue
+            
+            # Valider avant de nettoyer
+            if not is_valid_client_name(candidate):
+                continue
+            
             # C'est probablement le nom
             client_name = clean_client_name(candidate)
             if client_name and len(client_name) >= 2:
