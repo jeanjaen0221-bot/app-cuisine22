@@ -1336,7 +1336,9 @@ def import_reservations_pdf(
 
     blob = file.file.read()
     try:
-        text = extract_text(io.BytesIO(blob))
+        # Utiliser layout pour préserver les colonnes du tableau
+        from pdfminer.layout import LAParams
+        text = extract_text(io.BytesIO(blob), laparams=LAParams())
     except Exception as e:
         logger.error("POST /import-pdf -> PDF text extraction failed: %s", str(e))
         _dbg_add("ERROR", f"POST /import-pdf -> PDF extraction failed: {str(e)[:100]}")
@@ -1347,10 +1349,12 @@ def import_reservations_pdf(
 
     import re
     
-    # Format Albert Brussels: extraction multi-lignes
-    # Ligne N: HH:MM (heure)
-    # Ligne N+1 ou N+2: chiffre 1-30 (pax)
-    # Ligne suivante: Nom du client
+    # Format Albert Brussels HORIZONTAL: Heure | Pax | Nom | Table | Statut | Date | Source
+    # Chaque ligne contient tous les champs séparés par espaces/tabs
+    # Regex pour ligne complète: HH:MM suivi de chiffre 1-30 suivi de nom
+    re_reservation_line = re.compile(
+        r'^(\d{1,2}:\d{2})\s+(\d{1,2})\s+([A-Z][A-Za-z\s-]+?)\s+(?:Téléphone|Confirmé|Annulé|Web|Google|Table|\d{4}-\d{2}-\d{2})'
+    )
     re_time = re.compile(r"^\d{1,2}:\d{2}$")
     re_pax = re.compile(r"^\d{1,2}$")
     re_phone = re.compile(r"Téléphone:|^\+\d{2}|^0\d{1,2}\s")
@@ -1424,6 +1428,43 @@ def import_reservations_pdf(
             i += 1
             continue
         
+        # Ignorer lignes téléphone/commentaire
+        if re_phone.search(ln) or "Commentaire" in ln or ln.startswith("("):
+            i += 1
+            continue
+        
+        # MÉTHODE 1: Ligne complète avec regex (format horizontal)
+        match = re_reservation_line.match(ln)
+        if match:
+            time_str = match.group(1)
+            pax = int(match.group(2))
+            client_name = clean_client_name(match.group(3))
+            
+            if client_name and len(client_name) >= 2:
+                # Conversion heure
+                try:
+                    arrival_time = dtime.fromisoformat(f"{time_str}:00" if len(time_str) == 5 else time_str)
+                except:
+                    arrival_time = default_time
+                
+                # Générer ID déterministe
+                h = hashlib.md5(f"{service_date}_{time_str}_{pax}_{client_name}".encode()).hexdigest()
+                res_id = str(uuid.UUID(h[:32]))
+                
+                out.append({
+                    "id": res_id,
+                    "arrival_time": arrival_time.isoformat(),
+                    "pax": pax,
+                    "client_name": client_name
+                })
+                parsed_count += 1
+                if parsed_count <= 5:
+                    logger.debug("POST /import-pdf -> parsed: %s @ %s (%d pax)", client_name, time_str, pax)
+            
+            i += 1
+            continue
+        
+        # MÉTHODE 2: Fallback vertical (ancien format)
         # Chercher une heure (HH:MM seule sur une ligne)
         if not re_time.match(ln):
             i += 1
