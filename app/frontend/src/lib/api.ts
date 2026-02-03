@@ -7,13 +7,22 @@ export const api = axios.create({
 let _salleDebug = false
 export function setSalleDebug(v: boolean) { _salleDebug = v }
 
-export function fileDownload(url: string) {
+export function fileDownload(data: Blob | string, filename?: string) {
   const link = document.createElement('a')
-  link.href = url
-  link.target = '_blank'
+  if (data instanceof Blob) {
+    link.href = URL.createObjectURL(data)
+    link.download = filename || 'download.pdf'
+  } else {
+    link.href = data
+    link.target = '_blank'
+    link.download = filename || ''
+  }
   document.body.appendChild(link)
   link.click()
-  link.remove()
+  document.body.removeChild(link)
+  if (data instanceof Blob) {
+    setTimeout(() => URL.revokeObjectURL(link.href), 100)
+  }
 }
 
 api.interceptors.request.use((config) => {
