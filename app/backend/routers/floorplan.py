@@ -572,6 +572,7 @@ def _table_collides(plan: Dict[str, Any], t: Dict[str, Any], existing_tables: Op
 
 
 def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: float = 60, r: float = 50) -> Optional[Dict[str, float]]:
+    """Find spot for table. shape can be: rect, round, sofa, standing"""
     room = (plan.get("room") or {"width": 0, "height": 0})
     gw = int(room.get("grid") or 50)
     W = int(room.get("width") or 0)
@@ -596,13 +597,14 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
         return False
     
     # scan grid row by row
-    for yy in range(0, max(0, H - (int(h) if shape == "rect" else int(r))), max(1, gw)):
-        for xx in range(0, max(0, W - (int(w) if shape == "rect" else int(r))), max(1, gw)):
+    is_circular = shape in ("round", "standing")
+    for yy in range(0, max(0, H - (int(h) if not is_circular else int(r))), max(1, gw)):
+        for xx in range(0, max(0, W - (int(w) if not is_circular else int(r))), max(1, gw)):
             cand: Dict[str, Any]
-            if shape == "rect":
+            if shape in ("rect", "sofa"):
                 cand = {"x": float(xx), "y": float(yy), "w": float(w), "h": float(h)}
                 check_x, check_y = float(xx + w/2), float(yy + h/2)  # Centre de la table
-            else:
+            else:  # round, standing
                 cand = {"x": float(xx + r), "y": float(yy + r), "r": float(r)}
                 check_x, check_y = float(xx + r), float(yy + r)  # Centre du cercle
             
@@ -610,12 +612,12 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
             in_round_zone = is_in_round_only_zone(check_x, check_y)
             in_rect_zone = is_in_rect_only_zone(check_x, check_y)
             
-            # Si c'est une zone round-only (R), seules les tables rondes sont autorisées
-            if in_round_zone and shape != "round":
+            # Si c'est une zone round-only (R), seules les tables rondes sont autorisées (pas standing, sofa, etc.)
+            if in_round_zone and shape not in ("round",):
                 continue
             
-            # Si c'est une zone rect-only (T), seules les tables rectangulaires sont autorisées
-            if in_rect_zone and shape != "rect":
+            # Si c'est une zone rect-only (T), seules les tables rectangulaires sont autorisées (pas sofa)
+            if in_rect_zone and shape not in ("rect",):
                 continue
             
             t = {"id": "_probe", **cand}
