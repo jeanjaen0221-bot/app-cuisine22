@@ -461,8 +461,8 @@ def _load_reservations(session: Session, service_date: date, service_label: Opti
                 allergens=item.get("allergens", ""),
             )
             reservations.append(res)
-        # Sort by arrival_time to align with PDF
-        reservations.sort(key=lambda r: (r.arrival_time, r.client_name))
+        # Sort by arrival_time then client_name to align with PDF import order
+        reservations.sort(key=lambda r: (r.arrival_time, r.client_name.lower() if r.client_name else ""))
         return reservations
     else:
         # Load from main table (legacy)
@@ -1310,6 +1310,7 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     # 1) Reservations + assigned tables
     try:
         reservations = _load_reservations(session, row.service_date, row.service_label, instance=row)
+        logger.info("export_instance_pdf -> loaded %d reservations from instance", len(reservations))
     except Exception as e:
         logger.error("export_instance_pdf -> failed to load reservations: %s", str(e))
         _dbg_add("ERROR", f"export_instance_pdf -> load reservations failed: {str(e)[:100]}")
@@ -1413,19 +1414,21 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     
     # Convertir les données dict en objets Reservation pour compatibilité avec _auto_assign
     from types import SimpleNamespace
-    import hashlib
     reservations = []
     for idx, item in enumerate(res_data):
-        # Générer un ID stable basé sur l'index et le contenu
-        # Cela garantit que l'ID est le même entre auto-assign et export PDF
-        if "id" not in item or not item["id"]:
-            # Générer un UUID déterministe basé sur l'index et les données
+        # IMPORTANT: NE PAS régénérer les IDs si ils existent déjà (créés par import-pdf)
+        # Utiliser l'ID existant pour maintenir la cohérence
+        res_id = item.get("id")
+        if not res_id:
+            # Fallback: générer un ID seulement si absent
+            import hashlib
             content = f"{idx}_{item.get('client_name', '')}_{item.get('pax', 0)}_{item.get('arrival_time', '')}"
             hash_val = hashlib.md5(content.encode()).hexdigest()
-            item["id"] = str(uuid.UUID(hash_val))
+            res_id = str(uuid.UUID(hash_val))
+            item["id"] = res_id
         
         res = SimpleNamespace(
-            id=item["id"],
+            id=res_id,
             client_name=item.get("client_name", "Client"),
             pax=int(item.get("pax", 0)),
             arrival_time=dtime.fromisoformat(item.get("arrival_time", "12:00") + (":00" if len(item.get("arrival_time", "12:00")) == 5 else ""))
