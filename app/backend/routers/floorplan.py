@@ -756,7 +756,12 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
                 remaining -= pax_on_table
                 avail_fixed.pop(t.get("id"), None)
-            placed = True
+            # Only mark as placed if ALL pax are covered
+            if remaining <= 0:
+                placed = True
+            else:
+                logger.warning("fixed-pack insufficient: res=%s needs %d more pax", r.id, remaining)
+                _dbg_add("WARNING", f"fixed-pack insufficient for {r.client_name}: {remaining} pax remaining")
             try:
                 logger.debug("assign fixed-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
                 _dbg_add("DEBUG", f"assign fixed-pack -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in chosen]}")
@@ -776,7 +781,12 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
                 remaining -= pax_on_table
                 avail_rects.pop(t.get("id"), None)
-            placed = True
+            # Only mark as placed if ALL pax are covered
+            if remaining <= 0:
+                placed = True
+            else:
+                logger.warning("rect-pack insufficient: res=%s needs %d more pax", r.id, remaining)
+                _dbg_add("WARNING", f"rect-pack insufficient for {r.client_name}: {remaining} pax remaining")
             try:
                 logger.debug("assign rect-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
                 _dbg_add("DEBUG", f"assign rect-pack -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in chosen]}")
@@ -794,7 +804,12 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
                 remaining -= pax_on_table
                 avail_rounds.pop(t.get("id"), None)
-            placed = True
+            # Only mark as placed if ALL pax are covered
+            if remaining <= 0:
+                placed = True
+            else:
+                logger.warning("round-pack insufficient: res=%s needs %d more pax", r.id, remaining)
+                _dbg_add("WARNING", f"round-pack insufficient for {r.client_name}: {remaining} pax remaining")
             try:
                 logger.debug("assign round-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
                 _dbg_add("DEBUG", f"assign round-pack -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in chosen]}")
