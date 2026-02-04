@@ -239,24 +239,24 @@ export default function FloorPlanPage() {
     }
   }
 
-  function addTable(kind: 'fixed' | 'rect' | 'round') {
-    const target = editMode === 'template' ? baseTemplate : selectedInstance
-    if (!target) return
-    const tables = target.data.tables || []
-    const id = `t_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
-    const capacity = kind === 'fixed' ? 4 : kind === 'rect' ? 6 : 10
-    let newTable: any = { id, kind, x: 100, y: 100, capacity }
+  function addTable(kind: 'fixed' | 'rect' | 'round' | 'sofa' | 'standing', capacity: number) {
+    if (!currentData) return
+    const newId = crypto.randomUUID()
+    let newTable: any
     if (kind === 'round') {
-      newTable.r = 50
+      newTable = { id: newId, kind, capacity, x: 100, y: 100, r: 50 }
+    } else if (kind === 'sofa') {
+      newTable = { id: newId, kind, capacity, x: 100, y: 100, w: 180, h: 80 }
+    } else if (kind === 'standing') {
+      newTable = { id: newId, kind, capacity, x: 100, y: 100, r: 40 }
     } else {
-      newTable.w = kind === 'fixed' ? 80 : 120
-      newTable.h = kind === 'fixed' ? 80 : 60
+      newTable = { id: newId, kind, capacity, x: 100, y: 100, w: 120, h: 60 }
     }
-    const updated = { ...target.data, tables: [...tables, newTable] }
+    const updated = { ...currentData, tables: [...currentData.tables, newTable] }
     if (editMode === 'template') {
-      setBaseTemplate({ ...baseTemplate!, data: updated })
+      setBaseTemplate(prev => prev ? { ...prev, data: updated } : prev)
     } else {
-      setSelectedInstance({ ...selectedInstance!, data: updated })
+      setSelectedInstance(prev => prev ? { ...prev, data: updated } : prev)
     }
   }
 
@@ -442,15 +442,11 @@ export default function FloorPlanPage() {
               </label>
               <div className="border-l border-gray-300 h-6 mx-2"></div>
               <span className="text-xs font-semibold text-gray-600">Ajouter:</span>
-              <button className="btn btn-sm btn-outline" onClick={() => addTable('fixed')}>
-                ➕ Table Fixe (4 pax)
-              </button>
-              <button className="btn btn-sm btn-outline" onClick={() => addTable('rect')}>
-                ➕ Table Rect (6-8 pax)
-              </button>
-              <button className="btn btn-sm btn-outline" onClick={() => addTable('round')}>
-                ➕ Table Ronde (10 pax)
-              </button>
+              <button onClick={() => addTable('fixed', 4)} className="btn">+ Table fixe (4)</button>
+              <button onClick={() => addTable('rect', 6)} className="btn">+ Rect (6→8)</button>
+              <button onClick={() => addTable('round', 10)} className="btn">+ Ronde (10)</button>
+              <button onClick={() => addTable('sofa', 5)} className="btn" style={{background: '#9c27b0'}}>+ Canapé (5)</button>
+              <button onClick={() => addTable('standing', 8)} className="btn" style={{background: '#ff5722'}}>+ Mange-debout (8)</button>
               <button className="btn btn-sm btn-outline" onClick={() => addFixture('rect')}>
                 ➕ Mur
               </button>

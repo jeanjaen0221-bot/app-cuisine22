@@ -523,15 +523,23 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       ctx.strokeStyle = coll ? '#e00' : '#111'
       ctx.lineWidth = 2 / scale
       if (t.r) {
+        // Round tables and standing (mange-debout)
         ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
       } else {
+        // Rect tables, fixed, and sofa (canapé)
         const w = t.w || 120, h = t.h || 60
         ctx.fillRect(t.x, t.y, w, h)
         ctx.strokeRect(t.x, t.y, w, h)
       }
       const cx = t.r ? t.x : t.x + (t.w || 120) / 2
       const cy = t.r ? t.y : t.y + (t.h || 60) / 2
-      const cap = (t.capacity || (t.kind === 'rect' ? 6 : t.kind === 'round' ? 10 : 2)) + ''
+      let defaultCap = 2
+      if (t.kind === 'rect') defaultCap = 6
+      else if (t.kind === 'round') defaultCap = 10
+      else if (t.kind === 'sofa') defaultCap = 5
+      else if (t.kind === 'standing') defaultCap = 8
+      else if (t.kind === 'fixed') defaultCap = 4
+      const cap = (t.capacity || defaultCap) + ''
       const lbl = (t.label || '').toString()
       ctx.textAlign = 'center'
       ctx.fillStyle = '#fff'

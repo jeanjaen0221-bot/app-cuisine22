@@ -212,7 +212,7 @@ def _draw_table_list_page(c: pdfcanvas.Canvas, id_to_label: Dict[str, str], plan
             _dbg_add("WARNING", f"_draw_table_list_page -> capacity error table={t.get('id')}: {str(e)[:50]}")
         kind = str(t.get("kind") or "")
         rows.append((lbl, cap, kind))
-    # Sort by label natural (T before numbers later)
+    # Sort by label natural (numbers first, then T, R, C, D)
     def sort_key(r: Tuple[str, int, str]):
         lbl = r[0]
         if lbl.startswith("T"):
@@ -220,6 +220,21 @@ def _draw_table_list_page(c: pdfcanvas.Canvas, id_to_label: Dict[str, str], plan
                 return (1, int(lbl[1:]))
             except Exception:
                 return (1, 9999)
+        elif lbl.startswith("R"):
+            try:
+                return (2, int(lbl[1:]))
+            except Exception:
+                return (2, 9999)
+        elif lbl.startswith("C"):
+            try:
+                return (3, int(lbl[1:]))
+            except Exception:
+                return (3, 9999)
+        elif lbl.startswith("D"):
+            try:
+                return (4, int(lbl[1:]))
+            except Exception:
+                return (4, 9999)
         try:
             return (0, int(lbl))
         except Exception:
