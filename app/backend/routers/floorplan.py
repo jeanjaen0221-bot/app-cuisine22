@@ -845,7 +845,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         # 5) Create and place a new non-fixed table if still not placed
         if not placed:
             unplaced_count += 1
-            logger.info("CREATING DYNAMIC TABLES for res=%s (%s, %d pax) - no existing table available", r.id, r.client_name, r.pax)
+            print(f"CREATING DYNAMIC TABLES for res={r.id} ({r.client_name}, {r.pax} pax) - no existing table available")
             _dbg_add("INFO", f"CREATING DYNAMIC TABLES for {r.client_name} ({r.pax} pax) - stock: rect {max_rect_dynamic-rect_dynamic_created}/{max_rect_dynamic}, round {max_round_dynamic-round_dynamic_created}/{max_round_dynamic}")
             # Create non-fixed tables to cover remaining pax using 6-seat rectangles first
             remaining = int(r.pax)
@@ -865,7 +865,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 remaining -= pax_on_table
                 rect_dynamic_created += 1
                 created_any = True
-                logger.info("✓ Created rect table %d/%d", existing_rect_count + rect_dynamic_created, max_rect_dynamic)
+                print(f"✓ Created rect table {existing_rect_count + rect_dynamic_created}/{max_rect_dynamic}")
                 _dbg_add("INFO", f"✓ Created rect {existing_rect_count + rect_dynamic_created}/{max_rect_dynamic}")
             
             if remaining > 0 and (existing_round_count + round_dynamic_created) < max_round_dynamic:
@@ -881,7 +881,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     remaining -= pax_on_table
                     round_dynamic_created += 1
                     created_any = True
-                    logger.info("✓ Created round table %d/%d", existing_round_count + round_dynamic_created, max_round_dynamic)
+                    print(f"✓ Created round table {existing_round_count + round_dynamic_created}/{max_round_dynamic}")
                     _dbg_add("INFO", f"✓ Created round {existing_round_count + round_dynamic_created}/{max_round_dynamic}")
                 else:
                     logger.warning("No space found for new round table")
@@ -902,8 +902,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             logger.warning("UNPLACED reservation: %s (%s, %d pax) - no space found even after trying to create tables", r.id, r.client_name, r.pax)
             _dbg_add("WARNING", f"UNPLACED: {r.client_name} ({r.pax} pax)")
 
-    logger.info("_auto_assign SUMMARY: %d reservations, %d tried dynamic, %d assignments | STOCK USED: rect %d/%d, round %d/%d", 
-                len(reservations), unplaced_count, len(assignments_by_table), rect_dynamic_created, max_rect_dynamic, round_dynamic_created, max_round_dynamic)
+    print(f"_auto_assign SUMMARY: {len(reservations)} reservations, {unplaced_count} tried dynamic, {len(assignments_by_table)} assignments | STOCK USED: rect {rect_dynamic_created}/{max_rect_dynamic}, round {round_dynamic_created}/{max_round_dynamic}")
     _dbg_add("INFO", f"_auto_assign SUMMARY: {len(reservations)} res, {unplaced_count} tried dynamic, {len(assignments_by_table)} assigned | STOCK: rect {rect_dynamic_created}/{max_rect_dynamic}, round {round_dynamic_created}/{max_round_dynamic}")
     return {"tables": assignments_by_table}
 
@@ -1313,9 +1312,9 @@ def delete_instance(instance_id: uuid.UUID, session: Session = Depends(get_sessi
 
 @router.post("/instances/{instance_id}/auto-assign", response_model=FloorPlanInstanceRead)
 def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session)):
-    logger.info("=" * 80)
-    logger.info("🔥 AUTO-ASSIGN VERSION 2.0 - WITH ANTI-REUSE FIX 🔥")
-    logger.info("=" * 80)
+    print("=" * 80)
+    print("🔥 AUTO-ASSIGN VERSION 2.0 - WITH ANTI-REUSE FIX 🔥")
+    print("=" * 80)
     _dbg_add("INFO", "🔥 AUTO-ASSIGN V2.0 - ANTI-REUSE FIX")
     _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign")
     row = session.get(FloorPlanInstance, instance_id)
@@ -1372,7 +1371,7 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     fixed_count = sum(1 for t in tables if t.get("kind") == "fixed" or t.get("locked"))
     rect_count = sum(1 for t in tables if t.get("kind") == "rect")
     round_count = sum(1 for t in tables if t.get("kind") == "round")
-    logger.info("POST /instances/%s/auto-assign -> BEFORE: reservations=%d tables=%d (fixed=%d rect=%d round=%d)", instance_id, len(reservations), len(tables), fixed_count, rect_count, round_count)
+    print(f"POST /instances/{instance_id}/auto-assign -> BEFORE: reservations={len(reservations)} tables={len(tables)} (fixed={fixed_count} rect={rect_count} round={round_count})")
     _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> BEFORE: reservations={len(reservations)} tables={len(tables)} (fixed={fixed_count} rect={rect_count} round={round_count})")
     
     # Sauvegarder le plan avec les tables du base avant auto-assign
@@ -1387,13 +1386,13 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     round_after = sum(1 for t in tables_after if t.get("kind") == "round")
     tables_created = len(tables_after) - len(tables)
     
-    logger.info("POST /instances/%s/auto-assign -> AFTER: tables=%d (fixed=%d rect=%d round=%d) CREATED=%d", instance_id, len(tables_after), fixed_after, rect_after, round_after, tables_created)
+    print(f"POST /instances/{instance_id}/auto-assign -> AFTER: tables={len(tables_after)} (fixed={fixed_after} rect={rect_after} round={round_after}) CREATED={tables_created}")
     _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> AFTER: tables={len(tables_after)} (fixed={fixed_after} rect={rect_after} round={round_after}) CREATED={tables_created}")
     
     if tables_created > 0:
-        logger.info("POST /instances/%s/auto-assign -> NEW TABLES CREATED:", instance_id)
+        print(f"POST /instances/{instance_id}/auto-assign -> NEW TABLES CREATED:")
         for t in tables_after[len(tables):]:
-            logger.info("  - %s: %s %d pax @ (%s, %s)", t.get("id"), t.get("kind"), t.get("capacity", 0), t.get("x"), t.get("y"))
+            print(f"  - {t.get('id')}: {t.get('kind')} {t.get('capacity', 0)} pax @ ({t.get('x')}, {t.get('y')})")
             _dbg_add("INFO", f"  NEW TABLE: {t.get('id')} {t.get('kind')} {t.get('capacity')}pax @({t.get('x')},{t.get('y')})")
     session.add(row)
     session.commit()
