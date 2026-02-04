@@ -1313,6 +1313,10 @@ def delete_instance(instance_id: uuid.UUID, session: Session = Depends(get_sessi
 
 @router.post("/instances/{instance_id}/auto-assign", response_model=FloorPlanInstanceRead)
 def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session)):
+    logger.info("=" * 80)
+    logger.info("🔥 AUTO-ASSIGN VERSION 2.0 - WITH ANTI-REUSE FIX 🔥")
+    logger.info("=" * 80)
+    _dbg_add("INFO", "🔥 AUTO-ASSIGN V2.0 - ANTI-REUSE FIX")
     _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign")
     row = session.get(FloorPlanInstance, instance_id)
     if not row:
