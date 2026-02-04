@@ -148,9 +148,10 @@ export default function FloorPlanPage() {
       return
     }
     try {
+      // Capturer AVANT l'appel API (évite bug de référence)
+      const tablesBefore = selectedInstance?.data?.tables?.length || 0
       const res = await api.post(`/api/floorplan/instances/${selectedInstance.id}/auto-assign`)
       const assigned = Object.keys(res.data.assignments?.tables || {}).length
-      const tablesBefore = selectedInstance?.data?.tables?.length || 0
       const tablesAfter = res.data?.data?.tables?.length || 0
       const newTablesCreated = tablesAfter - tablesBefore
       

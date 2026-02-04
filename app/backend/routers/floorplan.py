@@ -1368,11 +1368,12 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
             _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> copied base: {len(tables)} tables (fixed={fixed_count} rect={rect_count} round={round_count})")
     
     tables = plan.get("tables") or []
+    tables_before_count = len(tables)  # Capturer AVANT auto-assign (plan modifié par référence)
     fixed_count = sum(1 for t in tables if t.get("kind") == "fixed" or t.get("locked"))
     rect_count = sum(1 for t in tables if t.get("kind") == "rect")
     round_count = sum(1 for t in tables if t.get("kind") == "round")
-    print(f"POST /instances/{instance_id}/auto-assign -> BEFORE: reservations={len(reservations)} tables={len(tables)} (fixed={fixed_count} rect={rect_count} round={round_count})")
-    _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> BEFORE: reservations={len(reservations)} tables={len(tables)} (fixed={fixed_count} rect={rect_count} round={round_count})")
+    print(f"POST /instances/{instance_id}/auto-assign -> BEFORE: reservations={len(reservations)} tables={tables_before_count} (fixed={fixed_count} rect={rect_count} round={round_count})")
+    _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> BEFORE: reservations={len(reservations)} tables={tables_before_count} (fixed={fixed_count} rect={rect_count} round={round_count})")
     
     # Sauvegarder le plan avec les tables du base avant auto-assign
     row.data = plan
@@ -1384,14 +1385,14 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
     fixed_after = sum(1 for t in tables_after if t.get("kind") == "fixed" or t.get("locked"))
     rect_after = sum(1 for t in tables_after if t.get("kind") == "rect")
     round_after = sum(1 for t in tables_after if t.get("kind") == "round")
-    tables_created = len(tables_after) - len(tables)
+    tables_created = len(tables_after) - tables_before_count
     
     print(f"POST /instances/{instance_id}/auto-assign -> AFTER: tables={len(tables_after)} (fixed={fixed_after} rect={rect_after} round={round_after}) CREATED={tables_created}")
     _dbg_add("INFO", f"POST /instances/{instance_id}/auto-assign -> AFTER: tables={len(tables_after)} (fixed={fixed_after} rect={rect_after} round={round_after}) CREATED={tables_created}")
     
     if tables_created > 0:
         print(f"POST /instances/{instance_id}/auto-assign -> NEW TABLES CREATED:")
-        for t in tables_after[len(tables):]:
+        for t in tables_after[tables_before_count:]:
             print(f"  - {t.get('id')}: {t.get('kind')} {t.get('capacity', 0)} pax @ ({t.get('x')}, {t.get('y')})")
             _dbg_add("INFO", f"  NEW TABLE: {t.get('id')} {t.get('kind')} {t.get('capacity')}pax @({t.get('x')},{t.get('y')})")
     session.add(row)
