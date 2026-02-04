@@ -530,19 +530,30 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       const cap = (t.capacity || (t.kind === 'rect' ? 6 : t.kind === 'round' ? 10 : 2)) + ''
       const lbl = (t.label || '').toString()
       ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      // Always show label if present, otherwise capacity
-      const displayText = lbl || cap
       ctx.fillStyle = '#fff'
-      ctx.font = lbl ? `${16/scale}px sans-serif` : `${14/scale}px sans-serif`
-      ctx.fillText(displayText, cx, cy)
-      // Show assigned client info next to table
+      
       if (assigned) {
-        ctx.fillStyle = '#000'
+        // Afficher 3 lignes: numéro, nom, pax
+        const lineHeight = 16 / scale
+        ctx.font = `bold ${14/scale}px sans-serif`
+        ctx.textBaseline = 'bottom'
+        ctx.fillText(lbl || cap, cx, cy - lineHeight)
+        
         ctx.font = `${12/scale}px sans-serif`
-        ctx.textAlign = 'left'
-        const offsetX = t.r ? (t.r || 0) + 6 : (t.w || 120) + 6
-        ctx.fillText(`${assigned.name} (${assigned.pax})`, t.x + offsetX, t.y + 10)
+        ctx.textBaseline = 'middle'
+        // Tronquer le nom si trop long
+        let name = assigned.name
+        if (name.length > 15) name = name.substring(0, 13) + '...'
+        ctx.fillText(name, cx, cy)
+        
+        ctx.font = `${11/scale}px sans-serif`
+        ctx.textBaseline = 'top'
+        ctx.fillText(`${assigned.pax} pax`, cx, cy + lineHeight * 0.6)
+      } else {
+        // Pas d'assignation: juste numéro ou capacité
+        ctx.textBaseline = 'middle'
+        ctx.font = lbl ? `${16/scale}px sans-serif` : `${14/scale}px sans-serif`
+        ctx.fillText(lbl || cap, cx, cy)
       }
     }
 
