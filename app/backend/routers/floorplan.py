@@ -638,7 +638,11 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 
     def take_best_rect_combo(pax: int) -> Optional[List[Dict[str, Any]]]:
         # Try 2-rect combo first for pax > 6
-        ids = list(avail_rects.keys())
+        # CRITICAL: Filter out already assigned tables
+        available_ids = [id for id in avail_rects.keys() if id not in assignments_by_table]
+        if len(available_ids) < 2:
+            return None
+        ids = available_ids
         best: Optional[List[Dict[str, Any]]] = None
         best_cap = 10**9
         # capacities: rect can be 6 or 8 with extension; allow extension opportunistically
@@ -666,6 +670,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 
     def pack_from_pool(pool: Dict[str, Dict[str, Any]], target: int, allow_rect_ext: bool = False) -> Optional[List[Dict[str, Any]]]:
         items = list(pool.values())
+        if not items:
+            return None
+        # CRITICAL: Filter out already assigned tables (same as take_table)
+        items = [t for t in items if t.get("id") not in assignments_by_table]
         if not items:
             return None
         # Greedy: pick largest capacities first to minimize number of tables
