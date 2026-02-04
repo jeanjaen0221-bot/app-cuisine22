@@ -623,6 +623,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
     avail_fixed = {t.get("id"): t for t in fixed}
     avail_rects = {t.get("id"): t for t in rects}
     avail_rounds = {t.get("id"): t for t in rounds}
+    avail_sofas = {t.get("id"): t for t in tables if t.get("kind") == "sofa"}
+    avail_standings = {t.get("id"): t for t in tables if t.get("kind") == "standing"}
     
     # Compter les tables rect/round déjà existantes pour calculer combien on peut encore en créer
     existing_rect_count = len(rects)
@@ -766,6 +768,24 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             except Exception as e:
                 logger.warning("assign rect-pair -> log failed: %s", str(e))
                 pass
+        if placed:
+            continue
+
+        # 3a) Sofa single (5 pax)
+        best_sofa = take_table(avail_sofas, predicate=lambda t: _capacity_for_table(t) >= r.pax)
+        if best_sofa:
+            pax_on_table = min(_capacity_for_table(best_sofa), int(r.pax))
+            assignments_by_table.setdefault(best_sofa.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+            placed = True
+        if placed:
+            continue
+
+        # 3aa) Standing single (8 pax)
+        best_standing = take_table(avail_standings, predicate=lambda t: _capacity_for_table(t) >= r.pax)
+        if best_standing:
+            pax_on_table = min(_capacity_for_table(best_standing), int(r.pax))
+            assignments_by_table.setdefault(best_standing.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+            placed = True
         if placed:
             continue
 
