@@ -137,19 +137,33 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
 
     # tables
     c.setStrokeColor(colors.black)
-    c.setFillColor(colors.white)
     tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
     for t in tables:
         kind = (t.get("kind") or "rect")
         # Prefer computed numbering over any existing text label
         lbl = id_to_label.get(str(t.get("id")) or "", "") or t.get("label")
-        if kind == "round" and t.get("r"):
+        
+        # Couleurs selon le type
+        if kind == "fixed":
+            c.setFillColor(colors.Color(0.133, 0.467, 0.467))  # #2c7
+        elif kind == "rect":
+            c.setFillColor(colors.Color(0.2, 0.6, 1))  # #39f
+        elif kind == "round":
+            c.setFillColor(colors.Color(1, 0.58, 0.2))  # #f93
+        elif kind == "sofa":
+            c.setFillColor(colors.Color(0.61, 0.15, 0.69))  # #9c27b0 violet
+        elif kind == "standing":
+            c.setFillColor(colors.Color(1, 0.34, 0.13))  # #ff5722 orange
+        else:
+            c.setFillColor(colors.white)
+        
+        if kind in ("round", "standing") and t.get("r"):
             x = float(t.get("x") or 0)
             y = float(t.get("y") or 0)
             r = float(t.get("r") or 0)
-            c.circle(tx(x), ty(y), scale * r, stroke=1, fill=0)
+            c.circle(tx(x), ty(y), scale * r, stroke=1, fill=1)
             if lbl:
-                c.setFillColor(colors.black)
+                c.setFillColor(colors.white)
                 c.setFont("Helvetica-Bold", 8)
                 c.drawCentredString(tx(x), ty(y) - 3, str(lbl))
             # draw assignment if any
@@ -159,17 +173,16 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
                     c.setFont("Helvetica", 7)
                     c.setFillColor(colors.black)
                     c.drawString(tx(x + r + 4), ty(y) + 2, f"{a.get('name','')} ({a.get('pax',0)})")
-            c.setFillColor(colors.white)
         else:
             x = float(t.get("x") or 0)
             y = float(t.get("y") or 0)
             w = float(t.get("w") or 120)
             h = float(t.get("h") or 60)
-            c.rect(tx(x), ty(y + h), scale * w, scale * h, stroke=1, fill=0)
+            c.rect(tx(x), ty(y + h), scale * w, scale * h, stroke=1, fill=1)
             cx = tx(x + w / 2.0)
             cy = ty(y + h / 2.0)
             if lbl:
-                c.setFillColor(colors.black)
+                c.setFillColor(colors.white)
                 c.setFont("Helvetica-Bold", 8)
                 c.drawCentredString(cx, cy - 3, str(lbl))
             # draw assignment if any
@@ -179,7 +192,6 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
                     c.setFont("Helvetica", 7)
                     c.setFillColor(colors.black)
                     c.drawString(tx(x + w + 4), ty(y + 10), f"{a.get('name','')} ({a.get('pax',0)})")
-            c.setFillColor(colors.white)
 
     # title
     c.setFont("Helvetica", 10)
