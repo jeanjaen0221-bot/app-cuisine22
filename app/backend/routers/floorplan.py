@@ -784,15 +784,6 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if placed:
             continue
 
-        # 3a) Sofa single (5 pax)
-        best_sofa = take_table(avail_sofas, predicate=lambda t: _capacity_for_table(t) >= r.pax)
-        if best_sofa:
-            pax_on_table = min(_capacity_for_table(best_sofa), int(r.pax))
-            assignments_by_table.setdefault(best_sofa.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-            placed = True
-        if placed:
-            continue
-
         # 3aa) Standing single (8 pax)
         best_standing = take_table(avail_standings, predicate=lambda t: _capacity_for_table(t) >= r.pax)
         if best_standing:
