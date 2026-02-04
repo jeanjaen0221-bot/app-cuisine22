@@ -136,7 +136,7 @@ export type ServiceLabel = 'lunch' | 'dinner' | (string & {})
 
 export type FloorTable = {
   id: string
-  kind: 'fixed' | 'rect' | 'round'
+  kind: 'fixed' | 'rect' | 'round' | 'sofa' | 'standing'
   x: number
   y: number
   w?: number

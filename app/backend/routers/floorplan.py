@@ -7,6 +7,8 @@ def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumb
     - Fixed tables: 1..N
     - Rect tables: T1..TN
     - Round tables: R1..RN
+    - Sofa: C1..C20
+    - Standing: D1..D20
     Order: top-left counting DOWN first (i.e., column-major: x asc, then y desc).
     Returns (updated_plan, id_to_label).
     """
@@ -15,15 +17,19 @@ def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumb
     fixed = [t for t in tables if (t.get("kind") == "fixed" or t.get("locked") is True)]
     rects = [t for t in tables if (t.get("kind") == "rect" and not t.get("locked"))]
     rounds = [t for t in tables if (t.get("kind") == "round")]
-    # Sort column-major: x asc, then y DESC (start top-left, count DOWN first)
+    sofas = [t for t in tables if (t.get("kind") == "sofa")]
+    standings = [t for t in tables if (t.get("kind") == "standing")]
+    # Sort: bas→haut (y DESC), gauche→droite (x ASC)
     def key_table(t):
         x = float(t.get("x") or 0)
         y = float(t.get("y") or 0)
-        return (x, -y)
+        return (-y, x)  # Tri: y décroissant (bas en premier), puis x croissant
     
     fixed.sort(key=key_table)
     rects.sort(key=key_table)
     rounds.sort(key=key_table)
+    sofas.sort(key=key_table)
+    standings.sort(key=key_table)
     
     id_to_label: Dict[str, str] = {}
     
@@ -47,6 +53,21 @@ def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumb
         id_to_label[str(t.get("id"))] = lbl
         if persist:
             t["label"] = lbl
+    
+    # Assign C1..C20 to sofa (canapé)
+    for i, t in enumerate(sofas[: 20]):
+        lbl = f"C{i + 1}"
+        id_to_label[str(t.get("id"))] = lbl
+        if persist:
+            t["label"] = lbl
+    
+    # Assign D1..D20 to standing (debout)
+    for i, t in enumerate(standings[: 20]):
+        lbl = f"D{i + 1}"
+        id_to_label[str(t.get("id"))] = lbl
+        if persist:
+            t["label"] = lbl
+    
     if persist:
         plan["tables"] = tables
     return plan, id_to_label
@@ -429,14 +450,7 @@ def _capacity_for_table(tbl: Dict[str, Any]) -> int:
     cap = int(tbl.get("capacity") or 0)
     kind = (tbl.get("kind") or "").lower()
     if cap <= 0:
-        # Try to infer from label if numeric (e.g., label "4")
-        try:
-            lbl = str(tbl.get("label") or "").strip()
-            if lbl.isdigit():
-                cap = int(lbl)
-        except Exception:
-            pass
-    if cap <= 0:
+        # fallback defaults
         if kind == "rect":
             cap = 6
         elif kind == "round":
@@ -850,8 +864,22 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             # Create non-fixed tables to cover remaining pax using 6-seat rectangles first
             remaining = int(r.pax)
             created_any = False
-            while remaining > 0 and (existing_rect_count + rect_dynamic_created) < max_rect_dynamic:
-                spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
+            tables_for_group = []
+            max_aligned = min(4, (remaining + 7) // 8)  # Max 4 tables alignées
+            
+            while remaining > 0 and (existing_rect_count + rect_dynamic_created) < max_rect_dynamic and len(tables_for_group) < max_aligned:
+                if len(tables_for_group) == 0:
+                    # Première table: cherche emplacement libre
+                    spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
+                else:
+                    # Tables suivantes: coller à la précédente (à droite)
+                    prev = tables_for_group[-1]
+                    spot = {"x": prev["x"] + 120 + 10, "y": prev["y"], "w": 120, "h": 60}
+                    # Vérifier collision
+                    test_tbl = {"id": "_probe", **spot}
+                    if _table_collides(plan_data, test_tbl, existing_tables=plan_data.get("tables") or []):
+                        spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
+                
                 if not spot:
                     logger.warning("No space found for new rect table (tried dynamic creation)")
                     _dbg_add("WARNING", "No space for new rect table")
@@ -860,13 +888,14 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 cap = 6
                 new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot}
                 (plan_data.setdefault("tables", [])).append(new_tbl)
+                tables_for_group.append(new_tbl)
                 pax_on_table = max(0, min(cap, remaining))
                 assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
                 remaining -= pax_on_table
                 rect_dynamic_created += 1
                 created_any = True
-                print(f"✓ Created rect table {existing_rect_count + rect_dynamic_created}/{max_rect_dynamic}")
-                _dbg_add("INFO", f"✓ Created rect {existing_rect_count + rect_dynamic_created}/{max_rect_dynamic}")
+                print(f"✓ Created rect table {existing_rect_count + rect_dynamic_created}/{max_rect_dynamic} (aligned {len(tables_for_group)}/{max_aligned})")
+                _dbg_add("INFO", f"✓ Created rect {existing_rect_count + rect_dynamic_created}/{max_rect_dynamic} (group {len(tables_for_group)})")
             
             if remaining > 0 and (existing_round_count + round_dynamic_created) < max_round_dynamic:
                 # try to add a 10-seat round if space and stock allows

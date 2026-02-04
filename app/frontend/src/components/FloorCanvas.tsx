@@ -513,7 +513,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       const assigned = assignments?.tables?.[t.id]
       const isLocked = !!t.locked
       const coll = tableCollides(t)
-      let color = t.kind === 'fixed' ? '#2c7' : t.kind === 'rect' ? '#39f' : '#f93'
+      let color = '#2c7'  // fixed default
+      if (t.kind === 'rect') color = '#39f'
+      else if (t.kind === 'round') color = '#f93'
+      else if (t.kind === 'sofa') color = '#9c27b0'  // violet pour canapé
+      else if (t.kind === 'standing') color = '#ff5722'  // orange pour mange-debout
       if (isLocked) color = '#2a5'
       ctx.fillStyle = color
       ctx.strokeStyle = coll ? '#e00' : '#111'
