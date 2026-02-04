@@ -1395,6 +1395,11 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
         for t in tables_after[tables_before_count:]:
             print(f"  - {t.get('id')}: {t.get('kind')} {t.get('capacity', 0)} pax @ ({t.get('x')}, {t.get('y')})")
             _dbg_add("INFO", f"  NEW TABLE: {t.get('id')} {t.get('kind')} {t.get('capacity')}pax @({t.get('x')},{t.get('y')})")
+    
+    # CRITICAL: Force SQLAlchemy to detect JSON dict changes
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(row, "data")
+    flag_modified(row, "assignments")
     session.add(row)
     session.commit()
     session.refresh(row)
