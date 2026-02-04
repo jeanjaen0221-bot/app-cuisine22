@@ -457,6 +457,10 @@ def _capacity_for_table(tbl: Dict[str, Any]) -> int:
             cap = 10
         elif kind == "fixed" or (tbl.get("locked") is True):
             cap = 4
+        elif kind == "sofa":
+            cap = 5
+        elif kind == "standing":
+            cap = 8
         else:
             cap = 2
     return cap
@@ -776,15 +780,6 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if best_sofa:
             pax_on_table = min(_capacity_for_table(best_sofa), int(r.pax))
             assignments_by_table.setdefault(best_sofa.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-            placed = True
-        if placed:
-            continue
-
-        # 3aa) Standing single (8 pax)
-        best_standing = take_table(avail_standings, predicate=lambda t: _capacity_for_table(t) >= r.pax)
-        if best_standing:
-            pax_on_table = min(_capacity_for_table(best_standing), int(r.pax))
-            assignments_by_table.setdefault(best_standing.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
             placed = True
         if placed:
             continue
