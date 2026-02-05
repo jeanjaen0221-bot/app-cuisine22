@@ -1384,6 +1384,77 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
+@router.get("/instances/{instance_id}/compare")
+def compare_instance(instance_id: uuid.UUID, session: Session = Depends(get_session)):
+    """Compare reservations parsed from PDF (stored on instance) with current table assignments.
+    Returns JSON with per-reservation assigned labels and a list of orphan assignments.
+    """
+    row = session.get(FloorPlanInstance, instance_id)
+    if not row:
+        raise HTTPException(404, "Instance not found")
+    # Load reservations from instance
+    try:
+        reservations = _load_reservations(session, row.service_date, row.service_label, instance=row)
+    except Exception as e:
+        logger.error("compare_instance -> failed to load reservations: %s", str(e))
+        reservations = []
+    # Build label map from plan snapshot
+    plan = row.data or {}
+    _plan, id_to_label = _assign_table_numbers(dict(plan), persist=False)
+    tables = {str(t.get("id")): t for t in (plan.get("tables") or [])}
+    # Build mapping res_id -> labels and assigned pax
+    labels_by_res: Dict[str, List[str]] = {}
+    assigned_pax_by_res: Dict[str, int] = {}
+    orphan_assignments: List[Dict[str, Any]] = []
+    tbl_map: Dict[str, Any] = (row.assignments or {}).get("tables", {})
+    known_res_ids = set(str(r.id) for r in reservations)
+    for tid, a in tbl_map.items():
+        rid = str(a.get("res_id"))
+        lbl = id_to_label.get(str(tid)) or str((tables.get(str(tid)) or {}).get("label") or "")
+        if not lbl:
+            # keep empty to signal missing numbering
+            lbl = ""
+        if rid in known_res_ids:
+            labels_by_res.setdefault(rid, []).append(lbl)
+            try:
+                assigned_pax_by_res[rid] = assigned_pax_by_res.get(rid, 0) + int(a.get("pax", 0))
+            except Exception:
+                pass
+        else:
+            orphan_assignments.append({
+                "table_id": str(tid),
+                "label": lbl,
+                "res_id": rid,
+                "name": a.get("name"),
+                "pax": a.get("pax", 0),
+            })
+    # Build per-reservation summary
+    items = []
+    for r in reservations:
+        rid = str(r.id)
+        labs = sorted([x for x in labels_by_res.get(rid, []) if x], key=lambda s: (s.startswith('R'), s))
+        assigned_pax = int(assigned_pax_by_res.get(rid, 0))
+        items.append({
+            "id": rid,
+            "arrival_time": str(getattr(r, "arrival_time", ""))[:5],
+            "pax": int(getattr(r, "pax", 0)),
+            "client_name": getattr(r, "client_name", ""),
+            "labels": labs,
+            "assigned_tables_count": len(labs),
+            "assigned_pax": assigned_pax,
+            "coverage_ok": assigned_pax >= int(getattr(r, "pax", 0)),
+        })
+    return {
+        "reservations": items,
+        "orphan_assignments": orphan_assignments,
+        "counts": {
+            "reservations": len(reservations),
+            "assigned_tables": len(tbl_map),
+            "orphan_assignments": len(orphan_assignments),
+        }
+    }
+
+
 @router.put("/instances/{instance_id}", response_model=FloorPlanInstanceRead)
 def update_instance(instance_id: uuid.UUID, payload: FloorPlanInstanceUpdate, session: Session = Depends(get_session)):
     _dbg_add("INFO", f"PUT /instances/{instance_id}")

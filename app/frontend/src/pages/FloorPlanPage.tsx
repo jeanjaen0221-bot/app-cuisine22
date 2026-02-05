@@ -18,6 +18,8 @@ export default function FloorPlanPage() {
   const [newInstanceLabel, setNewInstanceLabel] = useState('lunch')
   const [uploadingPDF, setUploadingPDF] = useState(false)
   const [viewByInstance, setViewByInstance] = useState<Record<string, { scale: number; offset: { x: number; y: number } }>>({})
+  const [compareResult, setCompareResult] = useState<any | null>(null)
+  const [showCompareModal, setShowCompareModal] = useState(false)
 
   useEffect(() => {
     loadBase()
@@ -43,6 +45,21 @@ export default function FloorPlanPage() {
       setBaseTemplate(data)
     } catch (err) {
       console.error('Failed to load base template:', err)
+    }
+  }
+
+  async function compareWithPDF() {
+    if (!selectedInstance) {
+      alert('Sélectionnez d\'abord une instance')
+      return
+    }
+    try {
+      const res = await api.get(`/api/floorplan/instances/${selectedInstance.id}/compare`)
+      setCompareResult(res.data)
+      setShowCompareModal(true)
+    } catch (err) {
+      console.error('Failed to compare instance:', err)
+      alert('Erreur comparaison')
     }
   }
 
@@ -394,6 +411,82 @@ export default function FloorPlanPage() {
               </div>
             )}
 
+      {/* Modal comparaison */}
+      {showCompareModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCompareModal(false)}>
+          <div className="bg-white rounded-lg p-6 max-w-3xl w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold mb-4">Comparaison placement ↔ PDF</h3>
+            {compareResult ? (
+              <div className="space-y-4 max-h-[70vh] overflow-auto">
+                <div className="text-sm text-gray-700">
+                  <div><b>Réservations</b>: {compareResult.counts?.reservations || 0}</div>
+                  <div><b>Tables assignées</b>: {compareResult.counts?.assigned_tables || 0}</div>
+                  <div><b>Assignations orphelines</b>: {compareResult.counts?.orphan_assignments || 0}</div>
+                </div>
+
+                <div>
+                  <div className="font-semibold mb-2">Réservations problématiques</div>
+                  <table className="table w-full text-sm">
+                    <thead>
+                      <tr>
+                        <th>Heure</th>
+                        <th>Client</th>
+                        <th>Pax</th>
+                        <th>Attribué</th>
+                        <th>Tables</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(compareResult.reservations || []).filter((r:any) => !r.coverage_ok || r.assigned_tables_count === 0).map((r:any) => (
+                        <tr key={r.id} className={!r.coverage_ok ? 'bg-red-50' : 'bg-yellow-50'}>
+                          <td>{r.arrival_time}</td>
+                          <td className="font-medium">{r.client_name}</td>
+                          <td>{r.pax}</td>
+                          <td>{r.assigned_pax}</td>
+                          <td>{r.labels && r.labels.length ? r.labels.join(', ') : <span className="text-gray-500">—</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {compareResult.orphan_assignments && compareResult.orphan_assignments.length > 0 && (
+                  <div>
+                    <div className="font-semibold mb-2">Assignations orphelines (table → res_id inconnu)</div>
+                    <table className="table w-full text-sm">
+                      <thead>
+                        <tr>
+                          <th>Table</th>
+                          <th>res_id</th>
+                          <th>Client</th>
+                          <th>Pax</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {compareResult.orphan_assignments.map((o:any, idx:number) => (
+                          <tr key={idx}>
+                            <td>{o.label || o.table_id}</td>
+                            <td className="text-xs text-gray-600">{o.res_id}</td>
+                            <td>{o.name}</td>
+                            <td>{o.pax}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <button className="btn" onClick={() => setShowCompareModal(false)}>Fermer</button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-gray-600">Aucune donnée</div>
+            )}
+          </div>
+        </div>
+      )}
+
             {editMode === 'instance' && (
               <div className="flex flex-col gap-2 w-full">
                 <div className="flex gap-2">
@@ -435,6 +528,9 @@ export default function FloorPlanPage() {
                     </button>
                     <button className="btn btn-sm" onClick={exportComplete}>
                       <Download className="w-4 h-4" /> Export Complet
+                    </button>
+                    <button className="btn btn-sm" onClick={compareWithPDF}>
+                      🔎 Comparer PDF
                     </button>
                     <button className="btn btn-sm" onClick={numberTables}>
                       🔢 Numéroter
