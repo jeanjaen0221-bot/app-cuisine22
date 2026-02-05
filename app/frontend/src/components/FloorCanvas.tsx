@@ -589,6 +589,27 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         ctx.fillRect(t.x, t.y, w, h)
         ctx.strokeRect(t.x, t.y, w, h)
       }
+      // Indicateur visuel: cadenas pour tables fixes/verrouillées (sans texte)
+      if (t.kind === 'fixed' || isLocked) {
+        const pad = 6 / scale
+        const lx = t.r ? (t.x - (t.r as number) + pad) : (t.x + pad)
+        const ly = t.r ? (t.y - (t.r as number) + pad) : (t.y + pad)
+        const s = 12 / scale
+        ctx.save()
+        // corps du cadenas
+        ctx.fillStyle = 'rgba(255,255,255,0.9)'
+        ctx.strokeStyle = '#0f5132'
+        ctx.lineWidth = 1 / scale
+        ctx.fillRect(lx, ly + s * 0.45, s, s * 0.55)
+        ctx.strokeRect(lx, ly + s * 0.45, s, s * 0.55)
+        // anse
+        ctx.beginPath()
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 1.5 / scale
+        ctx.arc(lx + s / 2, ly + s * 0.5, s * 0.35, Math.PI, 0)
+        ctx.stroke()
+        ctx.restore()
+      }
       const cx = t.r ? t.x : t.x + (t.w || 120) / 2
       const cy = t.r ? t.y : t.y + (t.h || 60) / 2
       let defaultCap = 2
@@ -598,29 +619,45 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       else if (t.kind === 'standing') defaultCap = 8
       else if (t.kind === 'fixed') defaultCap = 4
       const cap = (t.capacity || defaultCap) + ''
-      const lbl = (t.label || '').toString()
+      let lbl = (t.label || '').toString()
+      const k = t.kind as string
+      const validLabel = (
+        (k === 'fixed' && /^\d+$/.test(lbl)) ||
+        (k === 'rect' && /^T\d+$/.test(lbl)) ||
+        (k === 'round' && /^R\d+$/.test(lbl)) ||
+        (k === 'sofa' && /^C\d+$/.test(lbl)) ||
+        (k === 'standing' && /^D\d+$/.test(lbl))
+      )
+      if (!validLabel) lbl = ''
       ctx.textAlign = 'center'
       ctx.fillStyle = '#fff'
       
       if (assigned) {
-        // Afficher 3 lignes: nom, couverts, numéro
-        const lineHeight = 16 / scale
-        // Nom du client (haut)
-        ctx.font = `bold ${12/scale}px sans-serif`
-        ctx.textBaseline = 'bottom'
+        // Afficher 3 lignes: nom, couverts, numéro (numéro ancré en bas intérieur)
+        const pad = 4 / scale
+        const nameSize = 12 / scale
+        const paxSize = 11 / scale
+        const numSize = 13 / scale
+        // Bornes verticales intérieures selon forme
+        const yTopInner = t.r ? (t.y - ((t.r as number) - pad)) : (t.y + pad)
+        const yBottomInner = t.r ? (t.y + ((t.r as number) - pad)) : (t.y + (t.h || 60) - pad)
+
+        // Nom (centre haut léger)
+        ctx.font = `bold ${nameSize}px sans-serif`
+        ctx.textBaseline = 'middle'
         let name = assigned.name
         if (name.length > 15) name = name.substring(0, 13) + '...'
-        ctx.fillText(name, cx, cy - 2)
+        ctx.fillText(name, cx, Math.max(yTopInner + nameSize/2, cy - 6/scale))
 
-        // Couverts (milieu)
-        ctx.font = `${11/scale}px sans-serif`
-        ctx.textBaseline = 'top'
-        ctx.fillText(`${assigned.pax} pax`, cx, cy + 1)
+        // Couverts (centre bas léger)
+        ctx.font = `${paxSize}px sans-serif`
+        ctx.textBaseline = 'middle'
+        ctx.fillText(`${assigned.pax} pax`, cx, Math.min(yBottomInner - numSize - 2/scale, cy + 8/scale))
 
-        // Numéro de table (bas)
-        ctx.font = `bold ${14/scale}px sans-serif`
-        ctx.textBaseline = 'top'
-        ctx.fillText(lbl || cap, cx, cy + lineHeight * 0.9)
+        // Numéro (ancré bas intérieur)
+        ctx.font = `bold ${numSize}px sans-serif`
+        ctx.textBaseline = 'bottom'
+        ctx.fillText(lbl || cap, cx, yBottomInner)
       } else {
         // Pas d'assignation: juste numéro ou capacité
         ctx.textBaseline = 'middle'

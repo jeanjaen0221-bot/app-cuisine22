@@ -141,7 +141,24 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
     for t in tables:
         kind = (t.get("kind") or "rect")
         # Prefer computed numbering over any existing text label
-        lbl = id_to_label.get(str(t.get("id")) or "", "") or t.get("label")
+        raw_lbl = id_to_label.get(str(t.get("id")) or "", "") or t.get("label")
+        lbl = str(raw_lbl or "")
+        # Sanitize labels: only accept expected formats per type
+        try:
+            if kind == "fixed":
+                lbl = lbl if lbl.isdigit() else ""
+            elif kind == "rect":
+                lbl = lbl if isinstance(lbl, str) and lbl.startswith("T") and lbl[1:].isdigit() else ""
+            elif kind == "round":
+                lbl = lbl if isinstance(lbl, str) and lbl.startswith("R") and lbl[1:].isdigit() else ""
+            elif kind == "sofa":
+                lbl = lbl if isinstance(lbl, str) and lbl.startswith("C") and lbl[1:].isdigit() else ""
+            elif kind == "standing":
+                lbl = lbl if isinstance(lbl, str) and lbl.startswith("D") and lbl[1:].isdigit() else ""
+            else:
+                lbl = ""
+        except Exception:
+            lbl = ""
         
         # Couleurs selon le type
         if kind == "fixed":
