@@ -164,13 +164,13 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
             c.circle(tx(x), ty(y), scale * r, stroke=1, fill=1)
             if lbl:
                 c.setFillColor(colors.white)
-                c.setFont("Helvetica-Bold", 8)
+                c.setFont("Helvetica-Bold", 9)
                 c.drawCentredString(tx(x), ty(y) - 3, str(lbl))
             # draw assignment if any
             if assignments and isinstance(assignments.get("tables"), dict):
                 a = assignments["tables"].get(str(t.get("id")))
                 if a:
-                    c.setFont("Helvetica", 7)
+                    c.setFont("Helvetica", 8)
                     c.setFillColor(colors.black)
                     c.drawString(tx(x + r + 4), ty(y) + 2, f"{a.get('name','')} ({a.get('pax',0)})")
         else:
@@ -183,13 +183,13 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
             cy = ty(y + h / 2.0)
             if lbl:
                 c.setFillColor(colors.white)
-                c.setFont("Helvetica-Bold", 8)
+                c.setFont("Helvetica-Bold", 9)
                 c.drawCentredString(cx, cy - 3, str(lbl))
             # draw assignment if any
             if assignments and isinstance(assignments.get("tables"), dict):
                 a = assignments["tables"].get(str(t.get("id")))
                 if a:
-                    c.setFont("Helvetica", 7)
+                    c.setFont("Helvetica", 8)
                     c.setFillColor(colors.black)
                     c.drawString(tx(x + w + 4), ty(y + 10), f"{a.get('name','')} ({a.get('pax',0)})")
 
@@ -278,11 +278,15 @@ def _draw_reservations_page(
 ) -> None:
     page_w, page_h = A4
     margin = 15 * mm
-    c.setFont("Helvetica-Bold", 12)
+    c.setFont("Helvetica-Bold", 13)
     c.drawString(margin, page_h - margin, "Liste du service avec numéros de table")
-    c.setFont("Helvetica", 9)
     y = page_h - margin - 10 * mm
-    line_h = 6 * mm
+    header_h = 7 * mm
+    line_h = 7 * mm
+    c.setFillColor(colors.whitesmoke)
+    c.rect(margin - 2, y - 1.5, page_w - 2 * margin + 4, header_h, stroke=0, fill=1)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 10)
     # Build mapping res_id -> labels list
     lab_by_res: Dict[str, List[str]] = {}
     tbl_map: Dict[str, Any] = (assignments or {}).get("tables", {})
@@ -294,27 +298,48 @@ def _draw_reservations_page(
         lab_by_res.setdefault(res_id, []).append(lbl)
     # Reservations already sorted by _load_reservations (arrival_time asc, created_at asc)
     rows = reservations
-    # Header
-    c.setFont("Helvetica-Bold", 9)
     c.drawString(margin, y, "Heure")
     c.drawString(margin + 25 * mm, y, "Client")
     c.drawString(margin + 110 * mm, y, "Pax")
     c.drawString(margin + 125 * mm, y, "Table(s)")
-    y -= line_h
+    y -= header_h
     c.setFont("Helvetica", 9)
-    for r in rows:
+    col_client_w = (110 * mm) - (25 * mm) - 6
+    col_tables_w = (page_w - margin) - (125 * mm) - 6
+    for i, r in enumerate(rows):
+        # Zebra background for readability
+        if i % 2 == 1:
+            c.setFillColor(colors.Color(0.965, 0.965, 0.965))
+            c.rect(margin - 2, y - (line_h - 3), page_w - 2 * margin + 4, line_h - 2, stroke=0, fill=1)
+            c.setFillColor(colors.black)
         t = getattr(r, "arrival_time", None)
         tstr = str(t)[:5] if t else ""
         c.drawString(margin, y, tstr)
-        c.drawString(margin + 25 * mm, y, (r.client_name or "").upper())
-        c.drawString(margin + 110 * mm, y, str(r.pax or 0))
-        lst = ", ".join(sorted(lab_by_res.get(str(r.id), []), key=lambda s: (s.startswith('R'), s)))
+        client_txt = _fit_text(c, (r.client_name or "").upper(), col_client_w, "Helvetica", 9)
+        c.drawString(margin + 25 * mm, y, client_txt)
+        # Right align Pax just before the Table(s) column
+        c.drawRightString(margin + 122 * mm, y, str(r.pax or 0))
+        lst_raw = ", ".join(sorted(lab_by_res.get(str(r.id), []), key=lambda s: (s.startswith('R'), s)))
+        lst = _fit_text(c, lst_raw, col_tables_w, "Helvetica", 9)
         c.drawString(margin + 125 * mm, y, lst)
+        c.setStrokeColor(colors.lightgrey)
+        c.setLineWidth(0.5)
+        c.line(margin - 2, y - 3, page_w - margin + 2, y - 3)
         y -= line_h
         if y < margin + 2 * line_h:
             c.showPage()
-            c.setFont("Helvetica", 9)
+            # Redraw header on new page
+            c.setFont("Helvetica-Bold", 10)
             y = page_h - margin - 10 * mm
+            c.setFillColor(colors.whitesmoke)
+            c.rect(margin - 2, y - 1.5, page_w - 2 * margin + 4, header_h, stroke=0, fill=1)
+            c.setFillColor(colors.black)
+            c.drawString(margin, y, "Heure")
+            c.drawString(margin + 25 * mm, y, "Client")
+            c.drawString(margin + 110 * mm, y, "Pax")
+            c.drawString(margin + 125 * mm, y, "Table(s)")
+            y -= header_h
+            c.setFont("Helvetica", 9)
 
 import io
 import uuid
@@ -328,6 +353,7 @@ from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
+from reportlab.pdfbase.pdfmetrics import stringWidth
 try:
     from pypdf import PdfReader, PdfWriter, PdfMerger
 except Exception:
@@ -491,6 +517,16 @@ def _capacity_for_table(tbl: Dict[str, Any]) -> int:
         else:
             cap = 2
     return cap
+
+
+def _fit_text(c: pdfcanvas.Canvas, text: str, max_w: float, font_name: str, font_size: float) -> str:
+    s = str(text or "")
+    if stringWidth(s, font_name, font_size) <= max_w:
+        return s
+    ell = "…"
+    while s and stringWidth(s + ell, font_name, font_size) > max_w:
+        s = s[:-1]
+    return s + ell if s else ell
 
 
 def _rect_intersects(a: Dict[str, float], b: Dict[str, float]) -> bool:

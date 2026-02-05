@@ -603,22 +603,24 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       ctx.fillStyle = '#fff'
       
       if (assigned) {
-        // Afficher 3 lignes: numéro, nom, pax
+        // Afficher 3 lignes: nom, couverts, numéro
         const lineHeight = 16 / scale
-        ctx.font = `bold ${14/scale}px sans-serif`
+        // Nom du client (haut)
+        ctx.font = `bold ${12/scale}px sans-serif`
         ctx.textBaseline = 'bottom'
-        ctx.fillText(lbl || cap, cx, cy - lineHeight)
-        
-        ctx.font = `${12/scale}px sans-serif`
-        ctx.textBaseline = 'middle'
-        // Tronquer le nom si trop long
         let name = assigned.name
         if (name.length > 15) name = name.substring(0, 13) + '...'
-        ctx.fillText(name, cx, cy)
-        
+        ctx.fillText(name, cx, cy - 2)
+
+        // Couverts (milieu)
         ctx.font = `${11/scale}px sans-serif`
         ctx.textBaseline = 'top'
-        ctx.fillText(`${assigned.pax} pax`, cx, cy + lineHeight * 0.6)
+        ctx.fillText(`${assigned.pax} pax`, cx, cy + 1)
+
+        // Numéro de table (bas)
+        ctx.font = `bold ${14/scale}px sans-serif`
+        ctx.textBaseline = 'top'
+        ctx.fillText(lbl || cap, cx, cy + lineHeight * 0.9)
       } else {
         // Pas d'assignation: juste numéro ou capacité
         ctx.textBaseline = 'middle'
