@@ -834,7 +834,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             avail_fixed,
             predicate=lambda t: _capacity_for_table(t) >= r.pax,
         )
-        if best_fixed and (fixed_chairs_used + int(r.pax) <= fixed_chair_stock):
+        if best_fixed and int(r.pax) <= 4 and (fixed_chairs_used + int(r.pax) <= fixed_chair_stock):
             pax_on_table = min(_capacity_for_table(best_fixed), int(r.pax))
             assignments_by_table.setdefault(best_fixed.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
             fixed_chairs_used += pax_on_table
