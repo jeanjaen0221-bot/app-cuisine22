@@ -906,10 +906,9 @@ export default function DrinksOrder() {
 
             {!helpOpen && (
               <button
-                className="btn btn-primary"
+                className="btn btn-primary help-fab"
                 aria-label="Afficher l'aide"
                 onClick={() => setHelpOpen(true)}
-                className="btn btn-primary help-fab"
               >
                 <span aria-hidden="true">?</span>
               </button>
