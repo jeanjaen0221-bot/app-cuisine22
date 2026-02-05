@@ -804,6 +804,28 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 
     for r in groups:
         placed = False
+        # EARLY: For large groups (>=13 pax), first try ONE large dynamic rect (no splitting)
+        if int(r.pax) >= 13 and (rect_dynamic_created) < max_rect_dynamic:
+            total = int(r.pax)
+            needed = min(4, math.ceil(total / 6))
+            width = needed * 120 + (needed - 1) * 10
+            cap = 6 * needed
+            if cap >= total:
+                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60)
+                if spot:
+                    new_id = str(uuid.uuid4())
+                    new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
+                    (plan_data.setdefault("tables", [])).append(new_tbl)
+                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": total})
+                    rect_dynamic_created += 1
+                    placed = True
+                    try:
+                        logger.debug("assign dynamic-large-rect (early) -> res=%s pax=%s table=%s cap=%s span=%s", r.id, r.pax, new_id, cap, needed)
+                        _dbg_add("DEBUG", f"assign dynamic-large-rect (early) -> res={r.id} pax={r.pax} table={new_id} span={needed}")
+                    except Exception:
+                        pass
+        if placed:
+            continue
         # 1) Fixed tables by best-fit
         best_fixed = take_table(
             avail_fixed,
@@ -822,29 +844,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if placed:
             continue
 
-        # 2a) For 7-8 pax, prefer TWO-RECT combo (base 6+6=12) over single with extension
-        if int(r.pax) in (7, 8):
-            combo_small = take_best_rect_combo(int(r.pax))
-            if combo_small:
-                remaining = int(r.pax)
-                for t in combo_small:
-                    cap_base = _capacity_for_table(t)  # use base 6/p per rect, no extension here
-                    pax_on_table = max(0, min(cap_base, remaining))
-                    if pax_on_table > 0:
-                        assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-                        remaining -= pax_on_table
-                        avail_rects.pop(t.get("id"), None)
-                if remaining <= 0:
-                    placed = True
-                    try:
-                        logger.debug("assign small rect-pair (no ext) -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in combo_small])
-                        _dbg_add("DEBUG", f"assign small rect-pair (no ext) -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in combo_small]}")
-                    except Exception:
-                        pass
-        if placed:
-            continue
+        # 2a) Removed pair preference for 7-8 pax: keep group together on a single rect (with extension to 8 as last resort)
 
-        # 2) Rect single table (6 or 8 with head) best-fit (extension is last resort)
+        # 2) Rect single table (6 or 8 with head) best-fit (extension is last resort) for up to 8 pax
         def rect_can_fit(t):
             cap = _capacity_for_table(t)
             # Allow +2 head extension up to 8 for a single rectangle
@@ -866,64 +868,31 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if placed:
             continue
 
-        # 2b) For large groups (>=15 pax), prefer creating aligned dynamic rect tables (max 4)
+        # 2b) For groups (>=9 pax), create ONE large dynamic rect table (max span of 4 widths)
         # to avoid scattering across distant tables.
-        if int(r.pax) >= 15 and (existing_rect_count + rect_dynamic_created) < max_rect_dynamic:
-            remaining = int(r.pax)
-            created_any = False
-            tables_for_group = []
-            # compute number of rects needed based on base capacity 6 per table
-            max_aligned = min(4, math.ceil(remaining / 6))
-            while remaining > 0 and (existing_rect_count + rect_dynamic_created) < max_rect_dynamic and len(tables_for_group) < max_aligned:
-                if len(tables_for_group) == 0:
-                    spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
-                else:
-                    prev = tables_for_group[-1]
-                    spot = {"x": prev["x"] + 120 + 10, "y": prev["y"], "w": 120, "h": 60}
-                    test_tbl = {"id": "_probe", **spot}
-                    if _table_collides(plan_data, test_tbl, existing_tables=plan_data.get("tables") or []):
-                        spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
-                if not spot:
-                    break
-                new_id = str(uuid.uuid4())
-                cap = 6
-                new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True}
-                (plan_data.setdefault("tables", [])).append(new_tbl)
-                tables_for_group.append(new_tbl)
-                pax_on_table = max(0, min(cap, remaining))
-                assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-                remaining -= pax_on_table
-                rect_dynamic_created += 1
-                created_any = True
-            if remaining <= 0 and created_any:
-                placed = True
-                try:
-                    logger.debug("assign dynamic-aligned rects -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in tables_for_group])
-                    _dbg_add("DEBUG", f"assign dynamic-aligned -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in tables_for_group]}")
-                except Exception:
-                    pass
+        if int(r.pax) >= 9 and (rect_dynamic_created) < max_rect_dynamic:
+            total = int(r.pax)
+            needed = min(4, math.ceil(total / 6))
+            width = needed * 120 + (needed - 1) * 10
+            cap = 6 * needed
+            if cap >= total:
+                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60)
+                if spot:
+                    new_id = str(uuid.uuid4())
+                    new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
+                    (plan_data.setdefault("tables", [])).append(new_tbl)
+                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": total})
+                    rect_dynamic_created += 1
+                    placed = True
+                    try:
+                        logger.debug("assign dynamic-large-rect -> res=%s pax=%s table=%s cap=%s span=%s", r.id, r.pax, new_id, cap, needed)
+                        _dbg_add("DEBUG", f"assign dynamic-large-rect -> res={r.id} pax={r.pax} table={new_id} span={needed}")
+                    except Exception:
+                        pass
         if placed:
             continue
 
-        # 3) Rect combo (two tables)
-        combo = take_best_rect_combo(r.pax)
-        if combo:
-            remaining = int(r.pax)
-            for t in combo:
-                cap_ext = min(8, _capacity_for_table(t) + 2)
-                pax_on_table = max(0, min(cap_ext, remaining))
-                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-                remaining -= pax_on_table
-                avail_rects.pop(t.get("id"), None)
-            placed = True
-            try:
-                logger.debug("assign rect-pair -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in combo])
-                _dbg_add("DEBUG", f"assign rect-pair -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in combo]}")
-            except Exception as e:
-                logger.warning("assign rect-pair -> log failed: %s", str(e))
-                pass
-        if placed:
-            continue
+        # 3) Rect combo (two tables) disabled to avoid splitting groups across separate existing tables
 
         # 3a) Sofa single (5 pax)
         best_sofa = take_table(avail_sofas, predicate=lambda t: _capacity_for_table(t) >= r.pax)
@@ -943,82 +912,11 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if placed:
             continue
 
-        # 3b) Pack multiple fixed tables if needed (agençables pour grands groupes 28 pax)
-        # Respect cap: do not attempt fixed-pack if group exceeds 28 pax
-        chosen = None
-        if int(r.pax) <= 28:
-            chosen = pack_from_pool(avail_fixed, int(r.pax), allow_rect_ext=False)
-        if chosen:
-            remaining = int(r.pax)
-            for t in chosen:
-                pax_on_table = max(0, min(_capacity_for_table(t), remaining))
-                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-                remaining -= pax_on_table
-                avail_fixed.pop(t.get("id"), None)
-            # Only mark as placed if ALL pax are covered
-            if remaining <= 0:
-                placed = True
-            else:
-                logger.warning("fixed-pack insufficient: res=%s needs %d more pax", r.id, remaining)
-                _dbg_add("WARNING", f"fixed-pack insufficient for {r.client_name}: {remaining} pax remaining")
-            try:
-                logger.debug("assign fixed-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
-                _dbg_add("DEBUG", f"assign fixed-pack -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in chosen]}")
-            except Exception:
-                pass
-        if placed:
-            continue
+        # 3b) Pack multiple fixed tables disabled (never split groups across distant fixed tables)
 
-        # 3c) Pack multiple rect tables if needed
-        # Try WITHOUT extension first (prefer base 6/p table), fallback WITH extension only if needed
-        chosen = pack_from_pool(avail_rects, int(r.pax), allow_rect_ext=False)
-        if not chosen:
-            chosen = pack_from_pool(avail_rects, int(r.pax), allow_rect_ext=True)
-        if chosen:
-            remaining = int(r.pax)
-            for t in chosen:
-                # Allow +2 extension per rect up to 8
-                cap_ext = min(8, _capacity_for_table(t) + 2)
-                pax_on_table = max(0, min(cap_ext, remaining))
-                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-                remaining -= pax_on_table
-                avail_rects.pop(t.get("id"), None)
-            # Only mark as placed if ALL pax are covered
-            if remaining <= 0:
-                placed = True
-            else:
-                logger.warning("rect-pack insufficient: res=%s needs %d more pax", r.id, remaining)
-                _dbg_add("WARNING", f"rect-pack insufficient for {r.client_name}: {remaining} pax remaining")
-            try:
-                logger.debug("assign rect-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
-                _dbg_add("DEBUG", f"assign rect-pack -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in chosen]}")
-            except Exception:
-                pass
-        if placed:
-            continue
+        # 3c) Pack multiple rect tables disabled (prefer aligned dynamic cluster)
 
-        # 3d) Pack multiple round tables if needed (dernier recours)
-        chosen = pack_from_pool(avail_rounds, int(r.pax), allow_rect_ext=False)
-        if chosen:
-            remaining = int(r.pax)
-            for t in chosen:
-                pax_on_table = max(0, min(_capacity_for_table(t), remaining))
-                assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-                remaining -= pax_on_table
-                avail_rounds.pop(t.get("id"), None)
-            # Only mark as placed if ALL pax are covered
-            if remaining <= 0:
-                placed = True
-            else:
-                logger.warning("round-pack insufficient: res=%s needs %d more pax", r.id, remaining)
-                _dbg_add("WARNING", f"round-pack insufficient for {r.client_name}: {remaining} pax remaining")
-            try:
-                logger.debug("assign round-pack -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in chosen])
-                _dbg_add("DEBUG", f"assign round-pack -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in chosen]}")
-            except Exception:
-                pass
-        if placed:
-            continue
+        # 3d) Pack multiple round tables disabled (avoid splitting groups)
 
         # 4) Round table single (dernier recours)
         best_round = take_table(
@@ -1036,75 +934,59 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 logger.warning("assign round -> log failed: %s", str(e))
                 pass
 
-        # 5) Create and place a new non-fixed table if still not placed
+        # 5) Create and place a new non-fixed table if still not placed (single large rect first)
         if not placed:
             unplaced_count += 1
             print(f"CREATING DYNAMIC TABLES for res={r.id} ({r.client_name}, {r.pax} pax) - no existing table available")
             _dbg_add("INFO", f"CREATING DYNAMIC TABLES for {r.client_name} ({r.pax} pax) - stock: rect {max_rect_dynamic-rect_dynamic_created}/{max_rect_dynamic}, round {max_round_dynamic-round_dynamic_created}/{max_round_dynamic}")
-            # Create non-fixed tables to cover remaining pax using 6-seat rectangles first
             remaining = int(r.pax)
             created_any = False
-            tables_for_group = []
-            max_aligned = min(4, (remaining + 7) // 8)  # Max 4 tables alignées
-            
-            while remaining > 0 and (existing_rect_count + rect_dynamic_created) < max_rect_dynamic and len(tables_for_group) < max_aligned:
-                if len(tables_for_group) == 0:
-                    # Première table: cherche emplacement libre
-                    spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
-                else:
-                    # Tables suivantes: coller à la précédente (à droite)
-                    prev = tables_for_group[-1]
-                    spot = {"x": prev["x"] + 120 + 10, "y": prev["y"], "w": 120, "h": 60}
-                    # Vérifier collision
-                    test_tbl = {"id": "_probe", **spot}
-                    if _table_collides(plan_data, test_tbl, existing_tables=plan_data.get("tables") or []):
-                        spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
-                
-                if not spot:
-                    logger.warning("No space found for new rect table (tried dynamic creation)")
-                    _dbg_add("WARNING", "No space for new rect table")
-                    break
-                new_id = str(uuid.uuid4())
-                cap = 6
-                new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True}
-                (plan_data.setdefault("tables", [])).append(new_tbl)
-                tables_for_group.append(new_tbl)
-                pax_on_table = max(0, min(cap, remaining))
-                assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-                remaining -= pax_on_table
-                rect_dynamic_created += 1
-                created_any = True
-                print(f"✓ Created rect table {existing_rect_count + rect_dynamic_created}/{max_rect_dynamic} (aligned {len(tables_for_group)}/{max_aligned})")
-                _dbg_add("INFO", f"✓ Created rect {existing_rect_count + rect_dynamic_created}/{max_rect_dynamic} (group {len(tables_for_group)})")
-            
-            if remaining > 0 and (existing_round_count + round_dynamic_created) < max_round_dynamic:
-                # try to add a 10-seat round if space and stock allows
+            # Try one big rect first (span up to 4 widths)
+            needed = min(4, math.ceil(remaining / 6))
+            width = needed * 120 + (needed - 1) * 10
+            cap = 6 * needed
+            if cap >= remaining:
+                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60)
+                if spot and (rect_dynamic_created) < max_rect_dynamic:
+                    new_id = str(uuid.uuid4())
+                    new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
+                    (plan_data.setdefault("tables", [])).append(new_tbl)
+                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": remaining})
+                    remaining = 0
+                    rect_dynamic_created += 1
+                    created_any = True
+                    print(f"✓ Created large rect table {rect_dynamic_created}/{max_rect_dynamic} (span {needed})")
+                    _dbg_add("INFO", f"✓ Created large rect {rect_dynamic_created}/{max_rect_dynamic} span={needed}")
+            # If still remaining, try a single round 10 (still not split)
+            if remaining > 0 and (round_dynamic_created) < max_round_dynamic:
                 spot = _find_spot_for_table(plan_data, "round", r=50)
                 if spot:
                     new_id = str(uuid.uuid4())
                     cap = 10
                     new_tbl = {"id": new_id, "kind": "round", "capacity": cap, **spot, "dynamic": True}
-                    (plan_data.setdefault("tables", [])).append(new_tbl)
-                    pax_on_table = max(0, min(cap, remaining))
-                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-                    remaining -= pax_on_table
-                    round_dynamic_created += 1
-                    created_any = True
-                    print(f"✓ Created round table {existing_round_count + round_dynamic_created}/{max_round_dynamic}")
-                    _dbg_add("INFO", f"✓ Created round {existing_round_count + round_dynamic_created}/{max_round_dynamic}")
+                    if cap >= remaining:
+                        (plan_data.setdefault("tables", [])).append(new_tbl)
+                        assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": remaining})
+                        remaining = 0
+                        round_dynamic_created += 1
+                        created_any = True
+                        print(f"✓ Created round table {round_dynamic_created}/{max_round_dynamic}")
+                        _dbg_add("INFO", f"✓ Created round {round_dynamic_created}/{max_round_dynamic}")
+                    else:
+                        logger.warning("Round 10 insufficient for %s (%d pax)", r.client_name, int(r.pax))
+                        _dbg_add("WARNING", f"Round 10 insufficient for {r.client_name} ({int(r.pax)} pax)")
                 else:
                     logger.warning("No space found for new round table")
                     _dbg_add("WARNING", "No space for new round table")
-            
             if remaining <= 0 and created_any:
                 placed = True
             elif remaining > 0:
-                if (existing_rect_count + rect_dynamic_created) >= max_rect_dynamic:
-                    logger.warning("⚠️ STOCK LIMIT REACHED: rect tables %d/%d", existing_rect_count + rect_dynamic_created, max_rect_dynamic)
-                    _dbg_add("WARNING", f"STOCK LIMIT: rect {existing_rect_count + rect_dynamic_created}/{max_rect_dynamic}")
-                if (existing_round_count + round_dynamic_created) >= max_round_dynamic:
-                    logger.warning("⚠️ STOCK LIMIT REACHED: round tables %d/%d", existing_round_count + round_dynamic_created, max_round_dynamic)
-                    _dbg_add("WARNING", f"STOCK LIMIT: round {existing_round_count + round_dynamic_created}/{max_round_dynamic}")
+                if (rect_dynamic_created) >= max_rect_dynamic:
+                    logger.warning("⚠️ STOCK LIMIT REACHED: rect tables %d/%d (dynamic created)", rect_dynamic_created, max_rect_dynamic)
+                    _dbg_add("WARNING", f"STOCK LIMIT: rect {rect_dynamic_created}/{max_rect_dynamic}")
+                if (round_dynamic_created) >= max_round_dynamic:
+                    logger.warning("⚠️ STOCK LIMIT REACHED: round tables %d/%d (dynamic created)", round_dynamic_created, max_round_dynamic)
+                    _dbg_add("WARNING", f"STOCK LIMIT: round {round_dynamic_created}/{max_round_dynamic}")
 
         # If not placed, leave unassigned; frontend will show conflict
         if not placed:
