@@ -755,6 +755,33 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 
     assignments_by_table: Dict[str, Dict[str, Any]] = {}
     unplaced_count = 0  # Compter les réservations non placées
+    fixed_chairs_used = 0
+
+    # Pre-pass: fill fixed zone with all 1–4 pax groups first, up to fixed_chair_stock
+    placed_small_ids = set()
+    small_groups = sorted([r for r in groups if int(r.pax) <= 4], key=lambda r: int(r.pax))
+    while small_groups and avail_fixed and (fixed_chairs_used < fixed_chair_stock):
+        chairs_rem = fixed_chair_stock - fixed_chairs_used
+        # pick the smallest group that fits remaining chairs
+        if int(small_groups[0].pax) > chairs_rem:
+            break
+        r = small_groups.pop(0)
+        # choose the smallest fixed table that fits
+        cand_fixed = [t for t in avail_fixed.values() if _capacity_for_table(t) >= r.pax and t.get("id") not in assignments_by_table]
+        if not cand_fixed:
+            break
+        cand_fixed.sort(key=lambda t: _capacity_for_table(t))
+        best_fixed = cand_fixed[0]
+        avail_fixed.pop(best_fixed.get("id"), None)
+        pax_on_table = min(_capacity_for_table(best_fixed), int(r.pax))
+        assignments_by_table.setdefault(best_fixed.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+        fixed_chairs_used += pax_on_table
+        placed_small_ids.add(str(r.id))
+        try:
+            logger.debug("prepass fixed -> res=%s pax=%s table=%s cap=%s used=%s/%s", r.id, r.pax, best_fixed.get("id"), _capacity_for_table(best_fixed), fixed_chairs_used, fixed_chair_stock)
+            _dbg_add("DEBUG", f"prepass fixed -> res={r.id} pax={r.pax} table={best_fixed.get('id')} used={fixed_chairs_used}/{fixed_chair_stock}")
+        except Exception:
+            pass
 
     def take_table(pool: Dict[str, Dict[str, Any]], predicate=None) -> Optional[Dict[str, Any]]:
         items = list(pool.values())
@@ -833,8 +860,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             return chosen
         return None
 
-    fixed_chairs_used = 0
     for r in groups:
+        if str(r.id) in placed_small_ids:
+            continue
         placed = False
         # EARLY: For large groups (>=13 pax), first try ONE large dynamic rect (no splitting)
         if int(r.pax) >= 13 and (rect_dynamic_created) < max_rect_dynamic:
@@ -880,24 +908,30 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         # 2a) Removed pair preference for 7-8 pax: keep group together on a single rect (with extension to 8 as last resort)
 
         # 2) Rect single table (6 or 8 with head) best-fit (extension is last resort) for up to 8 pax
-        def rect_can_fit(t):
-            cap = _capacity_for_table(t)
-            # Allow +2 head extension up to 8 for a single rectangle
-            cap_ext = min(8, cap + 2)
-            return cap_ext >= r.pax
+        # For groups <=4, only consider rects if fixed stock is exhausted or no fixed tables remain
+        rect_allowed = True
+        if int(r.pax) <= 4:
+            rect_allowed = (fixed_chairs_used + int(r.pax) > fixed_chair_stock) or (len(avail_fixed) == 0)
 
-        best_rect = take_table(avail_rects, predicate=rect_can_fit)
-        if best_rect:
-            # seat up to extended capacity for a single rectangle
-            pax_on_table = min(int(r.pax), min(8, _capacity_for_table(best_rect) + 2))
-            assignments_by_table.setdefault(best_rect.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-            placed = True
-            try:
-                logger.debug("assign rect -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_rect.get("id"), _capacity_for_table(best_rect))
-                _dbg_add("DEBUG", f"assign rect -> res={r.id} pax={r.pax} table={best_rect.get('id')}")
-            except Exception as e:
-                logger.warning("assign rect -> log failed: %s", str(e))
-                pass
+        if rect_allowed:
+            def rect_can_fit(t):
+                cap = _capacity_for_table(t)
+                # Allow +2 head extension up to 8 for a single rectangle
+                cap_ext = min(8, cap + 2)
+                return cap_ext >= r.pax
+
+            best_rect = take_table(avail_rects, predicate=rect_can_fit)
+            if best_rect:
+                # seat up to extended capacity for a single rectangle
+                pax_on_table = min(int(r.pax), min(8, _capacity_for_table(best_rect) + 2))
+                assignments_by_table.setdefault(best_rect.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                placed = True
+                try:
+                    logger.debug("assign rect -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_rect.get("id"), _capacity_for_table(best_rect))
+                    _dbg_add("DEBUG", f"assign rect -> res={r.id} pax={r.pax} table={best_rect.get('id')}")
+                except Exception as e:
+                    logger.warning("assign rect -> log failed: %s", str(e))
+                    pass
         if placed:
             continue
 
@@ -928,11 +962,15 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         # 3) Rect combo (two tables) disabled to avoid splitting groups across separate existing tables
 
         # 3aa) Standing single (8 pax)
-        best_standing = take_table(avail_standings, predicate=lambda t: _capacity_for_table(t) >= r.pax)
-        if best_standing:
-            pax_on_table = min(_capacity_for_table(best_standing), int(r.pax))
-            assignments_by_table.setdefault(best_standing.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-            placed = True
+        standing_allowed = True
+        if int(r.pax) <= 4:
+            standing_allowed = (fixed_chairs_used + int(r.pax) > fixed_chair_stock) or (len(avail_fixed) == 0)
+        if standing_allowed:
+            best_standing = take_table(avail_standings, predicate=lambda t: _capacity_for_table(t) >= r.pax)
+            if best_standing:
+                pax_on_table = min(_capacity_for_table(best_standing), int(r.pax))
+                assignments_by_table.setdefault(best_standing.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                placed = True
         if placed:
             continue
 
@@ -942,35 +980,43 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 
         # 3d) Pack multiple round tables disabled (avoid splitting groups)
 
-        # 4) Round table single (dernier recours)
-        best_round = take_table(
-            avail_rounds,
-            predicate=lambda t: _capacity_for_table(t) >= r.pax,
-        )
-        if best_round:
-            pax_on_table = min(_capacity_for_table(best_round), int(r.pax))
-            assignments_by_table.setdefault(best_round.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "last_resort": True})
-            placed = True
-            try:
-                logger.debug("assign round -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_round.get("id"), _capacity_for_table(best_round))
-                _dbg_add("DEBUG", f"assign round (last resort) -> res={r.id} pax={r.pax} table={best_round.get('id')}")
-            except Exception as e:
-                logger.warning("assign round -> log failed: %s", str(e))
-                pass
-
-        # 4b) Sofa single (dernier recours aussi)
-        if not placed:
-            best_sofa = take_table(avail_sofas, predicate=lambda t: _capacity_for_table(t) >= r.pax)
-            if best_sofa:
-                pax_on_table = min(_capacity_for_table(best_sofa), int(r.pax))
-                assignments_by_table.setdefault(best_sofa.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "last_resort": True})
+        # 4) Round table single (dernier recours) — for <=4 pax, only if fixed stock is exhausted or no fixed tables left
+        round_allowed = True
+        if int(r.pax) <= 4:
+            round_allowed = (fixed_chairs_used + int(r.pax) > fixed_chair_stock) or (len(avail_fixed) == 0)
+        if round_allowed:
+            best_round = take_table(
+                avail_rounds,
+                predicate=lambda t: _capacity_for_table(t) >= r.pax,
+            )
+            if best_round:
+                pax_on_table = min(_capacity_for_table(best_round), int(r.pax))
+                assignments_by_table.setdefault(best_round.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "last_resort": True})
                 placed = True
                 try:
-                    logger.debug("assign sofa -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_sofa.get("id"), _capacity_for_table(best_sofa))
-                    _dbg_add("DEBUG", f"assign sofa (last resort) -> res={r.id} pax={r.pax} table={best_sofa.get('id')}")
+                    logger.debug("assign round -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_round.get("id"), _capacity_for_table(best_round))
+                    _dbg_add("DEBUG", f"assign round (last resort) -> res={r.id} pax={r.pax} table={best_round.get('id')}")
                 except Exception as e:
-                    logger.warning("assign sofa -> log failed: %s", str(e))
+                    logger.warning("assign round -> log failed: %s", str(e))
                     pass
+
+        # 4b) Sofa single (dernier recours aussi) — for <=4 pax, only if fixed stock is exhausted or no fixed tables left
+        if not placed:
+            sofa_allowed = True
+            if int(r.pax) <= 4:
+                sofa_allowed = (fixed_chairs_used + int(r.pax) > fixed_chair_stock) or (len(avail_fixed) == 0)
+            if sofa_allowed:
+                best_sofa = take_table(avail_sofas, predicate=lambda t: _capacity_for_table(t) >= r.pax)
+                if best_sofa:
+                    pax_on_table = min(_capacity_for_table(best_sofa), int(r.pax))
+                    assignments_by_table.setdefault(best_sofa.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "last_resort": True})
+                    placed = True
+                    try:
+                        logger.debug("assign sofa -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_sofa.get("id"), _capacity_for_table(best_sofa))
+                        _dbg_add("DEBUG", f"assign sofa (last resort) -> res={r.id} pax={r.pax} table={best_sofa.get('id')}")
+                    except Exception as e:
+                        logger.warning("assign sofa -> log failed: %s", str(e))
+                        pass
 
         # 5) Create and place a new non-fixed table if still not placed (single large rect first)
         if not placed:
