@@ -890,7 +890,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             width = needed * 120 + (needed - 1) * 10
             cap = 6 * needed
             if cap >= total:
-                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True)
+                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_right=True)
                 if spot:
                     new_id = str(uuid.uuid4())
                     new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
@@ -935,6 +935,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if rect_allowed:
             def rect_can_fit(t):
                 cap = _capacity_for_table(t)
+                # For small groups (<=8), avoid oversized rects (e.g., 12)
+                if int(r.pax) <= 8 and cap > 8:
+                    return False
                 # Allow +2 head extension up to 8 for a single rectangle
                 cap_ext = min(8, cap + 2)
                 return cap_ext >= r.pax
@@ -962,7 +965,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             width = needed * 120 + (needed - 1) * 10
             cap = 6 * needed
             if cap >= total:
-                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True)
+                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_right=True)
                 if spot:
                     new_id = str(uuid.uuid4())
                     new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
@@ -1044,22 +1047,38 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             _dbg_add("INFO", f"CREATING DYNAMIC TABLES for {r.client_name} ({r.pax} pax) - stock: rect {max_rect_dynamic-rect_dynamic_created}/{max_rect_dynamic}, round {max_round_dynamic-round_dynamic_created}/{max_round_dynamic}")
             remaining = int(r.pax)
             created_any = False
-            # Try one big rect first (span up to 4 widths)
-            needed = min(4, math.ceil(remaining / 6))
-            width = needed * 120 + (needed - 1) * 10
-            cap = 6 * needed
-            if cap >= remaining:
-                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True)
-                if spot and (rect_dynamic_created) < max_rect_dynamic:
+            # Prefer one single 6+head rect (cap 8) for small groups (<=8); else create big rect cluster (span up to 4)
+            if remaining <= 8:
+                width = 120
+                cap = 8  # 6 + head
+                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_right=False)
+                if spot and (rect_dynamic_created) < max_rect_dynamic and cap >= remaining:
                     new_id = str(uuid.uuid4())
-                    new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
+                    new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": 1}
                     (plan_data.setdefault("tables", [])).append(new_tbl)
                     assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": remaining})
                     remaining = 0
                     rect_dynamic_created += 1
                     created_any = True
-                    print(f"✓ Created large rect table {rect_dynamic_created}/{max_rect_dynamic} (span {needed})")
-                    _dbg_add("INFO", f"✓ Created large rect {rect_dynamic_created}/{max_rect_dynamic} span={needed}")
+                    print(f"✓ Created single rect (8 cap) {rect_dynamic_created}/{max_rect_dynamic}")
+                    _dbg_add("INFO", f"✓ Created single rect (cap 8) {rect_dynamic_created}/{max_rect_dynamic}")
+            else:
+                # Try one big rect first (span up to 4 widths)
+                needed = min(4, math.ceil(remaining / 6))
+                width = needed * 120 + (needed - 1) * 10
+                cap = 6 * needed
+                if cap >= remaining:
+                    spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_right=True)
+                    if spot and (rect_dynamic_created) < max_rect_dynamic:
+                        new_id = str(uuid.uuid4())
+                        new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
+                        (plan_data.setdefault("tables", [])).append(new_tbl)
+                        assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": remaining})
+                        remaining = 0
+                        rect_dynamic_created += 1
+                        created_any = True
+                        print(f"✓ Created large rect table {rect_dynamic_created}/{max_rect_dynamic} (span {needed})")
+                        _dbg_add("INFO", f"✓ Created large rect {rect_dynamic_created}/{max_rect_dynamic} span={needed}")
             # If still remaining, try a single round 10 (still not split)
             if remaining > 0 and (round_dynamic_created) < max_round_dynamic:
                 spot = _find_spot_for_table(plan_data, "round", r=50)
