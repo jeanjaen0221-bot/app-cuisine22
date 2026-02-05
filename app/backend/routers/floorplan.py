@@ -361,6 +361,7 @@ def _draw_reservations_page(
 import io
 import uuid
 from datetime import date, time as dtime
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Response
@@ -739,36 +740,42 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         return chosen
 
     def take_best_rect_combo(pax: int) -> Optional[List[Dict[str, Any]]]:
-        # Try 2-rect combo first for pax > 6
-        # CRITICAL: Filter out already assigned tables
+        """Pick best pair of existing rect tables.
+        Preference: use base capacity (6 + 6 = 12). Only allow limited extension to reach up to 14 if necessary.
+        Do NOT target 16 by default to avoid over-extending; larger groups should use aligned dynamic tables.
+        """
         available_ids = [id for id in avail_rects.keys() if id not in assignments_by_table]
         if len(available_ids) < 2:
             return None
         ids = available_ids
-        best: Optional[List[Dict[str, Any]]] = None
-        best_cap = 10**9
-        # capacities: rect can be 6 or 8 with extension; allow extension opportunistically
-        rect_caps = {}
-        for i in ids:
-            t = avail_rects[i]
-            rect_caps[i] = max(6, int(t.get("capacity") or 6))
-        # Try pairs
+        best_pair: Optional[List[Dict[str, Any]]] = None
+        best_score = (10**9, 10**9)  # (total_cap, total_extension)
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):
                 a = avail_rects[ids[i]]
                 b = avail_rects[ids[j]]
-                cap_a = max(6, int(a.get("capacity") or 6))
-                cap_b = max(6, int(b.get("capacity") or 6))
-                base_cap = cap_a + cap_b
-                # Allow +2 head extension on each table up to 8
-                # Allow +2 head extension on each table up to 8
-                cap_a_ext = min(8, cap_a + 2)
-                cap_b_ext = min(8, cap_b + 2)
-                cap_pair = max(base_cap, cap_a_ext + cap_b_ext)
-                if cap_pair >= pax and cap_pair < best_cap:
-                    best = [a, b]
-                    best_cap = cap_pair
-        return best
+                base_a = max(6, int(a.get("capacity") or 6))
+                base_b = max(6, int(b.get("capacity") or 6))
+                base_sum = base_a + base_b
+                if base_sum >= pax:
+                    # Prefer minimal total capacity (avoid waste), zero extension
+                    score = (base_sum, 0)
+                    if score < best_score:
+                        best_score = score
+                        best_pair = [a, b]
+                    continue
+                # Allow limited extension ONLY up to 14 total
+                if pax <= 14:
+                    # Minimal extension needed but cap at 14
+                    need = pax - base_sum
+                    if need <= 4:
+                        total_cap = min(14, base_sum + need)
+                        # Prefer less extension, then less total_cap
+                        score = (total_cap, need)
+                        if total_cap >= pax and score < best_score:
+                            best_score = score
+                            best_pair = [a, b]
+        return best_pair
 
     def pack_from_pool(pool: Dict[str, Dict[str, Any]], target: int, allow_rect_ext: bool = False) -> Optional[List[Dict[str, Any]]]:
         items = list(pool.values())
@@ -815,7 +822,29 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if placed:
             continue
 
-        # 2) Rect single table (6 or 8 with head) best-fit
+        # 2a) For 7-8 pax, prefer TWO-RECT combo (base 6+6=12) over single with extension
+        if int(r.pax) in (7, 8):
+            combo_small = take_best_rect_combo(int(r.pax))
+            if combo_small:
+                remaining = int(r.pax)
+                for t in combo_small:
+                    cap_base = _capacity_for_table(t)  # use base 6/p per rect, no extension here
+                    pax_on_table = max(0, min(cap_base, remaining))
+                    if pax_on_table > 0:
+                        assignments_by_table.setdefault(t.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                        remaining -= pax_on_table
+                        avail_rects.pop(t.get("id"), None)
+                if remaining <= 0:
+                    placed = True
+                    try:
+                        logger.debug("assign small rect-pair (no ext) -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in combo_small])
+                        _dbg_add("DEBUG", f"assign small rect-pair (no ext) -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in combo_small]}")
+                    except Exception:
+                        pass
+        if placed:
+            continue
+
+        # 2) Rect single table (6 or 8 with head) best-fit (extension is last resort)
         def rect_can_fit(t):
             cap = _capacity_for_table(t)
             # Allow +2 head extension up to 8 for a single rectangle
@@ -834,6 +863,45 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             except Exception as e:
                 logger.warning("assign rect -> log failed: %s", str(e))
                 pass
+        if placed:
+            continue
+
+        # 2b) For large groups (>=15 pax), prefer creating aligned dynamic rect tables (max 4)
+        # to avoid scattering across distant tables.
+        if int(r.pax) >= 15 and (existing_rect_count + rect_dynamic_created) < max_rect_dynamic:
+            remaining = int(r.pax)
+            created_any = False
+            tables_for_group = []
+            # compute number of rects needed based on base capacity 6 per table
+            max_aligned = min(4, math.ceil(remaining / 6))
+            while remaining > 0 and (existing_rect_count + rect_dynamic_created) < max_rect_dynamic and len(tables_for_group) < max_aligned:
+                if len(tables_for_group) == 0:
+                    spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
+                else:
+                    prev = tables_for_group[-1]
+                    spot = {"x": prev["x"] + 120 + 10, "y": prev["y"], "w": 120, "h": 60}
+                    test_tbl = {"id": "_probe", **spot}
+                    if _table_collides(plan_data, test_tbl, existing_tables=plan_data.get("tables") or []):
+                        spot = _find_spot_for_table(plan_data, "rect", w=120, h=60)
+                if not spot:
+                    break
+                new_id = str(uuid.uuid4())
+                cap = 6
+                new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True}
+                (plan_data.setdefault("tables", [])).append(new_tbl)
+                tables_for_group.append(new_tbl)
+                pax_on_table = max(0, min(cap, remaining))
+                assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                remaining -= pax_on_table
+                rect_dynamic_created += 1
+                created_any = True
+            if remaining <= 0 and created_any:
+                placed = True
+                try:
+                    logger.debug("assign dynamic-aligned rects -> res=%s pax=%s tables=%s", r.id, r.pax, [tt.get("id") for tt in tables_for_group])
+                    _dbg_add("DEBUG", f"assign dynamic-aligned -> res={r.id} pax={r.pax} tables={[tt.get('id') for tt in tables_for_group]}")
+                except Exception:
+                    pass
         if placed:
             continue
 
@@ -876,7 +944,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             continue
 
         # 3b) Pack multiple fixed tables if needed (agençables pour grands groupes 28 pax)
-        chosen = pack_from_pool(avail_fixed, int(r.pax), allow_rect_ext=False)
+        # Respect cap: do not attempt fixed-pack if group exceeds 28 pax
+        chosen = None
+        if int(r.pax) <= 28:
+            chosen = pack_from_pool(avail_fixed, int(r.pax), allow_rect_ext=False)
         if chosen:
             remaining = int(r.pax)
             for t in chosen:
@@ -898,8 +969,11 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if placed:
             continue
 
-        # 3c) Pack multiple rect tables if needed (with extension +2 max 8)
-        chosen = pack_from_pool(avail_rects, int(r.pax), allow_rect_ext=True)
+        # 3c) Pack multiple rect tables if needed
+        # Try WITHOUT extension first (prefer base 6/p table), fallback WITH extension only if needed
+        chosen = pack_from_pool(avail_rects, int(r.pax), allow_rect_ext=False)
+        if not chosen:
+            chosen = pack_from_pool(avail_rects, int(r.pax), allow_rect_ext=True)
         if chosen:
             remaining = int(r.pax)
             for t in chosen:
