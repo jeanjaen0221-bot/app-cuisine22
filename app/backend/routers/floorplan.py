@@ -637,7 +637,7 @@ def _table_collides(plan: Dict[str, Any], t: Dict[str, Any], existing_tables: Op
         return False
 
 
-def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: float = 60, r: float = 50) -> Optional[Dict[str, float]]:
+def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: float = 60, r: float = 50, require_rect_zone: bool = False) -> Optional[Dict[str, float]]:
     """Find spot for table. shape can be: rect, round, sofa, standing"""
     room = (plan.get("room") or {"width": 0, "height": 0})
     gw = int(room.get("grid") or 50)
@@ -662,7 +662,36 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
                 return True
         return False
     
-    # scan grid row by row
+    # If a rect spot must be inside a T zone, try zone centers first, then scan inside each T zone
+    if require_rect_zone and shape == "rect":
+        if not rect_zones:
+            return None
+        # try centered placement in each rect-only zone
+        for zone in rect_zones:
+            zx, zy, zw, zh = zone.get("x", 0), zone.get("y", 0), zone.get("w", 0), zone.get("h", 0)
+            cx, cy = float(zx + zw / 2.0), float(zy + zh / 2.0)
+            cand = {"x": float(cx - w / 2.0), "y": float(cy - h / 2.0), "w": float(w), "h": float(h)}
+            # ensure the rect fits entirely within the zone
+            if cand["x"] < zx or cand["y"] < zy or cand["x"] + w > zx + zw or cand["y"] + h > zy + zh:
+                pass
+            else:
+                t = {"id": "_probe", **cand}
+                if not _table_collides(plan, t, existing_tables=plan.get("tables") or []):
+                    return cand
+        # fallback: scan grid inside each rect-only zone
+        gw = int(room.get("grid") or 50)
+        for zone in rect_zones:
+            zx, zy, zw, zh = zone.get("x", 0), zone.get("y", 0), zone.get("w", 0), zone.get("h", 0)
+            max_y = max(0, int((zy + zh) - h))
+            max_x = max(0, int((zx + zw) - w))
+            for yy in range(int(zy), max_y, max(1, gw)):
+                for xx in range(int(zx), max_x, max(1, gw)):
+                    cand = {"x": float(xx), "y": float(yy), "w": float(w), "h": float(h)}
+                    t = {"id": "_probe", **cand}
+                    if not _table_collides(plan, t, existing_tables=plan.get("tables") or []):
+                        return cand
+        return None
+    # scan grid row by row (default)
     is_circular = shape in ("round", "standing")
     for yy in range(0, max(0, H - (int(h) if not is_circular else int(r))), max(1, gw)):
         for xx in range(0, max(0, W - (int(w) if not is_circular else int(r))), max(1, gw)):
@@ -814,7 +843,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             width = needed * 120 + (needed - 1) * 10
             cap = 6 * needed
             if cap >= total:
-                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60)
+                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True)
                 if spot:
                     new_id = str(uuid.uuid4())
                     new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
@@ -880,7 +909,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             width = needed * 120 + (needed - 1) * 10
             cap = 6 * needed
             if cap >= total:
-                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60)
+                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True)
                 if spot:
                     new_id = str(uuid.uuid4())
                     new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
@@ -897,15 +926,6 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             continue
 
         # 3) Rect combo (two tables) disabled to avoid splitting groups across separate existing tables
-
-        # 3a) Sofa single (5 pax)
-        best_sofa = take_table(avail_sofas, predicate=lambda t: _capacity_for_table(t) >= r.pax)
-        if best_sofa:
-            pax_on_table = min(_capacity_for_table(best_sofa), int(r.pax))
-            assignments_by_table.setdefault(best_sofa.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
-            placed = True
-        if placed:
-            continue
 
         # 3aa) Standing single (8 pax)
         best_standing = take_table(avail_standings, predicate=lambda t: _capacity_for_table(t) >= r.pax)
@@ -938,6 +958,20 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 logger.warning("assign round -> log failed: %s", str(e))
                 pass
 
+        # 4b) Sofa single (dernier recours aussi)
+        if not placed:
+            best_sofa = take_table(avail_sofas, predicate=lambda t: _capacity_for_table(t) >= r.pax)
+            if best_sofa:
+                pax_on_table = min(_capacity_for_table(best_sofa), int(r.pax))
+                assignments_by_table.setdefault(best_sofa.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "last_resort": True})
+                placed = True
+                try:
+                    logger.debug("assign sofa -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_sofa.get("id"), _capacity_for_table(best_sofa))
+                    _dbg_add("DEBUG", f"assign sofa (last resort) -> res={r.id} pax={r.pax} table={best_sofa.get('id')}")
+                except Exception as e:
+                    logger.warning("assign sofa -> log failed: %s", str(e))
+                    pass
+
         # 5) Create and place a new non-fixed table if still not placed (single large rect first)
         if not placed:
             unplaced_count += 1
@@ -950,7 +984,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             width = needed * 120 + (needed - 1) * 10
             cap = 6 * needed
             if cap >= remaining:
-                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60)
+                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True)
                 if spot and (rect_dynamic_created) < max_rect_dynamic:
                     new_id = str(uuid.uuid4())
                     new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
