@@ -20,6 +20,7 @@ export default function FloorPlanPage() {
   const [viewByInstance, setViewByInstance] = useState<Record<string, { scale: number; offset: { x: number; y: number } }>>({})
   const [compareResult, setCompareResult] = useState<any | null>(null)
   const [showCompareModal, setShowCompareModal] = useState(false)
+  const [showStock, setShowStock] = useState(true)
 
   useEffect(() => {
     loadBase()
@@ -325,22 +326,27 @@ export default function FloorPlanPage() {
 
   const currentData = editMode === 'template' ? baseTemplate?.data : selectedInstance?.data
   const currentView = editMode === 'instance' && selectedInstance ? viewByInstance[selectedInstance.id] : undefined
+  const instanceHasReservations = !!(selectedInstance?.reservations && Array.isArray((selectedInstance as any).reservations?.items) && (selectedInstance as any).reservations.items.length > 0)
+  const instanceAssignmentsCount = Object.keys(selectedInstance?.assignments?.tables || {}).length
+  const instanceHasAssignments = instanceAssignmentsCount > 0
 
   return (
     <div className="space-y-6">
-      <div className="card">
+      <div className="card sticky top-0 z-10 bg-white/90 backdrop-blur shadow-sm">
         <div className="card-body">
           <div className="flex flex-wrap gap-4 items-center justify-between">
             <div className="flex gap-2">
               <button
                 className={`btn btn-sm ${editMode === 'template' ? 'btn-primary' : 'btn-outline'}`}
                 onClick={() => setEditMode('template')}
+                title="Éditer le plan de base"
               >
                 Plans de base
               </button>
               <button
                 className={`btn btn-sm ${editMode === 'instance' ? 'btn-primary' : 'btn-outline'}`}
                 onClick={() => setEditMode('instance')}
+                title="Gérer une instance (service)"
               >
                 <Calendar className="w-4 h-4" /> Instances
               </button>
@@ -348,17 +354,27 @@ export default function FloorPlanPage() {
 
             {editMode === 'template' && (
               <div className="flex flex-col gap-2 w-full">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   <div className="input bg-gray-100 cursor-not-allowed">
                     {baseTemplate?.name || 'Plan de base'}
                   </div>
-                  <button className="btn btn-sm btn-success" onClick={saveBase} disabled={!baseTemplate}>
+                  <div className="border-l border-gray-300 h-6 mx-2"></div>
+                  <button className="btn btn-sm btn-success" onClick={saveBase} disabled={!baseTemplate} title="Sauvegarder le plan de base">
                     <Save className="w-4 h-4" /> Sauvegarder
                   </button>
+                  <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables du plan de base (1.., T.., R..)">
+                    🔢 Numéroter
+                  </button>
                 </div>
+                <div className="mt-1">
+                  <button className="btn btn-xs btn-outline" onClick={() => setShowStock(s => !s)} title="Afficher/Masquer le stock de tables dynamiques">
+                    {showStock ? '▼' : '►'} Stock dynamiques
+                  </button>
+                </div>
+                {showStock && (
                 <div className="flex gap-4 items-center text-sm">
                   <span className="font-semibold text-gray-700">📦 Stock tables disponibles:</span>
-                  <label className="flex items-center gap-2">
+                  <label className="flex items-center gap-2" title="Nombre maximum de tables rectangulaires dynamiques créables">
                     <span>Tables rect (6-8 pax):</span>
                     <input
                       type="number"
@@ -382,7 +398,7 @@ export default function FloorPlanPage() {
                       }}
                     />
                   </label>
-                  <label className="flex items-center gap-2">
+                  <label className="flex items-center gap-2" title="Nombre maximum de tables rondes dynamiques créables">
                     <span>Tables rondes (10 pax):</span>
                     <input
                       type="number"
@@ -408,6 +424,7 @@ export default function FloorPlanPage() {
                   </label>
                   <span className="text-xs text-gray-500">(Tables créées automatiquement si besoin lors de l'auto-assign)</span>
                 </div>
+                )}
               </div>
             )}
 
@@ -489,7 +506,7 @@ export default function FloorPlanPage() {
 
             {editMode === 'instance' && (
               <div className="flex flex-col gap-2 w-full">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   <select
                     className="input flex-1"
                     value={selectedInstance?.id || ''}
@@ -497,6 +514,7 @@ export default function FloorPlanPage() {
                       const i = instances.find(i => i.id === e.target.value)
                       setSelectedInstance(i || null)
                     }}
+                    title="Choisir l'instance (service)"
                   >
                     <option value="">Sélectionner une instance</option>
                     {instances.map(i => (
@@ -505,35 +523,36 @@ export default function FloorPlanPage() {
                       </option>
                     ))}
                   </select>
-                  <button className="btn btn-sm btn-primary" onClick={() => setShowCreateModal(true)}>
+                  <div className="border-l border-gray-300 h-6 mx-2"></div>
+                  <button className="btn btn-sm btn-primary" onClick={() => setShowCreateModal(true)} title="Créer une nouvelle instance (service)">
                     <Plus className="w-4 h-4" /> Créer
                   </button>
-                  <button className="btn btn-sm btn-success" onClick={saveInstance} disabled={!selectedInstance}>
+                  <button className="btn btn-sm btn-success" onClick={saveInstance} disabled={!selectedInstance} title="Sauvegarder l'instance">
                     <Save className="w-4 h-4" /> Sauvegarder
                   </button>
-                  <button className="btn btn-sm btn-danger" onClick={deleteInstance} disabled={!selectedInstance}>
+                  <button className="btn btn-sm btn-danger" onClick={deleteInstance} disabled={!selectedInstance} title="Supprimer l'instance">
                     <Trash2 className="w-4 h-4" /> Supprimer
                   </button>
                 </div>
                 {selectedInstance && (
                   <div className="flex gap-2 flex-wrap">
-                    <button className="btn btn-sm" onClick={importPDF} disabled={uploadingPDF}>
+                    <button className="btn btn-sm" onClick={importPDF} disabled={uploadingPDF} title="Importer le PDF de réservations pour cette instance">
                       <Upload className="w-4 h-4" /> {uploadingPDF ? 'Import...' : 'Import PDF'}
                     </button>
-                    <button className="btn btn-sm" onClick={autoAssign}>
+                    <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables de l'instance affichée">
+                      🔢 Numéroter
+                    </button>
+                    <button className="btn btn-sm" onClick={autoAssign} disabled={!instanceHasReservations} title={instanceHasReservations ? 'Auto-attribuer les tables' : 'Importez d\'abord le PDF (aucune réservation)'}>
                       🎯 Auto-Assign
                     </button>
-                    <button className="btn btn-sm" onClick={exportAnnotated}>
+                    <button className="btn btn-sm" onClick={exportAnnotated} disabled={!instanceHasAssignments} title={instanceHasAssignments ? 'Exporter le PDF original annoté avec les numéros' : 'Aucune table assignée'}>
                       <Download className="w-4 h-4" /> Export Annoté
                     </button>
-                    <button className="btn btn-sm" onClick={exportComplete}>
+                    <button className="btn btn-sm" onClick={exportComplete} title="Exporter plan + liste service + liste tables">
                       <Download className="w-4 h-4" /> Export Complet
                     </button>
-                    <button className="btn btn-sm" onClick={compareWithPDF}>
+                    <button className="btn btn-sm" onClick={compareWithPDF} title="Comparer placement ↔ PDF (diagnostic)">
                       🔎 Comparer PDF
-                    </button>
-                    <button className="btn btn-sm" onClick={numberTables}>
-                      🔢 Numéroter
                     </button>
                   </div>
                 )}
@@ -564,11 +583,6 @@ export default function FloorPlanPage() {
               <button className="btn btn-sm btn-outline" onClick={() => addFixture('round')}>
                 ➕ Colonne
               </button>
-              {(editMode === 'template' || selectedInstance) && (
-                <button className="btn btn-sm" onClick={numberTables}>
-                  🔢 Numéroter tables
-                </button>
-              )}
             </div>
             <div className="flex flex-wrap gap-2 items-center">
               <span className="text-xs font-semibold text-gray-600">Dessiner zones:</span>
