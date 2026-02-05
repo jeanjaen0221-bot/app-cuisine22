@@ -637,7 +637,7 @@ def _table_collides(plan: Dict[str, Any], t: Dict[str, Any], existing_tables: Op
         return False
 
 
-def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: float = 60, r: float = 50, require_rect_zone: bool = False) -> Optional[Dict[str, float]]:
+def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: float = 60, r: float = 50, require_rect_zone: bool = False, prefer_right: bool = False) -> Optional[Dict[str, float]]:
     """Find spot for table. shape can be: rect, round, sofa, standing"""
     room = (plan.get("room") or {"width": 0, "height": 0})
     gw = int(room.get("grid") or 50)
@@ -662,15 +662,24 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
                 return True
         return False
     
-    # If a rect spot must be inside a T zone, try zone centers first, then scan inside each T zone
+    # If a rect spot must be inside a T zone, try biased placement, then scan inside each T zone
     if require_rect_zone and shape == "rect":
         if not rect_zones:
             return None
-        # try centered placement in each rect-only zone
-        for zone in rect_zones:
+        # Optionally sort zones from rightmost to leftmost to bias to the right
+        zones_iter = list(rect_zones)
+        if prefer_right:
+            zones_iter.sort(key=lambda z: float(z.get("x", 0)) + float(z.get("w", 0)), reverse=True)
+        # try preferred placement in each rect-only zone
+        for zone in zones_iter:
             zx, zy, zw, zh = zone.get("x", 0), zone.get("y", 0), zone.get("w", 0), zone.get("h", 0)
-            cx, cy = float(zx + zw / 2.0), float(zy + zh / 2.0)
-            cand = {"x": float(cx - w / 2.0), "y": float(cy - h / 2.0), "w": float(w), "h": float(h)}
+            if prefer_right:
+                # right-aligned, vertically centered
+                cx, cy = float(zx + zw - w), float(zy + zh / 2.0)
+                cand = {"x": float(cx), "y": float(cy - h / 2.0), "w": float(w), "h": float(h)}
+            else:
+                cx, cy = float(zx + zw / 2.0), float(zy + zh / 2.0)
+                cand = {"x": float(cx - w / 2.0), "y": float(cy - h / 2.0), "w": float(w), "h": float(h)}
             # ensure the rect fits entirely within the zone
             if cand["x"] < zx or cand["y"] < zy or cand["x"] + w > zx + zw or cand["y"] + h > zy + zh:
                 pass
@@ -680,12 +689,17 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
                     return cand
         # fallback: scan grid inside each rect-only zone
         gw = int(room.get("grid") or 50)
-        for zone in rect_zones:
+        for zone in zones_iter:
             zx, zy, zw, zh = zone.get("x", 0), zone.get("y", 0), zone.get("w", 0), zone.get("h", 0)
             max_y = max(0, int((zy + zh) - h))
             max_x = max(0, int((zx + zw) - w))
-            for yy in range(int(zy), max_y, max(1, gw)):
-                for xx in range(int(zx), max_x, max(1, gw)):
+            y_range = range(int(zy), max_y, max(1, gw))
+            if prefer_right:
+                x_range = range(int(max_x), int(zx) - 1, -max(1, gw))
+            else:
+                x_range = range(int(zx), int(max_x), max(1, gw))
+            for yy in y_range:
+                for xx in x_range:
                     cand = {"x": float(xx), "y": float(yy), "w": float(w), "h": float(h)}
                     t = {"id": "_probe", **cand}
                     if not _table_collides(plan, t, existing_tables=plan.get("tables") or []):
@@ -693,8 +707,13 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
         return None
     # scan grid row by row (default)
     is_circular = shape in ("round", "standing")
-    for yy in range(0, max(0, H - (int(h) if not is_circular else int(r))), max(1, gw)):
-        for xx in range(0, max(0, W - (int(w) if not is_circular else int(r))), max(1, gw)):
+    y_range = range(0, max(0, H - (int(h) if not is_circular else int(r))), max(1, gw))
+    if prefer_right and shape == "rect":
+        x_range = range(max(0, int(W - (int(w)))), -1, -max(1, gw))
+    else:
+        x_range = range(0, max(0, W - (int(w) if not is_circular else int(r))), max(1, gw))
+    for yy in y_range:
+        for xx in x_range:
             cand: Dict[str, Any]
             if shape in ("rect", "sofa"):
                 cand = {"x": float(xx), "y": float(yy), "w": float(w), "h": float(h)}
