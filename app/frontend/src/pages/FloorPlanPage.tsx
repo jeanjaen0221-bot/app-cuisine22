@@ -17,11 +17,25 @@ export default function FloorPlanPage() {
   const [newInstanceDate, setNewInstanceDate] = useState('')
   const [newInstanceLabel, setNewInstanceLabel] = useState('lunch')
   const [uploadingPDF, setUploadingPDF] = useState(false)
+  const [viewByInstance, setViewByInstance] = useState<Record<string, { scale: number; offset: { x: number; y: number } }>>({})
 
   useEffect(() => {
     loadBase()
     loadInstances()
   }, [])
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('floorViewByInstance')
+      if (raw) setViewByInstance(JSON.parse(raw))
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('floorViewByInstance', JSON.stringify(viewByInstance))
+    } catch {}
+  }, [viewByInstance])
 
   async function loadBase() {
     try {
@@ -293,6 +307,7 @@ export default function FloorPlanPage() {
   }
 
   const currentData = editMode === 'template' ? baseTemplate?.data : selectedInstance?.data
+  const currentView = editMode === 'instance' && selectedInstance ? viewByInstance[selectedInstance.id] : undefined
 
   return (
     <div className="space-y-6">
@@ -499,6 +514,7 @@ export default function FloorPlanPage() {
       <div className="card floorplan-canvas-card">
         {currentData ? (
           <FloorCanvas
+            key={editMode === 'instance' ? (selectedInstance?.id || 'template') : 'template'}
             data={currentData}
             assignments={editMode === 'instance' ? selectedInstance?.assignments : undefined}
             editable={true}
@@ -507,6 +523,12 @@ export default function FloorPlanPage() {
             drawNoGoMode={drawNoGoMode}
             drawRoundOnlyMode={drawRoundOnlyMode}
             drawRectOnlyMode={drawRectOnlyMode}
+            initialScale={currentView?.scale}
+            initialOffset={currentView?.offset}
+            onViewChange={(v) => {
+              if (!selectedInstance) return
+              setViewByInstance(prev => ({ ...prev, [selectedInstance.id]: v }))
+            }}
           />
         ) : (
           <div className="flex items-center justify-center h-full text-gray-500">

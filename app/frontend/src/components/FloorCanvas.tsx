@@ -47,6 +47,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const isPinchingRef = useRef(false)
   const activePointers = useRef(new Map<number, { x: number; y: number }>())
   const pinchStart = useRef<{ dist: number; mid: { x: number; y: number }; scale: number; offset: { x: number; y: number } } | null>(null)
+  const initialApplied = useRef(false)
   const [draftNoGo, setDraftNoGo] = useState<FloorRect | null>(null)
   const drawStartNoGo = useRef<{ x: number; y: number } | null>(null)
   const [draftRoundZone, setDraftRoundZone] = useState<FloorRect | null>(null)
@@ -79,8 +80,21 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   // Apply initial view if provided (and before any user interaction)
   useEffect(() => {
     if (hasInteracted.current) return
-    if (typeof initialScale === 'number') setScale(initialScale)
-    if (initialOffset && typeof initialOffset.x === 'number' && typeof initialOffset.y === 'number') setOffset(initialOffset)
+    if (initialApplied.current) return
+    let changed = false
+    if (typeof initialScale === 'number' && initialScale !== scale) {
+      setScale(initialScale)
+      changed = true
+    }
+    if (initialOffset && typeof initialOffset.x === 'number' && typeof initialOffset.y === 'number') {
+      if (initialOffset.x !== offset.x || initialOffset.y !== offset.y) {
+        setOffset(initialOffset)
+        changed = true
+      }
+    }
+    if (changed) {
+      initialApplied.current = true
+    }
   }, [initialScale, initialOffset])
 
   useEffect(() => {
@@ -94,8 +108,10 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       (size.h - pad) / (room.height || 1)
     )
     if (isFinite(fit) && fit > 0) {
-      setScale(Math.min(5, Math.max(0.1, fit)))
-      setOffset({ x: (size.w - room.width * fit) / 2, y: (size.h - room.height * fit) / 2 })
+      const nextScale = Math.min(5, Math.max(0.1, fit))
+      const nextOffset = { x: (size.w - room.width * fit) / 2, y: (size.h - room.height * fit) / 2 }
+      if (nextScale !== scale) setScale(nextScale)
+      if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) setOffset(nextOffset)
     }
   }, [size.w, size.h, room.width, room.height])
 
@@ -650,12 +666,14 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       }
       return
     }
-    const f = fixtureHit(x, y)
-    if (editable && f) {
-      if (!(f as any).locked) {
-        setFixtureDraggingId((f as any).id)
-        dragDelta.current = { x: x - (f as any).x, y: y - (f as any).y }
-      }
+    // Tables on top: drag tables before zones/fixtures
+    const tHit = [...tables].reverse().find(t => tableHit(x, y, t))
+    if (tHit && editable && !tHit.locked) {
+      setDraggingId(tHit.id)
+      dragStart.current = { x: tHit.x, y: tHit.y }
+      lastValid.current = { x: tHit.x, y: tHit.y }
+      dragInvalid.current = false
+      dragDelta.current = { x: x - tHit.x, y: y - tHit.y }
       return
     }
     // Vérifier les handles de redimensionnement des zones (priorité sur le déplacement)
@@ -694,13 +712,13 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       dragDelta.current = { x: x - tz.x, y: y - tz.y }
       return
     }
-    const hit = [...tables].reverse().find(t => tableHit(x, y, t))
-    if (hit && editable && !hit.locked) {
-      setDraggingId(hit.id)
-      dragStart.current = { x: hit.x, y: hit.y }
-      lastValid.current = { x: hit.x, y: hit.y }
-      dragInvalid.current = false
-      dragDelta.current = { x: x - hit.x, y: y - hit.y }
+    // If no table, allow fixture dragging (below tables visually)
+    const f = fixtureHit(x, y)
+    if (editable && f) {
+      if (!(f as any).locked) {
+        setFixtureDraggingId((f as any).id)
+        dragDelta.current = { x: x - (f as any).x, y: y - (f as any).y }
+      }
       return
     }
     const h = handleAt(sx, sy)
@@ -769,7 +787,17 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     console.log('[ContextMenu] Original click:', e.clientX, e.clientY)
     console.log('[ContextMenu] Adjusted position:', menuX, menuY)
     
-    // Détecter ce qui est cliqué (priorité: zones > fixtures > tables)
+    // Détecter ce qui est cliqué (priorité visuelle: tables > fixtures > zones > no-go)
+    const table = [...tables].reverse().find(t => tableHit(x, y, t))
+    if (table) {
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'table', data: table } })
+      return
+    }
+    const fx = fixtureHit(x, y)
+    if (fx) {
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'fixture', data: fx } })
+      return
+    }
     const rz = roundZoneHit(x, y)
     if (rz) {
       setContextMenu({ x: menuX, y: menuY, target: { type: 'roundZone', data: rz } })
@@ -783,16 +811,6 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const ng = noGoHit(x, y)
     if (ng) {
       setContextMenu({ x: menuX, y: menuY, target: { type: 'noGo', data: ng } })
-      return
-    }
-    const fx = fixtureHit(x, y)
-    if (fx) {
-      setContextMenu({ x: menuX, y: menuY, target: { type: 'fixture', data: fx } })
-      return
-    }
-    const table = [...tables].reverse().find(t => tableHit(x, y, t))
-    if (table) {
-      setContextMenu({ x: menuX, y: menuY, target: { type: 'table', data: table } })
       return
     }
   }
@@ -1030,19 +1048,19 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     }
     // Détecter les objets sous le curseur (désactiver pendant pinch)
     if (isPinchingRef.current) return
+    const table = [...tables].reverse().find(t => tableHit(x, y, t))
+    const fx = fixtureHit(x, y)
     const rz = roundZoneHit(x, y)
     const tz = rectZoneHit(x, y)
     const ng = noGoHit(x, y)
-    const fx = fixtureHit(x, y)
-    const table = [...tables].reverse().find(t => tableHit(x, y, t))
     
     // Update hovered item only if changed (prevent re-render loop)
     let newHoveredKey: string | null = null
-    if (rz) newHoveredKey = `rz-${rz.id}`
+    if (table) newHoveredKey = `t-${table.id}`
+    else if (fx) newHoveredKey = `fx-${(fx as any).id}`
+    else if (rz) newHoveredKey = `rz-${rz.id}`
     else if (tz) newHoveredKey = `tz-${tz.id}`
     else if (ng) newHoveredKey = `ng-${ng.id}`
-    else if (fx) newHoveredKey = `fx-${(fx as any).id}`
-    else if (table) newHoveredKey = `t-${table.id}`
     
     if (newHoveredKey !== lastHoveredRef.current) {
       lastHoveredRef.current = newHoveredKey
@@ -1233,8 +1251,9 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       (sh - pad) / (room.height || 1)
     )
     const nextScale = isFinite(fit) && fit > 0 ? Math.min(5, Math.max(0.1, fit)) : 0.8
-    setScale(nextScale)
-    setOffset({ x: (sw - room.width * nextScale) / 2, y: (sh - room.height * nextScale) / 2 })
+    const nextOffset = { x: (sw - room.width * nextScale) / 2, y: (sh - room.height * nextScale) / 2 }
+    if (nextScale !== scale) setScale(nextScale)
+    if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) setOffset(nextOffset)
     hasInteracted.current = false
   }
 
