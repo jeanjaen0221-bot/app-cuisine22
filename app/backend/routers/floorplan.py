@@ -700,6 +700,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
     max_dynamic = plan_data.get("max_dynamic_tables", {})
     max_rect_dynamic = int(max_dynamic.get("rect", 10))  # Default: 10 tables rect disponibles
     max_round_dynamic = int(max_dynamic.get("round", 5))  # Default: 5 tables rondes disponibles
+    # Stock global de chaises dans la zone des tables fixes (déplaçables)
+    fixed_chair_stock = int(plan_data.get("fixed_chair_stock", 28))
     
     # Partition tables
     fixed = [t for t in tables if (t.get("kind") == "fixed" or t.get("locked") is True)]
@@ -802,6 +804,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             return chosen
         return None
 
+    fixed_chairs_used = 0
     for r in groups:
         placed = False
         # EARLY: For large groups (>=13 pax), first try ONE large dynamic rect (no splitting)
@@ -831,9 +834,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             avail_fixed,
             predicate=lambda t: _capacity_for_table(t) >= r.pax,
         )
-        if best_fixed:
+        if best_fixed and (fixed_chairs_used + int(r.pax) <= fixed_chair_stock):
             pax_on_table = min(_capacity_for_table(best_fixed), int(r.pax))
             assignments_by_table.setdefault(best_fixed.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+            fixed_chairs_used += pax_on_table
             placed = True
             try:
                 logger.debug("assign fixed -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_fixed.get("id"), _capacity_for_table(best_fixed))
