@@ -479,7 +479,7 @@ export default function DrinksOrder() {
 
       <div className="card-body space-y-4">
         <div className="controls-panel">
-          <div className="flex items-center gap-2" style={{ marginBottom: '.5rem' }}>
+          <div className="flex items-center gap-2 drinks-tabs-row">
             <button className={`btn btn-sm ${activeTab === 'liste' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('liste')}>
               Liste
             </button>
@@ -527,7 +527,7 @@ export default function DrinksOrder() {
 
           {activeTab === 'reassort' && (
             <>
-              <div className="flex items-center gap-2" style={{ marginBottom: '.25rem' }}>
+              <div className="flex items-center gap-2 reassort-tabs-row">
                 <button className={`btn btn-sm ${reassortTab === 'saisie' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setReassortTab('saisie')}>
                   Saisie
                 </button>
@@ -567,12 +567,12 @@ export default function DrinksOrder() {
                   {recalcPending ? 'Calcul...' : 'Calculer'}
                 </button>
 
-                <button className="btn btn-outline" style={{ marginLeft: 'auto' }} onClick={() => setHelpOpen((o) => !o)}>
+                <button className="btn btn-outline reassort-help-toggle" onClick={() => setHelpOpen((o) => !o)}>
                   {helpOpen ? 'Masquer aide' : 'Aide'}
                 </button>
               </div>
 
-              <div className="drinks-controls" style={{ marginTop: '.25rem' }}>
+              <div className="drinks-controls reassort-actions-row">
                 <button className="btn btn-sm btn-outline" onClick={bulkResetRemaining}>
                   Restants = 0 (filtrés)
                 </button>
@@ -588,7 +588,7 @@ export default function DrinksOrder() {
                 <button className="btn btn-sm btn-outline" onClick={bulkCopyMaxToMin}>
                   Copier Max → Min (filtrés)
                 </button>
-                <div className="flex items-center gap-3 text-sm text-gray-700" style={{ marginLeft: 'auto' }}>
+                <div className="flex items-center gap-3 text-sm text-gray-700 reassort-summary">
                   <span>
                     Suggestions: <b>{replSummary.lines}</b> lignes
                   </span>
@@ -669,15 +669,7 @@ export default function DrinksOrder() {
         {/* === TABLES === */}
         {activeTab === 'reassort' ? (
           <div>
-            <div
-              className="drinks-main"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: helpOpen ? 'minmax(0,1fr) 320px' : '1fr',
-                gap: '1rem',
-                alignItems: 'start',
-              }}
-            >
+            <div className={`drinks-main ${helpOpen ? 'is-help-open' : 'is-help-closed'}`}>
               <div className="drinks-table-container">
                 <table className="table drinks-table">
                   <thead>
@@ -712,7 +704,7 @@ export default function DrinksOrder() {
 
                         <td>
                           {editingId === d.id ? (
-                            <div className="drinks-grid" style={{ gridTemplateColumns: '1fr auto' }}>
+                            <div className="drinks-grid drinks-inline-edit-grid">
                               <input className="input" list="drink-units" value={eUnit} onChange={(e) => setEUnit(e.target.value)} />
                               <label className="form-check">
                                 <input className="form-check-input" type="checkbox" checked={eActive} onChange={(e) => setEActive(e.target.checked)} /> actif
@@ -860,29 +852,15 @@ export default function DrinksOrder() {
               </div>
 
               {helpOpen && (
-                <aside
-                  className="help-panel"
-                  style={{
-                    position: 'sticky',
-                    top: '1rem',
-                    width: '320px',
-                    maxHeight: 'calc(100vh - 140px)',
-                    overflowY: 'scroll',
-                    overflowX: 'hidden',
-                    contain: 'layout paint',
-                    backfaceVisibility: 'hidden',
-                    willChange: 'transform',
-                    transform: 'translateZ(0)',
-                  }}
-                >
-                  <div className="card" style={{ padding: '0.75rem' }}>
-                    <div className="flex items-center justify-between" style={{ marginBottom: '.5rem' }}>
+                <aside className="help-panel">
+                  <div className="card help-panel-card">
+                    <div className="flex items-center justify-between help-panel-head">
                       <h4 className="text-md font-semibold">Mode d'emploi</h4>
                       <button className="btn btn-sm btn-outline" onClick={() => setHelpOpen(false)}>
                         Fermer
                       </button>
                     </div>
-                    <ol className="text-sm space-y-1" style={{ paddingLeft: '1rem', listStyle: 'decimal' }}>
+                    <ol className="text-sm space-y-1 help-panel-list">
                       <li>Filtrez par catégorie et recherchez une boisson.</li>
                       <li>Choisissez la cible (Max/Min) et l'arrondi (Colis/Aucun).</li>
                       <li>Activez l'option <b>auto</b> pour recalculer automatiquement.</li>
@@ -898,8 +876,8 @@ export default function DrinksOrder() {
                       </li>
                     </ol>
 
-                    <div className="text-sm" style={{ marginTop: '.75rem' }}>
-                      <div className="font-semibold" style={{ marginBottom: '.25rem' }}>
+                    <div className="text-sm help-panel-legend">
+                      <div className="font-semibold help-panel-legend-title">
                         Légende
                       </div>
                       <div className="space-y-1">
@@ -914,7 +892,7 @@ export default function DrinksOrder() {
                         </div>
                       </div>
 
-                      <div className="font-semibold" style={{ marginTop: '.5rem', marginBottom: '.25rem' }}>
+                      <div className="font-semibold help-panel-tip-title">
                         Astuce
                       </div>
                       <div className="text-gray-700">
@@ -931,7 +909,7 @@ export default function DrinksOrder() {
                 className="btn btn-primary"
                 aria-label="Afficher l'aide"
                 onClick={() => setHelpOpen(true)}
-                style={{ position: 'fixed', right: '20px', bottom: '20px', borderRadius: '9999px', width: '44px', height: '44px', zIndex: 1000 }}
+                className="btn btn-primary help-fab"
               >
                 <span aria-hidden="true">?</span>
               </button>
@@ -966,7 +944,7 @@ export default function DrinksOrder() {
                     </td>
                     <td>
                       {editingId === d.id ? (
-                        <div className="drinks-grid" style={{ gridTemplateColumns: '1fr auto' }}>
+                        <div className="drinks-grid drinks-inline-edit-grid">
                           <input className="input" list="drink-units" value={eUnit} onChange={(e) => setEUnit(e.target.value)} />
                           <label className="form-check">
                             <input className="form-check-input" type="checkbox" checked={eActive} onChange={(e) => setEActive(e.target.checked)} /> actif

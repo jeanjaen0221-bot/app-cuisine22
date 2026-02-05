@@ -75,7 +75,7 @@ export default function OrderDetailPage() {
         <div className="card-body space-y-4">
           {order && (
             <>
-              <div className="drinks-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr auto' }}>
+              <div className="drinks-grid order-meta-grid">
                 <div>
                   <div className="text-xs text-gray-600">ID</div>
                   <div className="font-mono text-xs break-all">{order.id}</div>
@@ -100,7 +100,7 @@ export default function OrderDetailPage() {
 
               <div>
                 <div className="controls-hint">Ajouter un article</div>
-                <div className="drinks-grid" style={{ gridTemplateColumns: '2fr 1fr auto' }}>
+                <div className="drinks-grid order-add-grid">
                   <select className="input" value={addDrinkId} onChange={(e) => setAddDrinkId(e.target.value)}>
                     <option value="">Sélectionner une boisson</option>
                     {drinkOptions.map((o) => (

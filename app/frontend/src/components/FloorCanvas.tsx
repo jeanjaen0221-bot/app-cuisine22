@@ -13,9 +13,12 @@ type Props = {
   drawNoGoMode?: boolean
   drawRoundOnlyMode?: boolean
   drawRectOnlyMode?: boolean
+  initialScale?: number
+  initialOffset?: { x: number; y: number }
+  onViewChange?: (view: { scale: number; offset: { x: number; y: number } }) => void
 }
 
-export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false }: Props) {
+export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false, initialScale, initialOffset, onViewChange }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [scale, setScale] = useState(0.8)
@@ -40,6 +43,10 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const dragStart = useRef<{ x: number; y: number } | null>(null)
   const lastValid = useRef<{ x: number; y: number } | null>(null)
   const dragInvalid = useRef(false)
+  const hasInteracted = useRef(false)
+  const isPinchingRef = useRef(false)
+  const activePointers = useRef(new Map<number, { x: number; y: number }>())
+  const pinchStart = useRef<{ dist: number; mid: { x: number; y: number }; scale: number; offset: { x: number; y: number } } | null>(null)
   const [draftNoGo, setDraftNoGo] = useState<FloorRect | null>(null)
   const drawStartNoGo = useRef<{ x: number; y: number } | null>(null)
   const [draftRoundZone, setDraftRoundZone] = useState<FloorRect | null>(null)
@@ -68,6 +75,34 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+
+  // Apply initial view if provided (and before any user interaction)
+  useEffect(() => {
+    if (hasInteracted.current) return
+    if (typeof initialScale === 'number') setScale(initialScale)
+    if (initialOffset && typeof initialOffset.x === 'number' && typeof initialOffset.y === 'number') setOffset(initialOffset)
+  }, [initialScale, initialOffset])
+
+  useEffect(() => {
+    const el = canvasRef.current
+    if (!el) return
+    if (size.w <= 0 || size.h <= 0) return
+    if (hasInteracted.current) return
+    const pad = 40
+    const fit = Math.min(
+      (size.w - pad) / (room.width || 1),
+      (size.h - pad) / (room.height || 1)
+    )
+    if (isFinite(fit) && fit > 0) {
+      setScale(Math.min(5, Math.max(0.1, fit)))
+      setOffset({ x: (size.w - room.width * fit) / 2, y: (size.h - room.height * fit) / 2 })
+    }
+  }, [size.w, size.h, room.width, room.height])
+
+  // Notify view changes for persistence
+  useEffect(() => {
+    onViewChange && onViewChange({ scale, offset })
+  }, [scale, offset])
 
   // Menu contextuel state tracking
   useEffect(() => {
@@ -282,9 +317,16 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     if (!el) return
     const ctx = el.getContext('2d')
     if (!ctx) return
-    const W = el.width = el.clientWidth
-    const H = el.height = el.clientHeight
-    ctx.clearRect(0, 0, W, H)
+    const dpr = (window.devicePixelRatio || 1)
+    const cssW = el.clientWidth
+    const cssH = el.clientHeight
+    el.width = Math.max(1, Math.floor(cssW * dpr))
+    el.height = Math.max(1, Math.floor(cssH * dpr))
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, cssW, cssH)
+    ctx.scale(dpr, dpr)
+    const W = cssW
+    const H = cssH
 
     if (showGrid) {
       const g = room.grid || 50
@@ -577,12 +619,30 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   function onPointerDown(e: React.PointerEvent) {
     // Ignorer le clic droit (bouton 2) - il est géré par onContextMenu
     if (e.button === 2) return
-    
+    hasInteracted.current = true
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
-    const { x, y } = screenToWorld(sx, sy)
-    const fr = fixtureHandleAt(sx, sy)
+    activePointers.current.set(e.pointerId, { x: sx, y: sy })
+    ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+    if (activePointers.current.size === 2) {
+      // Start pinch
+      const pts = Array.from(activePointers.current.values())
+      const dx = pts[0].x - pts[1].x
+      const dy = pts[0].y - pts[1].y
+      const dist = Math.max(1, Math.hypot(dx, dy))
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }
+      pinchStart.current = { dist, mid, scale, offset: { ...offset } }
+      isPinchingRef.current = true
+      return
+    }
+    
+    // Single-pointer path continues below
+    const rect2 = (e.target as HTMLCanvasElement).getBoundingClientRect()
+    const sx2 = e.clientX - rect2.left
+    const sy2 = e.clientY - rect2.top
+    const { x, y } = screenToWorld(sx2, sy2)
+    const fr = fixtureHandleAt(sx2, sy2)
     if (editable && fr) {
       const fx: any = (fixtures as any[]).find(f => f.id === fr.id)
       if (fx && !fx.locked) {
@@ -746,6 +806,28 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
+    // Track active pointers for pinch
+    if (activePointers.current.has(e.pointerId)) {
+      activePointers.current.set(e.pointerId, { x: sx, y: sy })
+    }
+    if (isPinchingRef.current && activePointers.current.size >= 2) {
+      const pts = Array.from(activePointers.current.values()).slice(0, 2)
+      const dx = pts[0].x - pts[1].x
+      const dy = pts[0].y - pts[1].y
+      const dist = Math.max(1, Math.hypot(dx, dy))
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }
+      const st = pinchStart.current
+      if (st) {
+        const newScale = Math.min(5, Math.max(0.1, st.scale * (dist / st.dist)))
+        // Keep world point under mid fixed
+        const wx = (mid.x - st.offset.x) / st.scale
+        const wy = (mid.y - st.offset.y) / st.scale
+        const newOffset = { x: mid.x - wx * newScale, y: mid.y - wy * newScale }
+        setScale(newScale)
+        setOffset(newOffset)
+      }
+      return
+    }
     const { x, y } = screenToWorld(sx, sy)
     if (fixtureResize && editable) {
       const idx = (fixtures as any[]).findIndex(f => f.id === fixtureResize.id)
@@ -946,7 +1028,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       onChange && onChange({ ...data, tables: [...tables] })
       return
     }
-    // Détecter les objets sous le curseur
+    // Détecter les objets sous le curseur (désactiver pendant pinch)
+    if (isPinchingRef.current) return
     const rz = roundZoneHit(x, y)
     const tz = rectZoneHit(x, y)
     const ng = noGoHit(x, y)
@@ -996,7 +1079,20 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     }
   }
 
-  function onPointerUp() {
+  function onPointerUp(e?: React.PointerEvent) {
+    if (e) {
+      if (activePointers.current.has(e.pointerId)) {
+        activePointers.current.delete(e.pointerId)
+      }
+      if (activePointers.current.size < 2) {
+        isPinchingRef.current = false
+        pinchStart.current = null
+      }
+    } else {
+      activePointers.current.clear()
+      isPinchingRef.current = false
+      pinchStart.current = null
+    }
     const currentDraggingId = draggingId
     if (drawStartNoGo.current && draftNoGo && editable && drawNoGoMode) {
       const minSize = 10
@@ -1087,6 +1183,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   function onWheel(e: React.WheelEvent) {
     e.preventDefault()
     e.stopPropagation()
+    hasInteracted.current = true
     const delta = -e.deltaY
     const factor = delta > 0 ? 1.15 : 0.85
     const newScale = Math.min(5, Math.max(0.1, scale * factor))
@@ -1102,6 +1199,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   }
 
   function zoomIn() {
+    hasInteracted.current = true
     const newScale = Math.min(5, scale * 1.3)
     const cx = size.w / 2
     const cy = size.h / 2
@@ -1114,6 +1212,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   }
 
   function zoomOut() {
+    hasInteracted.current = true
     const newScale = Math.max(0.1, scale * 0.7)
     const cx = size.w / 2
     const cy = size.h / 2
@@ -1126,8 +1225,17 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   }
 
   function resetView() {
-    setScale(0.8)
-    setOffset({ x: 100, y: 100 })
+    const pad = 40
+    const sw = size.w || 0
+    const sh = size.h || 0
+    const fit = Math.min(
+      (sw - pad) / (room.width || 1),
+      (sh - pad) / (room.height || 1)
+    )
+    const nextScale = isFinite(fit) && fit > 0 ? Math.min(5, Math.max(0.1, fit)) : 0.8
+    setScale(nextScale)
+    setOffset({ x: (sw - room.width * nextScale) / 2, y: (sh - room.height * nextScale) / 2 })
+    hasInteracted.current = false
   }
 
   return (

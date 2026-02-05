@@ -93,7 +93,7 @@ export default function NotesWidget() {
 
   return (
     <>
-      <div style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 1000 }}>
+      <div className="notes-fab-wrap">
         <button
           className={`btn ${open ? '' : 'btn-primary'} rounded-full px-3 py-3 notes-fab`}
           onClick={() => setOpen(v => !v)}
@@ -104,7 +104,7 @@ export default function NotesWidget() {
       </div>
 
       {open && (
-        <div style={{ position: 'fixed', bottom: 80, right: 20, zIndex: 1000, width: 'min(24rem, calc(100vw - 40px))' }}>
+        <div className="notes-panel-wrap">
           <div className="notes-theme">
           <div className="card notes-panel">
             <div className="card-header">

@@ -235,7 +235,7 @@ export default function ReservationList() {
                     <th>Couverts</th>
                     <th>Boisson</th>
                     <th>Menu (résumé)</th>
-                    <th style={{width:120}}>Actions</th>
+                    <th className="reservation-actions-col">Actions</th>
                   </tr>
                 </thead>
                 <tbody>

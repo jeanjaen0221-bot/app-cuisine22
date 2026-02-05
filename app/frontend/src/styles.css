@@ -1772,3 +1772,62 @@ body {
   .upload-grid { grid-template-columns: 1fr; }
   .drinks-table .name-cell { max-width: 260px; }
 }
+
+/* ===== Global responsive hardening ===== */
+html, body, #root { max-width: 100%; }
+body { overflow-x: hidden; }
+img, video, canvas, svg { max-width: 100%; }
+.card, .card-body, .card-header, .card-footer, .content, .container { min-width: 0; }
+
+/* Floorplan canvas card should fill viewport responsively */
+.floorplan-canvas-card {
+  height: clamp(360px, calc(100vh - 300px), 82vh);
+  padding: 0; /* let the canvas occupy full area */
+  overflow: hidden;
+}
+@media (max-width: 1024px) {
+  .floorplan-canvas-card { height: clamp(300px, calc(100vh - 280px), 78vh); }
+}
+@media (max-width: 640px) {
+  .floorplan-canvas-card { height: clamp(260px, calc(100vh - 260px), 72vh); }
+}
+
+@media (max-width: 1024px) {
+  .content { padding: 1rem; }
+  .sidebar { position: sticky; top: 0; z-index: 40; }
+  .sidebar-header { padding-bottom: 0.25rem; }
+  .sidebar-nav {
+    flex-direction: row;
+    gap: 0.5rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding: 0.5rem 0.75rem 0.75rem;
+  }
+  .sidebar-nav .nav-link { flex: 0 0 auto; }
+}
+
+@media (max-width: 640px) {
+  .sidebar-header { font-size: 1rem; padding: 0.75rem 0.75rem 0.25rem; }
+  .content { padding: 0.75rem; }
+  .btn-group { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .btn-group .btn { border-radius: 0.5rem; border-right: 1px solid rgba(255,255,255,.1); }
+  .card-footer { justify-content: stretch; }
+}
+
+/* Order detail page */
+.order-meta-grid { grid-template-columns: 1fr 1fr 1fr auto; }
+.order-add-grid { grid-template-columns: 2fr 1fr auto; }
+@media (max-width: 900px) {
+  .order-meta-grid, .order-add-grid { grid-template-columns: 1fr; }
+}
+
+/* Drinks reassort help panel */
+@media (max-width: 1200px) {
+  .drinks-main { grid-template-columns: 1fr !important; }
+  .help-panel {
+    position: static !important;
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}

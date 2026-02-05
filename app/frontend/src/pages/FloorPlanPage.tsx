@@ -445,8 +445,8 @@ export default function FloorPlanPage() {
               <button onClick={() => addTable('fixed', 4)} className="btn">+ Table fixe (4)</button>
               <button onClick={() => addTable('rect', 6)} className="btn">+ Rect (6→8)</button>
               <button onClick={() => addTable('round', 10)} className="btn">+ Ronde (10)</button>
-              <button onClick={() => addTable('sofa', 5)} className="btn" style={{background: '#9c27b0'}}>+ Canapé (5)</button>
-              <button onClick={() => addTable('standing', 8)} className="btn" style={{background: '#ff5722'}}>+ Mange-debout (8)</button>
+              <button onClick={() => addTable('sofa', 5)} className="btn btn-sofa">+ Canapé (5)</button>
+              <button onClick={() => addTable('standing', 8)} className="btn btn-standing">+ Mange-debout (8)</button>
               <button className="btn btn-sm btn-outline" onClick={() => addFixture('rect')}>
                 ➕ Mur
               </button>
@@ -496,7 +496,7 @@ export default function FloorPlanPage() {
         </div>
       </div>
 
-      <div className="card" style={{ height: 'calc(100vh - 300px)' }}>
+      <div className="card floorplan-canvas-card">
         {currentData ? (
           <FloorCanvas
             data={currentData}
