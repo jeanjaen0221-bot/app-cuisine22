@@ -49,6 +49,18 @@ export default function FloorPlanPage() {
     }
   }
 
+  async function resetInstanceAction() {
+    if (!selectedInstance) return
+    try {
+      const res = await api.post(`/api/floorplan/instances/${selectedInstance.id}/reset`)
+      setSelectedInstance(res.data)
+      alert('Instance réinitialisée')
+    } catch (err) {
+      console.error('Failed to reset instance:', err)
+      alert('Erreur réinitialisation')
+    }
+  }
+
   async function compareWithPDF() {
     if (!selectedInstance) {
       alert('Sélectionnez d\'abord une instance')
@@ -538,6 +550,9 @@ export default function FloorPlanPage() {
                   <div className="flex gap-2 flex-wrap">
                     <button className="btn btn-sm" onClick={importPDF} disabled={uploadingPDF} title="Importer le PDF de réservations pour cette instance">
                       <Upload className="w-4 h-4" /> {uploadingPDF ? 'Import...' : 'Import PDF'}
+                    </button>
+                    <button className="btn btn-sm btn-outline" onClick={resetInstanceAction} title="Vider l'instance (supprime tables dynamiques et assignations)">
+                      ♻️ Réinitialiser
                     </button>
                     <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables de l'instance affichée">
                       🔢 Numéroter

@@ -992,7 +992,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     break
                 new_id = str(uuid.uuid4())
                 cap = 6
-                new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot}
+                new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True}
                 (plan_data.setdefault("tables", [])).append(new_tbl)
                 tables_for_group.append(new_tbl)
                 pax_on_table = max(0, min(cap, remaining))
@@ -1009,7 +1009,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 if spot:
                     new_id = str(uuid.uuid4())
                     cap = 10
-                    new_tbl = {"id": new_id, "kind": "round", "capacity": cap, **spot}
+                    new_tbl = {"id": new_id, "kind": "round", "capacity": cap, **spot, "dynamic": True}
                     (plan_data.setdefault("tables", [])).append(new_tbl)
                     pax_on_table = max(0, min(cap, remaining))
                     assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
@@ -1382,6 +1382,36 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     logger.info("GET /instances/%s/export-pdf -> bytes=%d labels=%d", instance_id, len(pdf_bytes), len(id_to_label))
     _dbg_add("INFO", f"GET /instances/{instance_id}/export-pdf -> bytes={len(pdf_bytes)} labels={len(id_to_label)} reservations={len(reservations)}")
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+@router.post("/instances/{instance_id}/reset", response_model=FloorPlanInstanceRead)
+def reset_instance(instance_id: uuid.UUID, session: Session = Depends(get_session)):
+    """Reset an instance: clear all table assignments and remove dynamically created tables.
+    Keeps the existing base tables and labels intact.
+    """
+    row = session.get(FloorPlanInstance, instance_id)
+    if not row:
+        raise HTTPException(404, "Instance not found")
+    plan = row.data or {}
+    tables = list(plan.get("tables") or [])
+    # Remove tables marked as dynamic=True
+    kept = [t for t in tables if not (t.get("dynamic") is True)]
+    plan["tables"] = kept
+    row.data = plan
+    # Clear assignments
+    row.assignments = {"tables": {}}
+    # Persist JSON mutations
+    try:
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(row, "data")
+        flag_modified(row, "assignments")
+    except Exception:
+        pass
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    logger.info("POST /instances/%s/reset -> kept_tables=%d", instance_id, len(kept))
+    _dbg_add("INFO", f"RESET instance -> kept_tables={len(kept)}")
+    return FloorPlanInstanceRead(**row.model_dump())
 
 
 @router.get("/instances/{instance_id}/compare")
