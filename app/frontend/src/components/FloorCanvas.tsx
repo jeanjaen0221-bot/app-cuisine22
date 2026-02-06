@@ -58,7 +58,14 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const [hoveredItem, setHoveredItem] = useState<{ type: string; id: string } | null>(null)
   const lastHoveredRef = useRef<string | null>(null)
 
-  const room = data.room || { width: 1200, height: 800, grid: 50 }
+  // Robust room defaults: ensure positive dimensions even if backend data is missing or zero
+  const room = useMemo(() => {
+    const r: any = (data && (data as any).room) || {}
+    const w = Math.max(100, Number(r.width || 0) || 0)
+    const h = Math.max(100, Number(r.height || 0) || 0)
+    const g = Number(r.grid || 50) || 50
+    return { width: w, height: h, grid: g }
+  }, [data])
   const tables = data.tables || []
   const walls = data.walls || []
   const cols = data.columns || []
@@ -118,6 +125,20 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   // Notify view changes for persistence
   useEffect(() => {
     onViewChange && onViewChange({ scale, offset })
+  }, [scale, offset])
+
+  // Safety: clamp invalid scale/offset
+  useEffect(() => {
+    let fixed = false
+    let ns = scale
+    let no = { ...offset }
+    if (!isFinite(ns) || ns <= 0) { ns = 0.8; fixed = true }
+    if (!isFinite(no.x)) { no.x = 100; fixed = true }
+    if (!isFinite(no.y)) { no.y = 100; fixed = true }
+    if (fixed) {
+      setScale(ns)
+      setOffset(no)
+    }
   }, [scale, offset])
 
   // Menu contextuel state tracking
