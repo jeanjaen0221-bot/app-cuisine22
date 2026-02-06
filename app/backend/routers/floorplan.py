@@ -803,6 +803,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
     groups = sorted(reservations, key=lambda r: (-int(r.pax), r.arrival_time or dtime(0, 0)))
 
     assignments_by_table: Dict[str, Dict[str, Any]] = {}
+    alerts: List[str] = []
+    small_on_nonfixed = 0
     unplaced_count = 0  # Compter les réservations non placées
     fixed_chairs_used = 0
 
@@ -832,7 +834,16 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         except Exception:
             pass
 
-    def take_table(pool: Dict[str, Dict[str, Any]], predicate=None) -> Optional[Dict[str, Any]]:
+    # Pre-checks
+    try:
+        rect_only = plan_data.get("rect_only_zones") or []
+        if not rect_only:
+            _dbg_add("WARNING", "Aucune zone T définie (rect_only_zones vide) — le placement droite/centre sera limité")
+            alerts.append("Aucune zone T définie — placement droite/centre limité")
+    except Exception:
+        pass
+
+    def take_table(pool: Dict[str, Dict[str, Any]], predicate=None, sort_key=None) -> Optional[Dict[str, Any]]:
         items = list(pool.values())
         if predicate:
             items = [x for x in items if predicate(x)]
@@ -841,7 +852,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if not items:
             return None
         # choose smallest capacity that fits
-        items.sort(key=lambda t: _capacity_for_table(t))
+        if sort_key is not None:
+            items.sort(key=sort_key)
+        else:
+            items.sort(key=lambda t: _capacity_for_table(t))
         chosen = items[0]
         pool.pop(chosen.get("id"), None)
         return chosen
@@ -919,6 +933,23 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             needed = min(4, math.ceil(total / 6))
             width = needed * 120 + (needed - 1) * 10
             cap = 6 * needed
+            # Alert if demand exceeds our max span capacity (24 pax)
+            try:
+                if math.ceil(total / 6) > 4:
+                    msg = f"Groupe {total}p dépasse la capacité rect dynamique max (24p, span 4)."
+                    _dbg_add("WARNING", msg)
+                    alerts.append(msg)
+            except Exception:
+                pass
+            # Quick feasibility hint: check any T zone wide enough
+            try:
+                z_ok = any((float(z.get('w',0)) >= width and float(z.get('h',0)) >= 60) for z in (plan_data.get('rect_only_zones') or []))
+                if not z_ok:
+                    msg = f"Zone T trop étroite pour span {needed} (largeur requise {width}px)."
+                    _dbg_add("INFO", msg)
+                    alerts.append(msg)
+            except Exception:
+                pass
             if cap >= total:
                 spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_right=True, prefer_center_y=True)
                 if spot:
@@ -933,6 +964,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                         _dbg_add("DEBUG", f"assign dynamic-large-rect (early) -> res={r.id} pax={r.pax} table={new_id} span={needed}")
                     except Exception:
                         pass
+                else:
+                    _dbg_add("WARNING", f"No space for early large rect in T for {r.client_name} ({int(r.pax)}p)")
+                    alerts.append(f"Pas d'espace pour grande rect (early) pour {r.client_name} ({int(r.pax)}p)")
         if placed:
             continue
         # 1) Fixed tables by best-fit
@@ -972,11 +1006,36 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 cap_ext = min(8, cap + 2)
                 return cap_ext >= r.pax
 
-            best_rect = take_table(avail_rects, predicate=rect_can_fit)
+            def rect_center_pref_key(t):
+                cap = _capacity_for_table(t)
+                try:
+                    if int(r.pax) <= 8:
+                        zones = plan_data.get("rect_only_zones") or []
+                        tx = float(t.get("x") or 0.0)
+                        ty = float(t.get("y") or 0.0)
+                        tw = float(t.get("w") or 120.0)
+                        th = float(t.get("h") or 60.0)
+                        cx = tx + tw / 2.0
+                        cy = ty + th / 2.0
+                        # distance of table center from the LEFT edge of its T zone (prefer smaller = plus à gauche dans T)
+                        dist = cx
+                        for z in zones:
+                            zx = float(z.get("x", 0.0)); zy = float(z.get("y", 0.0)); zw = float(z.get("w", 0.0)); zh = float(z.get("h", 0.0))
+                            if cx >= zx and cx <= zx + zw and cy >= zy and cy <= zy + zh:
+                                dist = cx - zx
+                                break
+                        return (cap, dist)
+                except Exception:
+                    pass
+                return (cap, float(t.get("x") or 0.0))
+
+            best_rect = take_table(avail_rects, predicate=rect_can_fit, sort_key=rect_center_pref_key)
             if best_rect:
                 # seat up to extended capacity for a single rectangle
                 pax_on_table = min(int(r.pax), min(8, _capacity_for_table(best_rect) + 2))
                 assignments_by_table.setdefault(best_rect.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                if int(r.pax) <= 4:
+                    small_on_nonfixed += 1
                 placed = True
                 try:
                     logger.debug("assign rect -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_rect.get("id"), _capacity_for_table(best_rect))
@@ -984,6 +1043,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 except Exception as e:
                     logger.warning("assign rect -> log failed: %s", str(e))
                     pass
+            else:
+                # Not strictly an error: will try dynamic. But warn if a suitable rect exists but blocked by collisions/locks.
+                _dbg_add("INFO", f"No existing rect chosen for {r.client_name} ({int(r.pax)}p), will try dynamic if needed")
         if placed:
             continue
 
@@ -994,6 +1056,23 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             needed = min(4, math.ceil(total / 6))
             width = needed * 120 + (needed - 1) * 10
             cap = 6 * needed
+            # Alert if demand exceeds our max span capacity (24 pax)
+            try:
+                if math.ceil(total / 6) > 4:
+                    msg = f"Groupe {total}p dépasse la capacité rect dynamique max (24p, span 4)."
+                    _dbg_add("WARNING", msg)
+                    alerts.append(msg)
+            except Exception:
+                pass
+            # Quick feasibility hint: check any T zone wide enough
+            try:
+                z_ok = any((float(z.get('w',0)) >= width and float(z.get('h',0)) >= 60) for z in (plan_data.get('rect_only_zones') or []))
+                if not z_ok:
+                    msg = f"Zone T trop étroite pour span {needed} (largeur requise {width}px)."
+                    _dbg_add("INFO", msg)
+                    alerts.append(msg)
+            except Exception:
+                pass
             if cap >= total:
                 spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_right=True, prefer_center_y=True)
                 if spot:
@@ -1008,6 +1087,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                         _dbg_add("DEBUG", f"assign dynamic-large-rect -> res={r.id} pax={r.pax} table={new_id} span={needed}")
                     except Exception:
                         pass
+                else:
+                    _dbg_add("WARNING", f"No space for large rect in T for {r.client_name} ({int(r.pax)}p)")
+                    alerts.append(f"Pas d'espace pour grande rect pour {r.client_name} ({int(r.pax)}p)")
         if placed:
             continue
 
@@ -1022,6 +1104,8 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             if best_standing:
                 pax_on_table = min(_capacity_for_table(best_standing), int(r.pax))
                 assignments_by_table.setdefault(best_standing.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table})
+                if int(r.pax) <= 4:
+                    small_on_nonfixed += 1
                 placed = True
         if placed:
             continue
@@ -1044,6 +1128,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             if best_round:
                 pax_on_table = min(_capacity_for_table(best_round), int(r.pax))
                 assignments_by_table.setdefault(best_round.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "last_resort": True})
+                alerts.append(f"Dernier recours: table ronde pour {r.client_name} ({int(r.pax)}p)")
                 placed = True
                 try:
                     logger.debug("assign round -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_round.get("id"), _capacity_for_table(best_round))
@@ -1062,6 +1147,9 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 if best_sofa:
                     pax_on_table = min(_capacity_for_table(best_sofa), int(r.pax))
                     assignments_by_table.setdefault(best_sofa.get("id"), {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": pax_on_table, "last_resort": True})
+                    if int(r.pax) <= 4:
+                        small_on_nonfixed += 1
+                    alerts.append(f"Dernier recours: canapé pour {r.client_name} ({int(r.pax)}p)")
                     placed = True
                     try:
                         logger.debug("assign sofa -> res=%s pax=%s table=%s cap=%s", r.id, r.pax, best_sofa.get("id"), _capacity_for_table(best_sofa))
@@ -1087,16 +1175,38 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": 1}
                     (plan_data.setdefault("tables", [])).append(new_tbl)
                     assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": remaining})
+                    if int(r.pax) <= 4:
+                        small_on_nonfixed += 1
                     remaining = 0
                     rect_dynamic_created += 1
                     created_any = True
                     print(f"✓ Created single rect (8 cap) {rect_dynamic_created}/{max_rect_dynamic}")
                     _dbg_add("INFO", f"✓ Created single rect (cap 8) {rect_dynamic_created}/{max_rect_dynamic}")
+                else:
+                    _dbg_add("WARNING", f"No space for small rect (8) in center of T for {r.client_name} ({int(r.pax)}p)")
+                    alerts.append(f"Pas d'espace pour petite rect (8) pour {r.client_name} ({int(r.pax)}p)")
             else:
                 # Try one big rect first (span up to 4 widths)
                 needed = min(4, math.ceil(remaining / 6))
                 width = needed * 120 + (needed - 1) * 10
                 cap = 6 * needed
+                # Alert if demand exceeds our max span capacity (24 pax)
+                try:
+                    if math.ceil(remaining / 6) > 4:
+                        msg = f"Groupe {remaining}p dépasse la capacité rect dynamique max (24p, span 4)."
+                        _dbg_add("WARNING", msg)
+                        alerts.append(msg)
+                except Exception:
+                    pass
+                # Quick feasibility hint: check any T zone wide enough
+                try:
+                    z_ok = any((float(z.get('w',0)) >= width and float(z.get('h',0)) >= 60) for z in (plan_data.get('rect_only_zones') or []))
+                    if not z_ok:
+                        msg = f"Zone T trop étroite pour span {needed} (largeur requise {width}px)."
+                        _dbg_add("INFO", msg)
+                        alerts.append(msg)
+                except Exception:
+                    pass
                 if cap >= remaining:
                     spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_right=True, prefer_center_y=True)
                     if spot and (rect_dynamic_created) < max_rect_dynamic:
@@ -1124,30 +1234,51 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                         created_any = True
                         print(f"✓ Created round table {round_dynamic_created}/{max_round_dynamic}")
                         _dbg_add("INFO", f"✓ Created round {round_dynamic_created}/{max_round_dynamic}")
+                        alerts.append(f"Dernier recours dynamique: table ronde créée pour {r.client_name} ({int(r.pax)}p)")
                     else:
                         logger.warning("Round 10 insufficient for %s (%d pax)", r.client_name, int(r.pax))
                         _dbg_add("WARNING", f"Round 10 insufficient for {r.client_name} ({int(r.pax)} pax)")
                 else:
                     logger.warning("No space found for new round table")
                     _dbg_add("WARNING", "No space for new round table")
+                    alerts.append("Impossible de placer une table ronde en dernier recours")
             if remaining <= 0 and created_any:
                 placed = True
             elif remaining > 0:
                 if (rect_dynamic_created) >= max_rect_dynamic:
                     logger.warning("⚠️ STOCK LIMIT REACHED: rect tables %d/%d (dynamic created)", rect_dynamic_created, max_rect_dynamic)
                     _dbg_add("WARNING", f"STOCK LIMIT: rect {rect_dynamic_created}/{max_rect_dynamic}")
+                    alerts.append(f"Stock rect dynamiques atteint: {rect_dynamic_created}/{max_rect_dynamic}")
                 if (round_dynamic_created) >= max_round_dynamic:
                     logger.warning("⚠️ STOCK LIMIT REACHED: round tables %d/%d (dynamic created)", round_dynamic_created, max_round_dynamic)
                     _dbg_add("WARNING", f"STOCK LIMIT: round {round_dynamic_created}/{max_round_dynamic}")
+                    alerts.append(f"Stock rondes dynamiques atteint: {round_dynamic_created}/{max_round_dynamic}")
 
         # If not placed, leave unassigned; frontend will show conflict
         if not placed:
             logger.warning("UNPLACED reservation: %s (%s, %d pax) - no space found even after trying to create tables", r.id, r.client_name, r.pax)
             _dbg_add("WARNING", f"UNPLACED: {r.client_name} ({r.pax} pax)")
 
+    # Aggregate unassigned reservations as a final alert
+    try:
+        assigned_res_ids = {str(v.get("res_id")) for v in assignments_by_table.values()}
+        unassigned = [r for r in reservations if str(r.id) not in assigned_res_ids]
+        if len(unassigned) > 0:
+            names = ", ".join((r.client_name or "").upper()[:18] for r in unassigned[:8])
+            extra = "" if len(unassigned) <= 8 else f" (+{len(unassigned)-8} autres)"
+            msg = f"{len(unassigned)} réservation(s) non assignée(s): {names}{extra}"
+            _dbg_add("WARNING", msg)
+            alerts.append(msg)
+        # Warn if small groups went to non-fixed while fixed stock remains
+        if small_on_nonfixed > 0 and fixed_chairs_used < fixed_chair_stock:
+            alerts.append(f"{small_on_nonfixed} groupe(s) 1–4 pax placés sur non-fixes alors qu'il restait des chaises fixes ({fixed_chairs_used}/{fixed_chair_stock})")
+            _dbg_add("WARNING", f"Small-on-nonfixed={small_on_nonfixed} with fixed chairs remaining {fixed_chairs_used}/{fixed_chair_stock}")
+    except Exception:
+        pass
+
     print(f"_auto_assign SUMMARY: {len(reservations)} reservations, {unplaced_count} tried dynamic, {len(assignments_by_table)} assignments | STOCK USED: rect {rect_dynamic_created}/{max_rect_dynamic}, round {round_dynamic_created}/{max_round_dynamic}")
     _dbg_add("INFO", f"_auto_assign SUMMARY: {len(reservations)} res, {unplaced_count} tried dynamic, {len(assignments_by_table)} assigned | STOCK: rect {rect_dynamic_created}/{max_rect_dynamic}, round {round_dynamic_created}/{max_round_dynamic}")
-    return {"tables": assignments_by_table}
+    return {"tables": assignments_by_table, "alerts": alerts}
 
 
 # ---- Base plan ----
