@@ -21,6 +21,8 @@ export default function FloorPlanPage() {
   const [compareResult, setCompareResult] = useState<any | null>(null)
   const [showCompareModal, setShowCompareModal] = useState(false)
   const [showStock, setShowStock] = useState(true)
+  const [uiAlerts, setUiAlerts] = useState<string[]>([])
+  const [resetViewTick, setResetViewTick] = useState(0)
 
   useEffect(() => {
     loadBase()
@@ -212,6 +214,7 @@ export default function FloorPlanPage() {
         const head = alerts.slice(0, 5).join('\n- ')
         const more = alerts.length > 5 ? `\n(+${alerts.length - 5} autres)` : ''
         alert(`${assigned} tables assignées${newTablesCreated > 0 ? ` (${newTablesCreated} nouvelles)` : ''}\n\nAlerte(s):\n- ${head}${more}`)
+        setUiAlerts(alerts)
       } else {
         if (newTablesCreated > 0) {
           alert(`${assigned} tables assignées (${newTablesCreated} nouvelle(s) table(s) créée(s))`)
@@ -348,6 +351,8 @@ export default function FloorPlanPage() {
   const instanceHasReservations = !!(selectedInstance?.reservations && Array.isArray((selectedInstance as any).reservations?.items) && (selectedInstance as any).reservations.items.length > 0)
   const instanceAssignmentsCount = Object.keys(selectedInstance?.assignments?.tables || {}).length
   const instanceHasAssignments = instanceAssignmentsCount > 0
+  const instanceReservationsCount = (selectedInstance?.reservations && Array.isArray((selectedInstance as any).reservations?.items)) ? (selectedInstance as any).reservations.items.length : 0
+  const instanceDynamicTables = (selectedInstance?.data?.tables || []).filter((t: any) => t && (t as any).dynamic).length
 
   return (
     <div className="space-y-6">
@@ -576,6 +581,14 @@ export default function FloorPlanPage() {
                     <button className="btn btn-sm" onClick={compareWithPDF} title="Comparer placement ↔ PDF (diagnostic)">
                       🔎 Comparer PDF
                     </button>
+                    <button className="btn btn-sm btn-outline" onClick={() => setResetViewTick(t => t + 1)} title="Recentrer et adapter la vue à la salle">
+                      ⤾ Reset vue
+                    </button>
+                    <div className="ml-auto flex items-center gap-2 text-xs text-gray-600">
+                      <span className="px-2 py-1 bg-gray-100 rounded" title="Nombre de réservations importées">Res: {instanceReservationsCount}</span>
+                      <span className="px-2 py-1 bg-gray-100 rounded" title="Nombre de tables assignées (côté plan)">Assign: {instanceAssignmentsCount}</span>
+                      <span className="px-2 py-1 bg-gray-100 rounded" title="Tables dynamiques présentes dans le plan">Dyn: {instanceDynamicTables}</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -644,6 +657,21 @@ export default function FloorPlanPage() {
       </div>
 
       <div className="card floorplan-canvas-card">
+        {uiAlerts.length > 0 && (
+          <div className="card mb-4 border border-yellow-300 bg-yellow-50">
+            <div className="card-body">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-semibold text-yellow-800">Alerte(s) de placement</div>
+                <button className="btn btn-xs btn-outline" onClick={() => setUiAlerts([])}>Effacer</button>
+              </div>
+              <ul className="list-disc pl-5 text-sm text-yellow-900 space-y-1">
+                {uiAlerts.map((a, idx) => (
+                  <li key={idx}>{a}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
         {currentData ? (
           <FloorCanvas
             key={editMode === 'instance' ? (selectedInstance?.id || 'template') : 'template'}
@@ -657,6 +685,7 @@ export default function FloorPlanPage() {
             drawRectOnlyMode={drawRectOnlyMode}
             initialScale={currentView?.scale}
             initialOffset={currentView?.offset}
+            resetTrigger={resetViewTick}
             onViewChange={(v) => {
               if (!selectedInstance) return
               setViewByInstance(prev => ({ ...prev, [selectedInstance.id]: v }))

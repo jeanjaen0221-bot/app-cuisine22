@@ -16,9 +16,10 @@ type Props = {
   initialScale?: number
   initialOffset?: { x: number; y: number }
   onViewChange?: (view: { scale: number; offset: { x: number; y: number } }) => void
+  resetTrigger?: number
 }
 
-export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false, initialScale, initialOffset, onViewChange }: Props) {
+export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false, initialScale, initialOffset, onViewChange, resetTrigger }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [scale, setScale] = useState(0.8)
@@ -102,6 +103,12 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     if (!el) return
     if (size.w <= 0 || size.h <= 0) return
     if (hasInteracted.current) return
+    fitToRoom()
+  }, [size.w, size.h, room.width, room.height])
+
+  function fitToRoom() {
+    const el = canvasRef.current
+    if (!el) return
     const pad = 40
     const fit = Math.min(
       (size.w - pad) / (room.width || 1),
@@ -109,11 +116,20 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     )
     if (isFinite(fit) && fit > 0) {
       const nextScale = Math.min(5, Math.max(0.1, fit))
-      const nextOffset = { x: (size.w - room.width * fit) / 2, y: (size.h - room.height * fit) / 2 }
-      if (nextScale !== scale) setScale(nextScale)
-      if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) setOffset(nextOffset)
+      const nextOffset = { x: (size.w - (room.width * fit)) / 2, y: (size.h - (room.height * fit)) / 2 }
+      setScale(nextScale)
+      setOffset(nextOffset)
     }
-  }, [size.w, size.h, room.width, room.height])
+  }
+
+  // External reset trigger: re-fit view and clear interaction guard
+  useEffect(() => {
+    if (typeof resetTrigger === 'number') {
+      hasInteracted.current = false
+      initialApplied.current = false
+      fitToRoom()
+    }
+  }, [resetTrigger])
 
   // Notify view changes for persistence
   useEffect(() => {
