@@ -1667,12 +1667,10 @@ def compare_instance(instance_id: uuid.UUID, session: Session = Depends(get_sess
     except Exception as e:
         logger.error("compare_instance -> failed to load reservations: %s", str(e))
         reservations = []
-    # Build label map from plan snapshot (deep-copy to guarantee no mutation)
-    import copy
+    # Build label map from plan snapshot
     plan = row.data or {}
-    plan_copy = copy.deepcopy(plan)
-    _plan, id_to_label = _assign_table_numbers(plan_copy, persist=False)
-    tables = {str(t.get("id")): t for t in (_plan.get("tables") or [])}
+    _plan, id_to_label = _assign_table_numbers(dict(plan), persist=False)
+    tables = {str(t.get("id")): t for t in (plan.get("tables") or [])}
     # Build mapping res_id -> labels and assigned pax
     labels_by_res: Dict[str, List[str]] = {}
     assigned_pax_by_res: Dict[str, int] = {}

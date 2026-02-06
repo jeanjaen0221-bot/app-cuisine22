@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ZoomIn, ZoomOut, Maximize2, Move } from 'lucide-react'
 import type { AssignmentMap, FloorCircle, FloorPlanData, FloorRect, FloorTable } from '../types'
-import { dlog } from '../lib/debugTrace'
 
 type Props = {
   data: FloorPlanData
@@ -20,7 +19,6 @@ type Props = {
 }
 
 export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false, initialScale, initialOffset, onViewChange }: Props) {
-  const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [scale, setScale] = useState(0.8)
@@ -50,11 +48,6 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const activePointers = useRef(new Map<number, { x: number; y: number }>())
   const pinchStart = useRef<{ dist: number; mid: { x: number; y: number }; scale: number; offset: { x: number; y: number } } | null>(null)
   const initialApplied = useRef(false)
-  const fitApplied = useRef(false)
-  const fitTimer = useRef<number | null>(null)
-  const initialScaleRef = useRef<number | undefined>(initialScale)
-  const initialOffsetRef = useRef<{ x: number; y: number } | undefined>(initialOffset)
-  const postFitRecentered = useRef(false)
   const [draftNoGo, setDraftNoGo] = useState<FloorRect | null>(null)
   const drawStartNoGo = useRef<{ x: number; y: number } | null>(null)
   const [draftRoundZone, setDraftRoundZone] = useState<FloorRect | null>(null)
@@ -65,58 +58,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const [hoveredItem, setHoveredItem] = useState<{ type: string; id: string } | null>(null)
   const lastHoveredRef = useRef<string | null>(null)
 
-  // Robust room defaults + derive from content bounds to avoid ultra-narrow visual
-  const room = useMemo(() => {
-    const r: any = (data && (data as any).room) || {}
-    const g = Number(r.grid || 50) || 50
-    const declaredW = Number(r.width || 0) || 0
-    const declaredH = Number(r.height || 0) || 0
-    const baseW = Math.max(100, declaredW)
-    const baseH = Math.max(100, declaredH)
-    // If backend provides sensible dimensions, trust them and skip derivation
-    if (declaredW > 200 && declaredH > 200) {
-      return { width: baseW, height: baseH, grid: g }
-    }
-    // Otherwise derive content extents (tables, walls, fixtures, columns, zones)
-    const tbs: any[] = ((data as any)?.tables) || []
-    const wls: any[] = ((data as any)?.walls) || []
-    const ngs: any[] = ((data as any)?.no_go) || []
-    const fxs: any[] = ((data as any)?.fixtures) || []
-    const cls: any[] = ((data as any)?.columns) || []
-    const rzs: any[] = ((data as any)?.round_only_zones) || []
-    const tzs: any[] = ((data as any)?.rect_only_zones) || []
-    let maxX = 0, maxY = 0
-    const bumpRect = (x: number, y: number, w: number, h: number) => {
-      if (!isFinite(x) || !isFinite(y)) return
-      if (!isFinite(w) || !isFinite(h)) return
-      maxX = Math.max(maxX, x + Math.max(0, w))
-      maxY = Math.max(maxY, y + Math.max(0, h))
-    }
-    const bumpCircle = (x: number, y: number, r: number) => {
-      if (!isFinite(x) || !isFinite(y) || !isFinite(r)) return
-      maxX = Math.max(maxX, x + Math.max(0, r))
-      maxY = Math.max(maxY, y + Math.max(0, r))
-    }
-    for (const t of tbs) {
-      if (t && typeof t.x === 'number' && typeof t.y === 'number') {
-        if (t.r) bumpCircle(t.x, t.y, t.r)
-        else bumpRect(t.x, t.y, t.w || 120, t.h || 60)
-      }
-    }
-    for (const w of wls) bumpRect(w.x, w.y, w.w, w.h)
-    for (const n of ngs) bumpRect(n.x, n.y, n.w, n.h)
-    for (const f of fxs) {
-      if ('r' in (f || {})) bumpCircle(f.x, f.y, f.r)
-      else bumpRect(f.x, f.y, f.w, f.h)
-    }
-    for (const c of cls) bumpCircle(c.x, c.y, c.r)
-    for (const z of rzs) bumpRect(z.x, z.y, z.w, z.h)
-    for (const z of tzs) bumpRect(z.x, z.y, z.w, z.h)
-    const margin = 40
-    const derivedW = Math.max(baseW, Math.ceil(maxX + margin))
-    const derivedH = Math.max(baseH, Math.ceil(maxY + margin))
-    return { width: derivedW, height: derivedH, grid: g }
-  }, [data])
+  const room = data.room || { width: 1200, height: 800, grid: 50 }
   const tables = data.tables || []
   const walls = data.walls || []
   const cols = data.columns || []
@@ -126,131 +68,57 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const rectOnlyZones = (data as any).rect_only_zones || []
 
   useEffect(() => {
-    dlog('FC', 'mount')
-    const el = containerRef.current
+    const el = canvasRef.current
     if (!el) return
     const ro = new ResizeObserver(() => {
-      const nw = el.clientWidth
-      const nh = el.clientHeight
-      dlog('FC', `resize -> ${nw}x${nh}`)
-      setSize({ w: nw, h: nh })
+      setSize({ w: el.clientWidth, h: el.clientHeight })
     })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
-  // Apply initial view once on mount (before any interaction and before autofit)
+  // Apply initial view if provided (and before any user interaction)
   useEffect(() => {
     if (hasInteracted.current) return
     if (initialApplied.current) return
-    if (fitApplied.current) return
     let changed = false
-    const iS = initialScaleRef.current
-    const iO = initialOffsetRef.current
-    if (typeof iS === 'number' && iS !== scale) {
-      setScale(iS)
-      dlog('FC', `apply initial scale ${iS}`)
+    if (typeof initialScale === 'number' && initialScale !== scale) {
+      setScale(initialScale)
       changed = true
     }
-    if (iO && typeof iO.x === 'number' && typeof iO.y === 'number') {
-      if (iO.x !== offset.x || iO.y !== offset.y) {
-        setOffset(iO)
-        dlog('FC', `apply initial offset`, iO)
+    if (initialOffset && typeof initialOffset.x === 'number' && typeof initialOffset.y === 'number') {
+      if (initialOffset.x !== offset.x || initialOffset.y !== offset.y) {
+        setOffset(initialOffset)
         changed = true
       }
     }
     if (changed) {
       initialApplied.current = true
     }
-    // run only once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [initialScale, initialOffset])
 
   useEffect(() => {
-    const el = containerRef.current
+    const el = canvasRef.current
     if (!el) return
     if (size.w <= 0 || size.h <= 0) return
     if (hasInteracted.current) return
-    if (fitApplied.current) return
-    // Debounce: wait a tick so layout/CSS settle, then fit once
-    if (fitTimer.current) window.clearTimeout(fitTimer.current)
-    fitTimer.current = window.setTimeout(() => {
-      const sw = size.w
-      const sh = size.h
-      const pad = 40
-      const fit = Math.min(
-        (sw - pad) / (room.width || 1),
-        (sh - pad) / (room.height || 1)
-      )
-      if (isFinite(fit) && fit > 0) {
-        // Use the computed fit to guarantee the room is centered and entirely visible
-        const nextScale = Math.min(5, Math.max(0.1, fit))
-        const nextOffset = { x: (sw - room.width * nextScale) / 2, y: (sh - room.height * nextScale) / 2 }
-        dlog('FC', `autofit -> fit=${fit.toFixed(3)} nextScale=${nextScale.toFixed(3)} size=${sw}x${sh} room=${room.width}x${room.height}`)
-        if (nextScale !== scale) { setScale(nextScale); dlog('FC', `setScale`, nextScale) }
-        if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) { setOffset(nextOffset); dlog('FC', `setOffset`, nextOffset) }
-      }
-      fitApplied.current = true
-      dlog('FC', 'autofit applied')
-    }, 120)
-    return () => { if (fitTimer.current) window.clearTimeout(fitTimer.current) }
+    const pad = 40
+    const fit = Math.min(
+      (size.w - pad) / (room.width || 1),
+      (size.h - pad) / (room.height || 1)
+    )
+    if (isFinite(fit) && fit > 0) {
+      const nextScale = Math.min(5, Math.max(0.1, fit))
+      const nextOffset = { x: (size.w - room.width * fit) / 2, y: (size.h - room.height * fit) / 2 }
+      if (nextScale !== scale) setScale(nextScale)
+      if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) setOffset(nextOffset)
+    }
   }, [size.w, size.h, room.width, room.height])
 
   // Notify view changes for persistence
   useEffect(() => {
     onViewChange && onViewChange({ scale, offset })
-    dlog('FC', `onViewChange`, { scale, offset })
   }, [scale, offset])
-
-  // Safety: clamp invalid scale/offset
-  useEffect(() => {
-    let fixed = false
-    let ns = scale
-    let no = { ...offset }
-    if (!isFinite(ns) || ns <= 0) { ns = 0.8; fixed = true }
-    if (!isFinite(no.x)) { no.x = 100; fixed = true }
-    if (!isFinite(no.y)) { no.y = 100; fixed = true }
-    if (fixed) {
-      setScale(ns)
-      setOffset(no)
-      dlog('FC', `safety clamp`, { scale: ns, offset: no })
-    }
-  }, [scale, offset])
-
-  // Recenter on container resize changes after autofit (keep scale, avoid shrinking)
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    if (!fitApplied.current) return
-    if (size.w <= 0 || size.h <= 0) return
-    const sw = el.clientWidth
-    const sh = el.clientHeight
-    const nx = (sw - room.width * scale) / 2
-    const ny = (sh - room.height * scale) / 2
-    if (isFinite(nx) && isFinite(ny)) {
-      if (Math.abs(nx - offset.x) > 1 || Math.abs(ny - offset.y) > 1) {
-        setOffset({ x: nx, y: ny })
-        dlog('FC', `recenter after resize`, { x: nx, y: ny, sw, sh })
-      }
-    }
-  }, [size.w, size.h, room.width, room.height, scale])
-
-  // One-shot post-fit recenter (guards against early hasInteracted changes)
-  useEffect(() => {
-    if (!fitApplied.current) return
-    if (postFitRecentered.current) return
-    const el = containerRef.current
-    if (!el) return
-    const sw = el.clientWidth
-    const sh = el.clientHeight
-    const nx = (sw - room.width * scale) / 2
-    const ny = (sh - room.height * scale) / 2
-    if (isFinite(nx) && isFinite(ny)) {
-      setOffset({ x: nx, y: ny })
-      dlog('FC', `post-fit recenter`, { x: nx, y: ny, sw, sh })
-    }
-    postFitRecentered.current = true
-  }, [fitApplied.current])
 
   // Menu contextuel state tracking
   useEffect(() => {
@@ -1426,14 +1294,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     if (nextScale !== scale) setScale(nextScale)
     if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) setOffset(nextOffset)
     hasInteracted.current = false
-    fitApplied.current = true
-    initialApplied.current = false
   }
 
   return (
     <div 
       className={className} 
-      ref={containerRef}
       style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
       onContextMenu={onContextMenu}
     >

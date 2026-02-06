@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { api, fileDownload, getFloorBase, updateFloorBase } from '../lib/api'
-import AlertPanel from '../components/AlertPanel'
 import FloorCanvas from '../components/FloorCanvas'
 import { FloorPlanData, FloorPlanBase, FloorPlanInstance } from '../types'
 import { Plus, Save, Trash2, Download, Upload, Calendar } from 'lucide-react'
@@ -22,8 +21,6 @@ export default function FloorPlanPage() {
   const [compareResult, setCompareResult] = useState<any | null>(null)
   const [showCompareModal, setShowCompareModal] = useState(false)
   const [showStock, setShowStock] = useState(true)
-  const [alerts, setAlerts] = useState<string[]>([])
-  const [notice, setNotice] = useState<{ text: string; kind: 'success' | 'info' | 'error' } | null>(null)
 
   useEffect(() => {
     loadBase()
@@ -43,12 +40,6 @@ export default function FloorPlanPage() {
     } catch {}
   }, [viewByInstance])
 
-  function showNotice(text: string, kind: 'success' | 'info' | 'error' = 'info') {
-    setNotice({ text, kind })
-    window.clearTimeout((showNotice as any)._t)
-    ;(showNotice as any)._t = window.setTimeout(() => setNotice(null), 5000)
-  }
-
   async function loadBase() {
     try {
       const data = await getFloorBase()
@@ -63,16 +54,16 @@ export default function FloorPlanPage() {
     try {
       const res = await api.post(`/api/floorplan/instances/${selectedInstance.id}/reset`)
       setSelectedInstance(res.data)
-      showNotice('Instance réinitialisée', 'success')
+      alert('Instance réinitialisée')
     } catch (err) {
       console.error('Failed to reset instance:', err)
-      showNotice('Erreur réinitialisation', 'error')
+      alert('Erreur réinitialisation')
     }
   }
 
   async function compareWithPDF() {
     if (!selectedInstance) {
-      showNotice('Sélectionnez d\'abord une instance', 'info')
+      alert('Sélectionnez d\'abord une instance')
       return
     }
     try {
@@ -81,7 +72,7 @@ export default function FloorPlanPage() {
       setShowCompareModal(true)
     } catch (err) {
       console.error('Failed to compare instance:', err)
-      showNotice('Erreur comparaison', 'error')
+      alert('Erreur comparaison')
     }
   }
 
@@ -101,11 +92,11 @@ export default function FloorPlanPage() {
         name: baseTemplate.name,
         data: baseTemplate.data
       })
-      showNotice('Plan de base sauvegardé', 'success')
+      alert('Plan de base sauvegardé')
       await loadBase()
     } catch (err) {
       console.error('Failed to save base:', err)
-      showNotice('Erreur lors de la sauvegarde', 'error')
+      alert('Erreur lors de la sauvegarde')
     }
   }
 
@@ -116,17 +107,17 @@ export default function FloorPlanPage() {
         data: selectedInstance.data,
         assignments: selectedInstance.assignments
       })
-      showNotice('Instance sauvegardée', 'success')
+      alert('Instance sauvegardée')
       await loadInstances()
     } catch (err) {
       console.error('Failed to save instance:', err)
-      showNotice('Erreur lors de la sauvegarde', 'error')
+      alert('Erreur lors de la sauvegarde')
     }
   }
 
   async function createInstance() {
     if (!newInstanceDate) {
-      showNotice('Veuillez sélectionner une date', 'info')
+      alert('Veuillez sélectionner une date')
       return
     }
     try {
@@ -134,13 +125,13 @@ export default function FloorPlanPage() {
         service_date: newInstanceDate,
         service_label: newInstanceLabel
       })
-      showNotice('Instance créée', 'success')
+      alert('Instance créée')
       setShowCreateModal(false)
       setNewInstanceDate('')
       await loadInstances()
     } catch (err: any) {
       console.error('Failed to create instance:', err)
-      showNotice('Erreur: ' + (err.response?.data?.detail || 'Création échouée'), 'error')
+      alert('Erreur: ' + (err.response?.data?.detail || 'Création échouée'))
     }
   }
 
@@ -150,17 +141,17 @@ export default function FloorPlanPage() {
     try {
       await api.delete(`/api/floorplan/instances/${selectedInstance.id}`)
       setSelectedInstance(null)
-      showNotice('Instance supprimée', 'success')
+      alert('Instance supprimée')
       await loadInstances()
     } catch (err) {
       console.error('Failed to delete instance:', err)
-      showNotice('Erreur lors de la suppression', 'error')
+      alert('Erreur lors de la suppression')
     }
   }
 
   async function importPDF() {
     if (!selectedInstance) {
-      showNotice('Sélectionnez d\'abord une instance', 'info')
+      alert('Sélectionnez d\'abord une instance')
       return
     }
     const input = document.createElement('input')
@@ -180,14 +171,14 @@ export default function FloorPlanPage() {
         })
         const count = Array.isArray(res.data.parsed) ? res.data.parsed.length : 0
         console.log('[IMPORT-PDF] Résultat:', res.data)
-        showNotice(`${count} réservations importées`, 'success')
+        alert(`${count} réservations importées`)
         await loadInstances()
         // Reload selected instance
         const updated = await api.get(`/api/floorplan/instances/${selectedInstance.id}`)
         setSelectedInstance(updated.data)
       } catch (err: any) {
         console.error('Failed to import PDF:', err)
-        showNotice('Erreur import: ' + (err.response?.data?.detail || 'Échec'), 'error')
+        alert('Erreur import: ' + (err.response?.data?.detail || 'Échec'))
       } finally {
         setUploadingPDF(false)
       }
@@ -197,7 +188,7 @@ export default function FloorPlanPage() {
 
   async function autoAssign() {
     if (!selectedInstance) {
-      showNotice('Sélectionnez d\'abord une instance', 'info')
+      alert('Sélectionnez d\'abord une instance')
       return
     }
     try {
@@ -217,12 +208,21 @@ export default function FloorPlanPage() {
         instanceData: res.data
       })
       
-      setAlerts(alerts)
-      showNotice(`${assigned} tables assignées${newTablesCreated > 0 ? ` (${newTablesCreated} nouvelles)` : ''}`, alerts.length > 0 ? 'info' : 'success')
+      if (alerts.length > 0) {
+        const head = alerts.slice(0, 5).join('\n- ')
+        const more = alerts.length > 5 ? `\n(+${alerts.length - 5} autres)` : ''
+        alert(`${assigned} tables assignées${newTablesCreated > 0 ? ` (${newTablesCreated} nouvelles)` : ''}\n\nAlerte(s):\n- ${head}${more}`)
+      } else {
+        if (newTablesCreated > 0) {
+          alert(`${assigned} tables assignées (${newTablesCreated} nouvelle(s) table(s) créée(s))`)
+        } else {
+          alert(`${assigned} tables assignées`)
+        }
+      }
       setSelectedInstance(res.data)
     } catch (err: any) {
       console.error('Failed to auto-assign:', err)
-      showNotice('Erreur: ' + (err.response?.data?.detail || 'Auto-assign échoué'), 'error')
+      alert('Erreur: ' + (err.response?.data?.detail || 'Auto-assign échoué'))
     }
   }
 
@@ -239,16 +239,16 @@ export default function FloorPlanPage() {
       } else {
         setSelectedInstance(res.data)
       }
-      showNotice('Tables numérotées', 'success')
+      alert('Tables numérotées')
     } catch (err) {
       console.error('Failed to number tables:', err)
-      showNotice('Erreur numérotation', 'error')
+      alert('Erreur numérotation')
     }
   }
 
   async function exportAnnotated() {
     if (!selectedInstance) {
-      showNotice('Sélectionnez d\'abord une instance', 'info')
+      alert('Sélectionnez d\'abord une instance')
       return
     }
     const input = document.createElement('input')
@@ -271,7 +271,7 @@ export default function FloorPlanPage() {
         fileDownload(res.data, `annotated_${selectedInstance.service_date}.pdf`)
       } catch (err) {
         console.error('Failed to export annotated:', err)
-        showNotice('Erreur export', 'error')
+        alert('Erreur export')
       }
     }
     input.click()
@@ -286,7 +286,7 @@ export default function FloorPlanPage() {
       fileDownload(res.data, `plan_${selectedInstance.service_date}.pdf`)
     } catch (err) {
       console.error('Failed to export complete:', err)
-      showNotice('Erreur export', 'error')
+      alert('Erreur export')
     }
   }
 
@@ -643,56 +643,30 @@ export default function FloorPlanPage() {
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4">
-        <div className="flex-1">
-          <div className="card floorplan-canvas-card">
-            {currentData ? (
-              (() => {
-                const v = currentView
-                let passScale: number | undefined = undefined
-                let passOffset: { x: number; y: number } | undefined = undefined
-                if (v && typeof v.scale === 'number' && isFinite(v.scale) && v.scale > 0.2 && v.scale < 4 && v.offset && isFinite(v.offset.x) && isFinite(v.offset.y) && Math.abs(v.offset.x) < 5000 && Math.abs(v.offset.y) < 5000) {
-                  passScale = v.scale
-                  passOffset = v.offset
-                }
-                return (
-                  <FloorCanvas
-                    key={editMode === 'instance' ? (selectedInstance?.id || 'template') : 'template'}
-                    data={currentData}
-                    assignments={editMode === 'instance' ? selectedInstance?.assignments : undefined}
-                    editable={true}
-                    showGrid={showGrid}
-                    onChange={editMode === 'template' ? handleBaseChange : handleInstanceChange}
-                    drawNoGoMode={drawNoGoMode}
-                    drawRoundOnlyMode={drawRoundOnlyMode}
-                    drawRectOnlyMode={drawRectOnlyMode}
-                    initialScale={passScale}
-                    initialOffset={passOffset}
-                    onViewChange={(vv) => {
-                      if (!selectedInstance) return
-                      setViewByInstance(prev => ({ ...prev, [selectedInstance.id]: vv }))
-                    }}
-                  />
-                )
-              })()
-            ) : (
-              <div className="flex items-center justify-center h-full text-gray-500">
-                Sélectionnez ou créez un plan
-              </div>
-            )}
+      <div className="card floorplan-canvas-card">
+        {currentData ? (
+          <FloorCanvas
+            key={editMode === 'instance' ? (selectedInstance?.id || 'template') : 'template'}
+            data={currentData}
+            assignments={editMode === 'instance' ? selectedInstance?.assignments : undefined}
+            editable={true}
+            showGrid={showGrid}
+            onChange={editMode === 'template' ? handleBaseChange : handleInstanceChange}
+            drawNoGoMode={drawNoGoMode}
+            drawRoundOnlyMode={drawRoundOnlyMode}
+            drawRectOnlyMode={drawRectOnlyMode}
+            initialScale={currentView?.scale}
+            initialOffset={currentView?.offset}
+            onViewChange={(v) => {
+              if (!selectedInstance) return
+              setViewByInstance(prev => ({ ...prev, [selectedInstance.id]: v }))
+            }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-gray-500">
+            Sélectionnez ou créez un plan
           </div>
-        </div>
-        <div className="w-full lg:w-80 shrink-0 space-y-3">
-          {notice && (
-            <div className={`card shadow-sm ${notice.kind==='success' ? 'border border-green-200 bg-green-50' : notice.kind==='error' ? 'border border-red-200 bg-red-50' : 'border border-blue-200 bg-blue-50'}`}>
-              <div className={`card-body py-2 px-3 text-sm flex items-center justify-between ${notice.kind==='success' ? 'text-green-800' : notice.kind==='error' ? 'text-red-800' : 'text-blue-800'}`}>
-                <span>{notice.text}</span>
-                <button className="btn btn-xs" onClick={() => setNotice(null)}>OK</button>
-              </div>
-            </div>
-          )}
-          <AlertPanel alerts={alerts} onClear={() => setAlerts([])} />
-        </div>
+        )}
       </div>
 
       {/* Modal création instance */}
