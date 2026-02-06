@@ -48,6 +48,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const activePointers = useRef(new Map<number, { x: number; y: number }>())
   const pinchStart = useRef<{ dist: number; mid: { x: number; y: number }; scale: number; offset: { x: number; y: number } } | null>(null)
   const initialApplied = useRef(false)
+  const fitApplied = useRef(false)
   const [draftNoGo, setDraftNoGo] = useState<FloorRect | null>(null)
   const drawStartNoGo = useRef<{ x: number; y: number } | null>(null)
   const [draftRoundZone, setDraftRoundZone] = useState<FloorRect | null>(null)
@@ -84,10 +85,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     return () => ro.disconnect()
   }, [])
 
-  // Apply initial view if provided (and before any user interaction)
+  // Apply initial view if provided (only before any user interaction AND before autofit ran)
   useEffect(() => {
     if (hasInteracted.current) return
     if (initialApplied.current) return
+    if (fitApplied.current) return
     let changed = false
     if (typeof initialScale === 'number' && initialScale !== scale) {
       setScale(initialScale)
@@ -109,6 +111,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     if (!el) return
     if (size.w <= 0 || size.h <= 0) return
     if (hasInteracted.current) return
+    if (initialApplied.current) return
     const pad = 40
     const fit = Math.min(
       (size.w - pad) / (room.width || 1),
@@ -120,6 +123,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       if (nextScale !== scale) setScale(nextScale)
       if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) setOffset(nextOffset)
     }
+    // Mark that autofit was applied (prevents late initialScale from shrinking view)
+    fitApplied.current = true
   }, [size.w, size.h, room.width, room.height])
 
   // Notify view changes for persistence
@@ -1315,6 +1320,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     if (nextScale !== scale) setScale(nextScale)
     if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) setOffset(nextOffset)
     hasInteracted.current = false
+    fitApplied.current = true
+    initialApplied.current = false
   }
 
   return (
