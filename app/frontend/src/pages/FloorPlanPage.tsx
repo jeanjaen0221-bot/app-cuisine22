@@ -647,23 +647,34 @@ export default function FloorPlanPage() {
         <div className="flex-1">
           <div className="card floorplan-canvas-card">
             {currentData ? (
-              <FloorCanvas
-                key={editMode === 'instance' ? (selectedInstance?.id || 'template') : 'template'}
-                data={currentData}
-                assignments={editMode === 'instance' ? selectedInstance?.assignments : undefined}
-                editable={true}
-                showGrid={showGrid}
-                onChange={editMode === 'template' ? handleBaseChange : handleInstanceChange}
-                drawNoGoMode={drawNoGoMode}
-                drawRoundOnlyMode={drawRoundOnlyMode}
-                drawRectOnlyMode={drawRectOnlyMode}
-                initialScale={currentView?.scale}
-                initialOffset={currentView?.offset}
-                onViewChange={(v) => {
-                  if (!selectedInstance) return
-                  setViewByInstance(prev => ({ ...prev, [selectedInstance.id]: v }))
-                }}
-              />
+              (() => {
+                const v = currentView
+                let passScale: number | undefined = undefined
+                let passOffset: { x: number; y: number } | undefined = undefined
+                if (v && typeof v.scale === 'number' && isFinite(v.scale) && v.scale > 0.2 && v.scale < 4 && v.offset && isFinite(v.offset.x) && isFinite(v.offset.y) && Math.abs(v.offset.x) < 5000 && Math.abs(v.offset.y) < 5000) {
+                  passScale = v.scale
+                  passOffset = v.offset
+                }
+                return (
+                  <FloorCanvas
+                    key={editMode === 'instance' ? (selectedInstance?.id || 'template') : 'template'}
+                    data={currentData}
+                    assignments={editMode === 'instance' ? selectedInstance?.assignments : undefined}
+                    editable={true}
+                    showGrid={showGrid}
+                    onChange={editMode === 'template' ? handleBaseChange : handleInstanceChange}
+                    drawNoGoMode={drawNoGoMode}
+                    drawRoundOnlyMode={drawRoundOnlyMode}
+                    drawRectOnlyMode={drawRectOnlyMode}
+                    initialScale={passScale}
+                    initialOffset={passOffset}
+                    onViewChange={(vv) => {
+                      if (!selectedInstance) return
+                      setViewByInstance(prev => ({ ...prev, [selectedInstance.id]: vv }))
+                    }}
+                  />
+                )
+              })()
             ) : (
               <div className="flex items-center justify-center h-full text-gray-500">
                 Sélectionnez ou créez un plan

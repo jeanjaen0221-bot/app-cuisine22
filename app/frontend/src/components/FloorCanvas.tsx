@@ -52,6 +52,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const fitTimer = useRef<number | null>(null)
   const initialScaleRef = useRef<number | undefined>(initialScale)
   const initialOffsetRef = useRef<{ x: number; y: number } | undefined>(initialOffset)
+  const postFitRecentered = useRef(false)
   const [draftNoGo, setDraftNoGo] = useState<FloorRect | null>(null)
   const drawStartNoGo = useRef<{ x: number; y: number } | null>(null)
   const [draftRoundZone, setDraftRoundZone] = useState<FloorRect | null>(null)
@@ -62,13 +63,51 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const [hoveredItem, setHoveredItem] = useState<{ type: string; id: string } | null>(null)
   const lastHoveredRef = useRef<string | null>(null)
 
-  // Robust room defaults: ensure positive dimensions even if backend data is missing or zero
+  // Robust room defaults + derive from content bounds to avoid ultra-narrow visual
   const room = useMemo(() => {
     const r: any = (data && (data as any).room) || {}
-    const w = Math.max(100, Number(r.width || 0) || 0)
-    const h = Math.max(100, Number(r.height || 0) || 0)
     const g = Number(r.grid || 50) || 50
-    return { width: w, height: h, grid: g }
+    const baseW = Math.max(100, Number(r.width || 0) || 0)
+    const baseH = Math.max(100, Number(r.height || 0) || 0)
+    // Derive content extents (tables, walls, fixtures, columns, zones)
+    const tbs: any[] = ((data as any)?.tables) || []
+    const wls: any[] = ((data as any)?.walls) || []
+    const ngs: any[] = ((data as any)?.no_go) || []
+    const fxs: any[] = ((data as any)?.fixtures) || []
+    const cls: any[] = ((data as any)?.columns) || []
+    const rzs: any[] = ((data as any)?.round_only_zones) || []
+    const tzs: any[] = ((data as any)?.rect_only_zones) || []
+    let maxX = 0, maxY = 0
+    const bumpRect = (x: number, y: number, w: number, h: number) => {
+      if (!isFinite(x) || !isFinite(y)) return
+      if (!isFinite(w) || !isFinite(h)) return
+      maxX = Math.max(maxX, x + Math.max(0, w))
+      maxY = Math.max(maxY, y + Math.max(0, h))
+    }
+    const bumpCircle = (x: number, y: number, r: number) => {
+      if (!isFinite(x) || !isFinite(y) || !isFinite(r)) return
+      maxX = Math.max(maxX, x + Math.max(0, r))
+      maxY = Math.max(maxY, y + Math.max(0, r))
+    }
+    for (const t of tbs) {
+      if (t && typeof t.x === 'number' && typeof t.y === 'number') {
+        if (t.r) bumpCircle(t.x, t.y, t.r)
+        else bumpRect(t.x, t.y, t.w || 120, t.h || 60)
+      }
+    }
+    for (const w of wls) bumpRect(w.x, w.y, w.w, w.h)
+    for (const n of ngs) bumpRect(n.x, n.y, n.w, n.h)
+    for (const f of fxs) {
+      if ('r' in (f || {})) bumpCircle(f.x, f.y, f.r)
+      else bumpRect(f.x, f.y, f.w, f.h)
+    }
+    for (const c of cls) bumpCircle(c.x, c.y, c.r)
+    for (const z of rzs) bumpRect(z.x, z.y, z.w, z.h)
+    for (const z of tzs) bumpRect(z.x, z.y, z.w, z.h)
+    const margin = 40
+    const derivedW = Math.max(baseW, Math.ceil(maxX + margin))
+    const derivedH = Math.max(baseH, Math.ceil(maxY + margin))
+    return { width: derivedW, height: derivedH, grid: g }
   }, [data])
   const tables = data.tables || []
   const walls = data.walls || []
@@ -130,9 +169,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         (sh - pad) / (room.height || 1)
       )
       if (isFinite(fit) && fit > 0) {
-        // Prefer the larger between current scale (possibly from initial view) and computed fit
-        const fitScale = Math.min(5, Math.max(0.1, fit))
-        const nextScale = Math.max(scale, fitScale)
+        // Use the computed fit to guarantee the room is centered and entirely visible
+        const nextScale = Math.min(5, Math.max(0.1, fit))
         const nextOffset = { x: (sw - room.width * nextScale) / 2, y: (sh - room.height * nextScale) / 2 }
         if (nextScale !== scale) setScale(nextScale)
         if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) setOffset(nextOffset)
@@ -160,6 +198,39 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       setOffset(no)
     }
   }, [scale, offset])
+
+  // Recenter on container resize changes after autofit (keep scale, avoid shrinking)
+  useEffect(() => {
+    const el = canvasRef.current
+    if (!el) return
+    if (!fitApplied.current) return
+    if (size.w <= 0 || size.h <= 0) return
+    const sw = size.w
+    const sh = size.h
+    const nx = (sw - room.width * scale) / 2
+    const ny = (sh - room.height * scale) / 2
+    if (isFinite(nx) && isFinite(ny)) {
+      if (Math.abs(nx - offset.x) > 1 || Math.abs(ny - offset.y) > 1) {
+        setOffset({ x: nx, y: ny })
+      }
+    }
+  }, [size.w, size.h, room.width, room.height, scale])
+
+  // One-shot post-fit recenter (guards against early hasInteracted changes)
+  useEffect(() => {
+    if (!fitApplied.current) return
+    if (postFitRecentered.current) return
+    const el = canvasRef.current
+    if (!el) return
+    const sw = el.clientWidth
+    const sh = el.clientHeight
+    const nx = (sw - room.width * scale) / 2
+    const ny = (sh - room.height * scale) / 2
+    if (isFinite(nx) && isFinite(ny)) {
+      setOffset({ x: nx, y: ny })
+    }
+    postFitRecentered.current = true
+  }, [fitApplied.current])
 
   // Menu contextuel state tracking
   useEffect(() => {
