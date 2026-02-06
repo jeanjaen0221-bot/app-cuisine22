@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ZoomIn, ZoomOut, Maximize2, Move } from 'lucide-react'
 import type { AssignmentMap, FloorCircle, FloorPlanData, FloorRect, FloorTable } from '../types'
+import { dlog } from '../lib/debugTrace'
 
 type Props = {
   data: FloorPlanData
@@ -125,10 +126,14 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const rectOnlyZones = (data as any).rect_only_zones || []
 
   useEffect(() => {
+    dlog('FC', 'mount')
     const el = containerRef.current
     if (!el) return
     const ro = new ResizeObserver(() => {
-      setSize({ w: el.clientWidth, h: el.clientHeight })
+      const nw = el.clientWidth
+      const nh = el.clientHeight
+      dlog('FC', `resize -> ${nw}x${nh}`)
+      setSize({ w: nw, h: nh })
     })
     ro.observe(el)
     return () => ro.disconnect()
@@ -144,11 +149,13 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const iO = initialOffsetRef.current
     if (typeof iS === 'number' && iS !== scale) {
       setScale(iS)
+      dlog('FC', `apply initial scale ${iS}`)
       changed = true
     }
     if (iO && typeof iO.x === 'number' && typeof iO.y === 'number') {
       if (iO.x !== offset.x || iO.y !== offset.y) {
         setOffset(iO)
+        dlog('FC', `apply initial offset`, iO)
         changed = true
       }
     }
@@ -179,10 +186,12 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         // Use the computed fit to guarantee the room is centered and entirely visible
         const nextScale = Math.min(5, Math.max(0.1, fit))
         const nextOffset = { x: (sw - room.width * nextScale) / 2, y: (sh - room.height * nextScale) / 2 }
-        if (nextScale !== scale) setScale(nextScale)
-        if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) setOffset(nextOffset)
+        dlog('FC', `autofit -> fit=${fit.toFixed(3)} nextScale=${nextScale.toFixed(3)} size=${sw}x${sh} room=${room.width}x${room.height}`)
+        if (nextScale !== scale) { setScale(nextScale); dlog('FC', `setScale`, nextScale) }
+        if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) { setOffset(nextOffset); dlog('FC', `setOffset`, nextOffset) }
       }
       fitApplied.current = true
+      dlog('FC', 'autofit applied')
     }, 120)
     return () => { if (fitTimer.current) window.clearTimeout(fitTimer.current) }
   }, [size.w, size.h, room.width, room.height])
@@ -190,6 +199,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   // Notify view changes for persistence
   useEffect(() => {
     onViewChange && onViewChange({ scale, offset })
+    dlog('FC', `onViewChange`, { scale, offset })
   }, [scale, offset])
 
   // Safety: clamp invalid scale/offset
@@ -203,6 +213,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     if (fixed) {
       setScale(ns)
       setOffset(no)
+      dlog('FC', `safety clamp`, { scale: ns, offset: no })
     }
   }, [scale, offset])
 
@@ -219,6 +230,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     if (isFinite(nx) && isFinite(ny)) {
       if (Math.abs(nx - offset.x) > 1 || Math.abs(ny - offset.y) > 1) {
         setOffset({ x: nx, y: ny })
+        dlog('FC', `recenter after resize`, { x: nx, y: ny, sw, sh })
       }
     }
   }, [size.w, size.h, room.width, room.height, scale])
@@ -235,6 +247,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const ny = (sh - room.height * scale) / 2
     if (isFinite(nx) && isFinite(ny)) {
       setOffset({ x: nx, y: ny })
+      dlog('FC', `post-fit recenter`, { x: nx, y: ny, sw, sh })
     }
     postFitRecentered.current = true
   }, [fitApplied.current])
