@@ -1781,15 +1781,18 @@ img, video, canvas, svg { max-width: 100%; }
 
 /* Floorplan canvas card should fill viewport responsively */
 .floorplan-canvas-card {
-  height: clamp(360px, calc(100vh - 300px), 82vh);
+  /* Larger, more stable height so the canvas doesn't look shrunk */
+  height: clamp(480px, calc(100vh - 200px), 86vh);
+  min-height: 440px;
+  width: 100%;
   padding: 0; /* let the canvas occupy full area */
   overflow: hidden;
 }
 @media (max-width: 1024px) {
-  .floorplan-canvas-card { height: clamp(300px, calc(100vh - 280px), 78vh); }
+  .floorplan-canvas-card { height: clamp(360px, calc(100vh - 240px), 80vh); min-height: 320px; }
 }
 @media (max-width: 640px) {
-  .floorplan-canvas-card { height: clamp(260px, calc(100vh - 260px), 72vh); }
+  .floorplan-canvas-card { height: clamp(300px, calc(100vh - 220px), 74vh); min-height: 280px; }
 }
 
 @media (max-width: 1024px) {
