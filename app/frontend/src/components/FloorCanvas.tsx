@@ -49,6 +49,9 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const pinchStart = useRef<{ dist: number; mid: { x: number; y: number }; scale: number; offset: { x: number; y: number } } | null>(null)
   const initialApplied = useRef(false)
   const fitApplied = useRef(false)
+  const fitTimer = useRef<number | null>(null)
+  const initialScaleRef = useRef<number | undefined>(initialScale)
+  const initialOffsetRef = useRef<{ x: number; y: number } | undefined>(initialOffset)
   const [draftNoGo, setDraftNoGo] = useState<FloorRect | null>(null)
   const drawStartNoGo = useRef<{ x: number; y: number } | null>(null)
   const [draftRoundZone, setDraftRoundZone] = useState<FloorRect | null>(null)
@@ -85,46 +88,58 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     return () => ro.disconnect()
   }, [])
 
-  // Apply initial view if provided (only before any user interaction AND before autofit ran)
+  // Apply initial view once on mount (before any interaction and before autofit)
   useEffect(() => {
     if (hasInteracted.current) return
     if (initialApplied.current) return
     if (fitApplied.current) return
     let changed = false
-    if (typeof initialScale === 'number' && initialScale !== scale) {
-      setScale(initialScale)
+    const iS = initialScaleRef.current
+    const iO = initialOffsetRef.current
+    if (typeof iS === 'number' && iS !== scale) {
+      setScale(iS)
       changed = true
     }
-    if (initialOffset && typeof initialOffset.x === 'number' && typeof initialOffset.y === 'number') {
-      if (initialOffset.x !== offset.x || initialOffset.y !== offset.y) {
-        setOffset(initialOffset)
+    if (iO && typeof iO.x === 'number' && typeof iO.y === 'number') {
+      if (iO.x !== offset.x || iO.y !== offset.y) {
+        setOffset(iO)
         changed = true
       }
     }
     if (changed) {
       initialApplied.current = true
     }
-  }, [initialScale, initialOffset])
+    // run only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const el = canvasRef.current
     if (!el) return
     if (size.w <= 0 || size.h <= 0) return
     if (hasInteracted.current) return
-    if (initialApplied.current) return
-    const pad = 40
-    const fit = Math.min(
-      (size.w - pad) / (room.width || 1),
-      (size.h - pad) / (room.height || 1)
-    )
-    if (isFinite(fit) && fit > 0) {
-      const nextScale = Math.min(5, Math.max(0.1, fit))
-      const nextOffset = { x: (size.w - room.width * fit) / 2, y: (size.h - room.height * fit) / 2 }
-      if (nextScale !== scale) setScale(nextScale)
-      if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) setOffset(nextOffset)
-    }
-    // Mark that autofit was applied (prevents late initialScale from shrinking view)
-    fitApplied.current = true
+    if (fitApplied.current) return
+    // Debounce: wait a tick so layout/CSS settle, then fit once
+    if (fitTimer.current) window.clearTimeout(fitTimer.current)
+    fitTimer.current = window.setTimeout(() => {
+      const sw = el.clientWidth
+      const sh = el.clientHeight
+      const pad = 40
+      const fit = Math.min(
+        (sw - pad) / (room.width || 1),
+        (sh - pad) / (room.height || 1)
+      )
+      if (isFinite(fit) && fit > 0) {
+        // Prefer the larger between current scale (possibly from initial view) and computed fit
+        const fitScale = Math.min(5, Math.max(0.1, fit))
+        const nextScale = Math.max(scale, fitScale)
+        const nextOffset = { x: (sw - room.width * nextScale) / 2, y: (sh - room.height * nextScale) / 2 }
+        if (nextScale !== scale) setScale(nextScale)
+        if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) setOffset(nextOffset)
+      }
+      fitApplied.current = true
+    }, 120)
+    return () => { if (fitTimer.current) window.clearTimeout(fitTimer.current) }
   }, [size.w, size.h, room.width, room.height])
 
   // Notify view changes for persistence
