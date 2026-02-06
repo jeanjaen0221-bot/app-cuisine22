@@ -19,6 +19,7 @@ type Props = {
 }
 
 export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false, initialScale, initialOffset, onViewChange }: Props) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [scale, setScale] = useState(0.8)
@@ -67,9 +68,15 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const room = useMemo(() => {
     const r: any = (data && (data as any).room) || {}
     const g = Number(r.grid || 50) || 50
-    const baseW = Math.max(100, Number(r.width || 0) || 0)
-    const baseH = Math.max(100, Number(r.height || 0) || 0)
-    // Derive content extents (tables, walls, fixtures, columns, zones)
+    const declaredW = Number(r.width || 0) || 0
+    const declaredH = Number(r.height || 0) || 0
+    const baseW = Math.max(100, declaredW)
+    const baseH = Math.max(100, declaredH)
+    // If backend provides sensible dimensions, trust them and skip derivation
+    if (declaredW > 200 && declaredH > 200) {
+      return { width: baseW, height: baseH, grid: g }
+    }
+    // Otherwise derive content extents (tables, walls, fixtures, columns, zones)
     const tbs: any[] = ((data as any)?.tables) || []
     const wls: any[] = ((data as any)?.walls) || []
     const ngs: any[] = ((data as any)?.no_go) || []
@@ -118,7 +125,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const rectOnlyZones = (data as any).rect_only_zones || []
 
   useEffect(() => {
-    const el = canvasRef.current
+    const el = containerRef.current
     if (!el) return
     const ro = new ResizeObserver(() => {
       setSize({ w: el.clientWidth, h: el.clientHeight })
@@ -153,7 +160,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   }, [])
 
   useEffect(() => {
-    const el = canvasRef.current
+    const el = containerRef.current
     if (!el) return
     if (size.w <= 0 || size.h <= 0) return
     if (hasInteracted.current) return
@@ -161,8 +168,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     // Debounce: wait a tick so layout/CSS settle, then fit once
     if (fitTimer.current) window.clearTimeout(fitTimer.current)
     fitTimer.current = window.setTimeout(() => {
-      const sw = el.clientWidth
-      const sh = el.clientHeight
+      const sw = size.w
+      const sh = size.h
       const pad = 40
       const fit = Math.min(
         (sw - pad) / (room.width || 1),
@@ -201,12 +208,12 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
 
   // Recenter on container resize changes after autofit (keep scale, avoid shrinking)
   useEffect(() => {
-    const el = canvasRef.current
+    const el = containerRef.current
     if (!el) return
     if (!fitApplied.current) return
     if (size.w <= 0 || size.h <= 0) return
-    const sw = size.w
-    const sh = size.h
+    const sw = el.clientWidth
+    const sh = el.clientHeight
     const nx = (sw - room.width * scale) / 2
     const ny = (sh - room.height * scale) / 2
     if (isFinite(nx) && isFinite(ny)) {
@@ -220,7 +227,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   useEffect(() => {
     if (!fitApplied.current) return
     if (postFitRecentered.current) return
-    const el = canvasRef.current
+    const el = containerRef.current
     if (!el) return
     const sw = el.clientWidth
     const sh = el.clientHeight
@@ -1413,6 +1420,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   return (
     <div 
       className={className} 
+      ref={containerRef}
       style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
       onContextMenu={onContextMenu}
     >
