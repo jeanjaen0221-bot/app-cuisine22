@@ -637,7 +637,7 @@ def _table_collides(plan: Dict[str, Any], t: Dict[str, Any], existing_tables: Op
         return False
 
 
-def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: float = 60, r: float = 50, require_rect_zone: bool = False, prefer_right: bool = False) -> Optional[Dict[str, float]]:
+def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: float = 60, r: float = 50, require_rect_zone: bool = False, prefer_right: bool = False, prefer_center: bool = False) -> Optional[Dict[str, float]]:
     """Find spot for table. shape can be: rect, round, sofa, standing"""
     room = (plan.get("room") or {"width": 0, "height": 0})
     gw = int(room.get("grid") or 50)
@@ -677,6 +677,10 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
                 # right-aligned, vertically centered
                 cx, cy = float(zx + zw - w), float(zy + zh / 2.0)
                 cand = {"x": float(cx), "y": float(cy - h / 2.0), "w": float(w), "h": float(h)}
+            elif prefer_center:
+                # centered in zone
+                cx, cy = float(zx + (zw - w) / 2.0), float(zy + zh / 2.0)
+                cand = {"x": float(cx), "y": float(cy - h / 2.0), "w": float(w), "h": float(h)}
             else:
                 cx, cy = float(zx + zw / 2.0), float(zy + zh / 2.0)
                 cand = {"x": float(cx - w / 2.0), "y": float(cy - h / 2.0), "w": float(w), "h": float(h)}
@@ -693,13 +697,27 @@ def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: fl
             zx, zy, zw, zh = zone.get("x", 0), zone.get("y", 0), zone.get("w", 0), zone.get("h", 0)
             max_y = max(0, int((zy + zh) - h))
             max_x = max(0, int((zx + zw) - w))
-            y_range = range(int(zy), max_y, max(1, gw))
+            step = max(1, (gw // 2) if (prefer_right or prefer_center) else gw)
+            y_range = range(int(zy), max_y, step)
             if prefer_right:
-                x_range = range(int(max_x), int(zx) - 1, -max(1, gw))
+                x_iter = list(range(int(max_x), int(zx) - 1, -step))
+            elif prefer_center:
+                # build x positions from center outwards
+                start = int(zx + max(0, (zw - w)) / 2.0)
+                left = list(range(start, int(zx) - 1, -step))
+                right = list(range(start + step, int(max_x), step))
+                # interleave left and right
+                x_iter = []
+                L = max(len(left), len(right))
+                for i in range(L):
+                    if i < len(left):
+                        x_iter.append(left[i])
+                    if i < len(right):
+                        x_iter.append(right[i])
             else:
-                x_range = range(int(zx), int(max_x), max(1, gw))
+                x_iter = list(range(int(zx), int(max_x), step))
             for yy in y_range:
-                for xx in x_range:
+                for xx in x_iter:
                     cand = {"x": float(xx), "y": float(yy), "w": float(w), "h": float(h)}
                     t = {"id": "_probe", **cand}
                     if not _table_collides(plan, t, existing_tables=plan.get("tables") or []):
@@ -1051,7 +1069,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             if remaining <= 8:
                 width = 120
                 cap = 8  # 6 + head
-                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_right=False)
+                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_center=True)
                 if spot and (rect_dynamic_created) < max_rect_dynamic and cap >= remaining:
                     new_id = str(uuid.uuid4())
                     new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": 1}
