@@ -173,23 +173,44 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
             c.setFillColor(colors.Color(1, 0.34, 0.13))  # #ff5722 orange
         else:
             c.setFillColor(colors.white)
-        
+
+        # Determine pax/capacity to display (pax if assigned, otherwise capacity)
+        pax_val: Optional[int] = None
+        if assignments and isinstance(assignments.get("tables"), dict):
+            a = assignments["tables"].get(str(t.get("id")))
+            if a and isinstance(a, dict):
+                try:
+                    pax_val = int(a.get("pax"))
+                except Exception:
+                    pax_val = None
+        if pax_val is None:
+            try:
+                pax_val = int(_capacity_for_table(t))
+            except Exception:
+                try:
+                    pax_val = int(t.get("capacity") or 0)
+                except Exception:
+                    pax_val = 0
+
+        def draw_centered_table_text(cx: float, cy: float, lbl: str, pax: int) -> None:
+            if not lbl and not pax:
+                return
+            num_size = 10
+            pax_size = 8
+            c.setFillColor(colors.white)
+            if lbl:
+                c.setFont("Helvetica-Bold", num_size)
+                c.drawCentredString(cx, cy + 3, str(lbl))
+            if pax:
+                c.setFont("Helvetica", pax_size)
+                c.drawCentredString(cx, cy - 8, f"{int(pax)} pl.")
+
         if kind in ("round", "standing") and t.get("r"):
             x = float(t.get("x") or 0)
             y = float(t.get("y") or 0)
             r = float(t.get("r") or 0)
             c.circle(tx(x), ty(y), scale * r, stroke=1, fill=1)
-            if lbl:
-                c.setFillColor(colors.white)
-                c.setFont("Helvetica-Bold", 9)
-                c.drawCentredString(tx(x), ty(y) - 3, str(lbl))
-            # draw assignment if any
-            if assignments and isinstance(assignments.get("tables"), dict):
-                a = assignments["tables"].get(str(t.get("id")))
-                if a:
-                    c.setFont("Helvetica", 8)
-                    c.setFillColor(colors.black)
-                    c.drawString(tx(x + r + 4), ty(y) + 2, f"{a.get('name','')} ({a.get('pax',0)})")
+            draw_centered_table_text(tx(x), ty(y), lbl, pax_val or 0)
         else:
             x = float(t.get("x") or 0)
             y = float(t.get("y") or 0)
@@ -198,17 +219,7 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
             c.rect(tx(x), ty(y + h), scale * w, scale * h, stroke=1, fill=1)
             cx = tx(x + w / 2.0)
             cy = ty(y + h / 2.0)
-            if lbl:
-                c.setFillColor(colors.white)
-                c.setFont("Helvetica-Bold", 9)
-                c.drawCentredString(cx, cy - 3, str(lbl))
-            # draw assignment if any
-            if assignments and isinstance(assignments.get("tables"), dict):
-                a = assignments["tables"].get(str(t.get("id")))
-                if a:
-                    c.setFont("Helvetica", 8)
-                    c.setFillColor(colors.black)
-                    c.drawString(tx(x + w + 4), ty(y + 10), f"{a.get('name','')} ({a.get('pax',0)})")
+            draw_centered_table_text(cx, cy, lbl, pax_val or 0)
 
     # title
     c.setFont("Helvetica", 10)
