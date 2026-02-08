@@ -384,124 +384,140 @@ export default function FloorPlanPage() {
     <div className="space-y-6">
       <div className="card sticky top-0 z-10 bg-white/90 backdrop-blur shadow-sm">
         <div className="card-body">
-          <div className="flex flex-wrap gap-4 items-center justify-between">
-            <div className="flex gap-2">
-              <button
-                className={`btn btn-sm ${editMode === 'template' ? 'btn-primary' : 'btn-outline'}`}
-                onClick={() => setEditMode('template')}
-                title="Éditer le plan de base"
-              >
-                Plans de base
-              </button>
-              <button
-                className={`btn btn-sm ${editMode === 'instance' ? 'btn-primary' : 'btn-outline'}`}
-                onClick={() => setEditMode('instance')}
-                title="Gérer une instance (service)"
-              >
-                <Calendar className="w-4 h-4" /> Instances
-              </button>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="join">
+                <button
+                  className={`btn btn-sm join-item ${editMode === 'template' ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => setEditMode('template')}
+                  title="Éditer le plan de base"
+                >
+                  Plans de base
+                </button>
+                <button
+                  className={`btn btn-sm join-item ${editMode === 'instance' ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => setEditMode('instance')}
+                  title="Gérer une instance (service)"
+                >
+                  <Calendar className="w-4 h-4" /> Instances
+                </button>
+              </div>
+
+              {editMode === 'instance' && selectedInstance && (
+                <div className="hidden lg:flex items-center gap-2 text-xs">
+                  <span className="px-2 py-1 bg-gray-100 rounded text-gray-700" title="Nombre de réservations importées">Res: <b>{instanceReservationsCount}</b></span>
+                  <span className="px-2 py-1 bg-gray-100 rounded text-gray-700" title="Nombre de tables assignées (côté plan)">Assign: <b>{instanceAssignmentsCount}</b></span>
+                  <span className="px-2 py-1 bg-gray-100 rounded text-gray-700" title="Tables dynamiques présentes dans le plan">Dyn: <b>{instanceDynamicTables}</b></span>
+                </div>
+              )}
             </div>
 
             {editMode === 'template' && (
-              <div className="flex flex-col gap-2 w-full">
-                <div className="flex gap-2 items-center">
-                  <div className="input bg-gray-100 cursor-not-allowed">
+              <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_auto] lg:items-center">
+                  <div className="input bg-gray-100 cursor-not-allowed w-full">
                     {baseTemplate?.name || 'Plan de base'}
                   </div>
-                  <div className="border-l border-gray-300 h-6 mx-2"></div>
-                  <button className="btn btn-sm btn-success" onClick={saveBase} disabled={!baseTemplate} title="Sauvegarder le plan de base">
-                    <Save className="w-4 h-4" /> Sauvegarder
-                  </button>
-                  <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables du plan de base (1.., T.., R..)">
-                    🔢 Numéroter
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-2 items-center">
-                  <div className="text-sm text-gray-700">
-                    Sélection: <b>{selectedTableIds.length}</b>
+
+                  <div className="flex flex-wrap gap-2 lg:justify-end">
+                    <button className="btn btn-sm btn-success" onClick={saveBase} disabled={!baseTemplate} title="Sauvegarder le plan de base">
+                      <Save className="w-4 h-4" /> Sauvegarder
+                    </button>
+                    <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables du plan de base (1.., T.., R..)">
+                      🔢 Numéroter
+                    </button>
                   </div>
-                  <input
-                    className="input input-sm w-24"
-                    value={renumberPrefix}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenumberPrefix(e.target.value)}
-                    placeholder="Préfixe"
-                    title="Préfixe (ex: T, R, C, D ou vide)"
-                  />
-                  <input
-                    className="input input-sm w-20"
-                    type="number"
-                    value={renumberStart}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenumberStart(parseInt(e.target.value) || 1)}
-                    title="Numéro de départ"
-                  />
-                  <button
-                    className="btn btn-sm btn-outline"
-                    onClick={renumberSelectedTables}
-                    disabled={selectedTableIds.length === 0}
-                    title="Appliquer une renumérotation sur les tables sélectionnées"
-                  >
-                    ✍️ Renuméroter sélection
-                  </button>
                 </div>
-                <div className="mt-1">
-                  <button className="btn btn-xs btn-outline" onClick={() => setShowStock(s => !s)} title="Afficher/Masquer le stock de tables dynamiques">
-                    {showStock ? '▼' : '►'} Stock dynamiques
-                  </button>
-                </div>
-                {showStock && (
-                <div className="flex gap-4 items-center text-sm">
-                  <span className="font-semibold text-gray-700">📦 Stock tables disponibles:</span>
-                  <label className="flex items-center gap-2" title="Nombre maximum de tables rectangulaires dynamiques créables">
-                    <span>Tables rect (6-8 pax):</span>
+
+                <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm text-gray-700">
+                      Sélection: <span className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100"><b>{selectedTableIds.length}</b></span>
+                    </div>
                     <input
-                      type="number"
-                      min="0"
-                      max="50"
-                      className="input input-sm w-20"
-                      value={baseTemplate?.data?.max_dynamic_tables?.rect || 10}
-                      onChange={(e) => {
-                        if (!baseTemplate) return
-                        const val = parseInt(e.target.value) || 0
-                        setBaseTemplate({
-                          ...baseTemplate,
-                          data: {
-                            ...baseTemplate.data,
-                            max_dynamic_tables: {
-                              ...baseTemplate.data?.max_dynamic_tables,
-                              rect: val
-                            }
-                          }
-                        })
-                      }}
+                      className="input input-sm w-24"
+                      value={renumberPrefix}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenumberPrefix(e.target.value)}
+                      placeholder="Préfixe"
+                      title="Préfixe (ex: T, R, C, D ou vide)"
                     />
-                  </label>
-                  <label className="flex items-center gap-2" title="Nombre maximum de tables rondes dynamiques créables">
-                    <span>Tables rondes (10 pax):</span>
                     <input
-                      type="number"
-                      min="0"
-                      max="50"
                       className="input input-sm w-20"
-                      value={baseTemplate?.data?.max_dynamic_tables?.round || 5}
-                      onChange={(e) => {
-                        if (!baseTemplate) return
-                        const val = parseInt(e.target.value) || 0
-                        setBaseTemplate({
-                          ...baseTemplate,
-                          data: {
-                            ...baseTemplate.data,
-                            max_dynamic_tables: {
-                              ...baseTemplate.data?.max_dynamic_tables,
-                              round: val
-                            }
-                          }
-                        })
-                      }}
+                      type="number"
+                      value={renumberStart}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenumberStart(parseInt(e.target.value) || 1)}
+                      title="Numéro de départ"
                     />
-                  </label>
-                  <span className="text-xs text-gray-500">(Tables créées automatiquement si besoin lors de l'auto-assign)</span>
+                    <button
+                      className="btn btn-sm btn-outline"
+                      onClick={renumberSelectedTables}
+                      disabled={selectedTableIds.length === 0}
+                      title="Appliquer une renumérotation sur les tables sélectionnées"
+                    >
+                      ✍️ Renuméroter sélection
+                    </button>
+                    <div className="ml-auto">
+                      <button className="btn btn-xs btn-outline" onClick={() => setShowStock(s => !s)} title="Afficher/Masquer le stock de tables dynamiques">
+                        {showStock ? '▼' : '►'} Stock dynamiques
+                      </button>
+                    </div>
+                  </div>
+
+                  {showStock && (
+                    <div className="grid grid-cols-1 gap-2 lg:grid-cols-[auto_auto_1fr] lg:items-center text-sm">
+                      <span className="font-semibold text-gray-700">📦 Stock tables disponibles:</span>
+                      <label className="flex items-center gap-2" title="Nombre maximum de tables rectangulaires dynamiques créables">
+                        <span>Tables rect (6-8 pax):</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="50"
+                          className="input input-sm w-20"
+                          value={baseTemplate?.data?.max_dynamic_tables?.rect || 10}
+                          onChange={(e) => {
+                            if (!baseTemplate) return
+                            const val = parseInt(e.target.value) || 0
+                            setBaseTemplate({
+                              ...baseTemplate,
+                              data: {
+                                ...baseTemplate.data,
+                                max_dynamic_tables: {
+                                  ...baseTemplate.data?.max_dynamic_tables,
+                                  rect: val
+                                }
+                              }
+                            })
+                          }}
+                        />
+                      </label>
+                      <label className="flex items-center gap-2" title="Nombre maximum de tables rondes dynamiques créables">
+                        <span>Tables rondes (10 pax):</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="50"
+                          className="input input-sm w-20"
+                          value={baseTemplate?.data?.max_dynamic_tables?.round || 5}
+                          onChange={(e) => {
+                            if (!baseTemplate) return
+                            const val = parseInt(e.target.value) || 0
+                            setBaseTemplate({
+                              ...baseTemplate,
+                              data: {
+                                ...baseTemplate.data,
+                                max_dynamic_tables: {
+                                  ...baseTemplate.data?.max_dynamic_tables,
+                                  round: val
+                                }
+                              }
+                            })
+                          }}
+                        />
+                      </label>
+                      <span className="text-xs text-gray-500 lg:col-span-3">(Tables créées automatiquement si besoin lors de l'auto-assign)</span>
+                    </div>
+                  )}
                 </div>
-                )}
               </div>
             )}
 
@@ -582,10 +598,10 @@ export default function FloorPlanPage() {
       )}
 
             {editMode === 'instance' && (
-              <div className="flex flex-col gap-2 w-full">
-                <div className="flex gap-2 items-center">
+              <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_auto] lg:items-center">
                   <select
-                    className="input flex-1"
+                    className="input w-full"
                     value={selectedInstance?.id || ''}
                     onChange={(e) => {
                       const i = instances.find(i => i.id === e.target.value)
@@ -600,65 +616,78 @@ export default function FloorPlanPage() {
                       </option>
                     ))}
                   </select>
-                  <div className="border-l border-gray-300 h-6 mx-2"></div>
-                  <button className="btn btn-sm btn-primary" onClick={() => setShowCreateModal(true)} title="Créer une nouvelle instance (service)">
-                    <Plus className="w-4 h-4" /> Créer
-                  </button>
-                  <button className="btn btn-sm btn-success" onClick={saveInstance} disabled={!selectedInstance} title="Sauvegarder l'instance">
-                    <Save className="w-4 h-4" /> Sauvegarder
-                  </button>
-                  <button className="btn btn-sm btn-danger" onClick={deleteInstance} disabled={!selectedInstance} title="Supprimer l'instance">
-                    <Trash2 className="w-4 h-4" /> Supprimer
-                  </button>
+
+                  <div className="flex flex-wrap gap-2 lg:justify-end">
+                    <button className="btn btn-sm btn-primary" onClick={() => setShowCreateModal(true)} title="Créer une nouvelle instance (service)">
+                      <Plus className="w-4 h-4" /> Créer
+                    </button>
+                    <button className="btn btn-sm btn-success" onClick={saveInstance} disabled={!selectedInstance} title="Sauvegarder l'instance">
+                      <Save className="w-4 h-4" /> Sauvegarder
+                    </button>
+                    <button className="btn btn-sm btn-danger" onClick={deleteInstance} disabled={!selectedInstance} title="Supprimer l'instance">
+                      <Trash2 className="w-4 h-4" /> Supprimer
+                    </button>
+                  </div>
                 </div>
+
                 {selectedInstance && (
-                  <div className="flex gap-2 flex-wrap">
-                    <button className="btn btn-sm" onClick={importPDF} disabled={uploadingPDF} title="Importer le PDF de réservations pour cette instance">
-                      <Upload className="w-4 h-4" /> {uploadingPDF ? 'Import...' : 'Import PDF'}
-                    </button>
-                    <button className="btn btn-sm btn-outline" onClick={resetInstanceAction} title="Vider l'instance (supprime tables dynamiques et assignations)">
-                      ♻️ Réinitialiser
-                    </button>
-                    <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables de l'instance affichée">
-                      🔢 Numéroter
-                    </button>
-                    <div className="flex items-center gap-2">
-                      <div className="text-sm text-gray-700">
-                        Sélection: <b>{selectedTableIds.length}</b>
-                      </div>
-                      <input
-                        className="input input-sm w-24"
-                        value={renumberPrefix}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenumberPrefix(e.target.value)}
-                        placeholder="Préfixe"
-                        title="Préfixe (ex: T, R, C, D ou vide)"
-                      />
-                      <input
-                        className="input input-sm w-20"
-                        type="number"
-                        value={renumberStart}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenumberStart(parseInt(e.target.value) || 1)}
-                        title="Numéro de départ"
-                      />
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={renumberSelectedTables}
-                        disabled={!selectedInstance || selectedTableIds.length === 0}
-                        title="Appliquer une renumérotation sur les tables sélectionnées"
-                      >
-                        ✍️ Renuméroter sélection
+                  <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3">
+                    <div className="text-xs font-semibold text-gray-600">Actions</div>
+                    <div className="-mx-3 px-3 pb-1 overflow-x-auto">
+                      <div className="flex gap-2 whitespace-nowrap">
+                      <button className="btn btn-sm" onClick={importPDF} disabled={uploadingPDF} title="Importer le PDF de réservations pour cette instance">
+                        <Upload className="w-4 h-4" /> {uploadingPDF ? 'Import...' : 'Import PDF'}
                       </button>
+                      <button className="btn btn-sm btn-outline" onClick={resetInstanceAction} title="Vider l'instance (supprime tables dynamiques et assignations)">
+                        ♻️ Réinitialiser
+                      </button>
+                      <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables de l'instance affichée">
+                        🔢 Numéroter
+                      </button>
+                      <button className="btn btn-sm" onClick={compareWithPDF} title="Comparer placement ↔ PDF (diagnostic)">
+                        🔎 Comparer PDF
+                      </button>
+                      <button className="btn btn-sm btn-outline" onClick={() => setResetViewTick(t => t + 1)} title="Recentrer et adapter la vue à la salle">
+                        ⤾ Reset vue
+                      </button>
+                      </div>
                     </div>
-                    <button className="btn btn-sm" onClick={compareWithPDF} title="Comparer placement ↔ PDF (diagnostic)">
-                      🔎 Comparer PDF
-                    </button>
-                    <button className="btn btn-sm btn-outline" onClick={() => setResetViewTick(t => t + 1)} title="Recentrer et adapter la vue à la salle">
-                      ⤾ Reset vue
-                    </button>
-                    <div className="ml-auto flex items-center gap-2 text-xs text-gray-600">
-                      <span className="px-2 py-1 bg-gray-100 rounded" title="Nombre de réservations importées">Res: {instanceReservationsCount}</span>
-                      <span className="px-2 py-1 bg-gray-100 rounded" title="Nombre de tables assignées (côté plan)">Assign: {instanceAssignmentsCount}</span>
-                      <span className="px-2 py-1 bg-gray-100 rounded" title="Tables dynamiques présentes dans le plan">Dyn: {instanceDynamicTables}</span>
+
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-xs font-semibold text-gray-600 lg:hidden w-full">Sélection</div>
+                        <div className="text-sm text-gray-700">
+                          Sélection: <span className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100"><b>{selectedTableIds.length}</b></span>
+                        </div>
+                        <input
+                          className="input input-sm w-24"
+                          value={renumberPrefix}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenumberPrefix(e.target.value)}
+                          placeholder="Préfixe"
+                          title="Préfixe (ex: T, R, C, D ou vide)"
+                        />
+                        <input
+                          className="input input-sm w-20"
+                          type="number"
+                          value={renumberStart}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenumberStart(parseInt(e.target.value) || 1)}
+                          title="Numéro de départ"
+                        />
+                        <button
+                          className="btn btn-sm btn-outline"
+                          onClick={renumberSelectedTables}
+                          disabled={!selectedInstance || selectedTableIds.length === 0}
+                          title="Appliquer une renumérotation sur les tables sélectionnées"
+                        >
+                          ✍️ Renuméroter sélection
+                        </button>
+                      </div>
+
+                      <div className="lg:hidden flex items-center gap-2 text-xs">
+                        <span className="px-2 py-1 bg-gray-100 rounded text-gray-700" title="Nombre de réservations importées">Res: <b>{instanceReservationsCount}</b></span>
+                        <span className="px-2 py-1 bg-gray-100 rounded text-gray-700" title="Nombre de tables assignées (côté plan)">Assign: <b>{instanceAssignmentsCount}</b></span>
+                        <span className="px-2 py-1 bg-gray-100 rounded text-gray-700" title="Tables dynamiques présentes dans le plan">Dyn: <b>{instanceDynamicTables}</b></span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -667,7 +696,8 @@ export default function FloorPlanPage() {
           </div>
 
           <div className="flex flex-col gap-2 mt-4">
-            <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3">
+              <div className="flex flex-wrap gap-3 items-center">
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -676,22 +706,31 @@ export default function FloorPlanPage() {
                 />
                 <span className="text-sm">Grille</span>
               </label>
-              <div className="border-l border-gray-300 h-6 mx-2"></div>
-              <span className="text-xs font-semibold text-gray-600">Ajouter:</span>
-              <button onClick={() => addTable('fixed', 4)} className="btn">+ Table fixe (4)</button>
-              <button onClick={() => addTable('rect', 6)} className="btn">+ Rect (6→8)</button>
-              <button onClick={() => addTable('round', 10)} className="btn">+ Ronde (10)</button>
-              <button onClick={() => addTable('sofa', 5)} className="btn btn-sofa">+ Canapé (5)</button>
-              <button onClick={() => addTable('standing', 8)} className="btn btn-standing">+ Mange-debout (8)</button>
-              <button className="btn btn-sm btn-outline" onClick={() => addFixture('rect')}>
-                ➕ Mur
-              </button>
-              <button className="btn btn-sm btn-outline" onClick={() => addFixture('round')}>
-                ➕ Colonne
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-2 items-center">
-              <span className="text-xs font-semibold text-gray-600">Dessiner zones:</span>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <div className="text-xs font-semibold text-gray-600">Ajouter</div>
+                <div className="-mx-3 px-3 pb-1 overflow-x-auto">
+                  <div className="flex gap-2 whitespace-nowrap">
+                    <button onClick={() => addTable('fixed', 4)} className="btn btn-sm">+ Table fixe (4)</button>
+                    <button onClick={() => addTable('rect', 6)} className="btn btn-sm">+ Rect (6→8)</button>
+                    <button onClick={() => addTable('round', 10)} className="btn btn-sm">+ Ronde (10)</button>
+                    <button onClick={() => addTable('sofa', 5)} className="btn btn-sm btn-sofa">+ Canapé (5)</button>
+                    <button onClick={() => addTable('standing', 8)} className="btn btn-sm btn-standing">+ Mange-debout (8)</button>
+                    <button className="btn btn-sm btn-outline" onClick={() => addFixture('rect')}>
+                      ➕ Mur
+                    </button>
+                    <button className="btn btn-sm btn-outline" onClick={() => addFixture('round')}>
+                      ➕ Colonne
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <div className="text-xs font-semibold text-gray-600">Dessiner zones</div>
+                <div className="-mx-3 px-3 pb-1 overflow-x-auto">
+                  <div className="flex gap-2 whitespace-nowrap">
               <button
                 className={`btn btn-sm ${drawNoGoMode ? 'btn-danger' : 'btn-outline'}`}
                 onClick={() => {
@@ -722,6 +761,9 @@ export default function FloorPlanPage() {
               >
                 🟢 Zone T (rectangulaires)
               </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
