@@ -19,11 +19,11 @@ def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumb
     rounds = [t for t in tables if (t.get("kind") == "round")]
     sofas = [t for t in tables if (t.get("kind") == "sofa")]
     standings = [t for t in tables if (t.get("kind") == "standing")]
-    # Sort: bas→haut (y DESC), gauche→droite (x ASC)
+    # Sort: gauche→droite (x ASC), puis bas→haut (y DESC)
     def key_table(t):
         x = float(t.get("x") or 0)
         y = float(t.get("y") or 0)
-        return (-y, x)  # Tri: y décroissant (bas en premier), puis x croissant
+        return (x, -y)  # Tri: x croissant (gauche en premier), puis y décroissant (bas en premier)
     
     fixed.sort(key=key_table)
     rects.sort(key=key_table)
@@ -365,7 +365,7 @@ import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Response
-from sqlmodel import Session, select
+from sqlmodel import Session, SQLModel, select
 import logging
 from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.lib.pagesizes import A4
@@ -417,6 +417,32 @@ class _BufferHandler(logging.Handler):
             })
         except Exception:
             pass
+
+
+class RenumberTablesPayload(SQLModel):
+    table_ids: List[str]
+    prefix: str = ""
+    start: int = 1
+
+
+def _apply_manual_renumber(plan: Dict[str, Any], payload: RenumberTablesPayload) -> Dict[str, Any]:
+    ids = [str(x) for x in (payload.table_ids or [])]
+    if not ids:
+        raise HTTPException(400, "No table_ids provided")
+    if payload.start is None or int(payload.start) < 0:
+        raise HTTPException(400, "Invalid start")
+    prefix = str(payload.prefix or "")
+    start = int(payload.start)
+    tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
+    by_id: Dict[str, Dict[str, Any]] = {str(t.get("id")): t for t in tables}
+    for i, tid in enumerate(ids):
+        t = by_id.get(tid)
+        if not t:
+            continue
+        n = start + i
+        t["label"] = f"{prefix}{n}" if prefix else str(n)
+    plan["tables"] = tables
+    return plan
 
 _buf_handler = _BufferHandler()
 _buf_handler.setLevel(logging.DEBUG)
@@ -1352,6 +1378,19 @@ def number_base_tables(session: Session = Depends(get_session)):
     return FloorPlanBaseRead(**row.model_dump())
 
 
+@router.post("/base/renumber-tables", response_model=FloorPlanBaseRead)
+def renumber_base_tables(payload: RenumberTablesPayload, session: Session = Depends(get_session)):
+    _dbg_add("INFO", "POST /base/renumber-tables")
+    row = _get_or_create_base(session)
+    plan = row.data or {}
+    plan = _apply_manual_renumber(plan, payload)
+    row.data = plan
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return FloorPlanBaseRead(**row.model_dump())
+
+
 @router.get("/base/export-pdf")
 def export_base_pdf(session: Session = Depends(get_session)):
     _dbg_add("INFO", "GET /base/export-pdf")
@@ -1577,6 +1616,21 @@ def number_instance_tables(instance_id: uuid.UUID, session: Session = Depends(ge
     used = sum(1 for t in tables if t.get("label"))
     logger.info("POST /instances/%s/number-tables -> labeled=%d", instance_id, used)
     _dbg_add("INFO", f"POST /instances/{instance_id}/number-tables -> labeled={used}")
+    return FloorPlanInstanceRead(**row.model_dump())
+
+
+@router.post("/instances/{instance_id}/renumber-tables", response_model=FloorPlanInstanceRead)
+def renumber_instance_tables(instance_id: uuid.UUID, payload: RenumberTablesPayload, session: Session = Depends(get_session)):
+    _dbg_add("INFO", f"POST /instances/{instance_id}/renumber-tables")
+    row = session.get(FloorPlanInstance, instance_id)
+    if not row:
+        raise HTTPException(404, "Instance not found")
+    plan = row.data or {}
+    plan = _apply_manual_renumber(plan, payload)
+    row.data = plan
+    session.add(row)
+    session.commit()
+    session.refresh(row)
     return FloorPlanInstanceRead(**row.model_dump())
 
 

@@ -12,7 +12,6 @@
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "baseUrl": ".",
-    "types": ["vite/client", "node"],
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "strict": true,

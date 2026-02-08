@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { api, fileDownload, getFloorBase, updateFloorBase } from '../lib/api'
 import FloorCanvas from '../components/FloorCanvas'
 import { FloorPlanData, FloorPlanBase, FloorPlanInstance } from '../types'
@@ -23,6 +23,9 @@ export default function FloorPlanPage() {
   const [showStock, setShowStock] = useState(true)
   const [uiAlerts, setUiAlerts] = useState<string[]>([])
   const [resetViewTick, setResetViewTick] = useState(0)
+  const [selectedTableIds, setSelectedTableIds] = useState<string[]>([])
+  const [renumberPrefix, setRenumberPrefix] = useState('')
+  const [renumberStart, setRenumberStart] = useState(1)
 
   useEffect(() => {
     loadBase()
@@ -249,6 +252,29 @@ export default function FloorPlanPage() {
     }
   }
 
+  async function renumberSelectedTables() {
+    const ids = selectedTableIds
+    if (!ids.length) {
+      alert('Sélectionnez d\'abord des tables')
+      return
+    }
+    try {
+      const payload = { table_ids: ids, prefix: renumberPrefix, start: renumberStart }
+      const res = editMode === 'template'
+        ? await api.post('/api/floorplan/base/renumber-tables', payload)
+        : await api.post(`/api/floorplan/instances/${selectedInstance!.id}/renumber-tables`, payload)
+      if (editMode === 'template') {
+        setBaseTemplate(res.data)
+      } else {
+        setSelectedInstance(res.data)
+      }
+      alert('Numérotation appliquée')
+    } catch (err: any) {
+      console.error('Failed to renumber tables:', err)
+      alert('Erreur renumérotation: ' + (err.response?.data?.detail || 'Échec'))
+    }
+  }
+
   async function exportAnnotated() {
     if (!selectedInstance) {
       alert('Sélectionnez d\'abord une instance')
@@ -388,6 +414,33 @@ export default function FloorPlanPage() {
                   </button>
                   <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables du plan de base (1.., T.., R..)">
                     🔢 Numéroter
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <div className="text-sm text-gray-700">
+                    Sélection: <b>{selectedTableIds.length}</b>
+                  </div>
+                  <input
+                    className="input input-sm w-24"
+                    value={renumberPrefix}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenumberPrefix(e.target.value)}
+                    placeholder="Préfixe"
+                    title="Préfixe (ex: T, R, C, D ou vide)"
+                  />
+                  <input
+                    className="input input-sm w-20"
+                    type="number"
+                    value={renumberStart}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenumberStart(parseInt(e.target.value) || 1)}
+                    title="Numéro de départ"
+                  />
+                  <button
+                    className="btn btn-sm btn-outline"
+                    onClick={renumberSelectedTables}
+                    disabled={selectedTableIds.length === 0}
+                    title="Appliquer une renumérotation sur les tables sélectionnées"
+                  >
+                    ✍️ Renuméroter sélection
                   </button>
                 </div>
                 <div className="mt-1">
@@ -569,15 +622,33 @@ export default function FloorPlanPage() {
                     <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables de l'instance affichée">
                       🔢 Numéroter
                     </button>
-                    <button className="btn btn-sm" onClick={autoAssign} disabled={!instanceHasReservations} title={instanceHasReservations ? 'Auto-attribuer les tables' : 'Importez d\'abord le PDF (aucune réservation)'}>
-                      🎯 Auto-Assign
-                    </button>
-                    <button className="btn btn-sm" onClick={exportAnnotated} disabled={!instanceHasAssignments} title={instanceHasAssignments ? 'Exporter le PDF original annoté avec les numéros' : 'Aucune table assignée'}>
-                      <Download className="w-4 h-4" /> Export Annoté
-                    </button>
-                    <button className="btn btn-sm" onClick={exportComplete} title="Exporter plan + liste service + liste tables">
-                      <Download className="w-4 h-4" /> Export Complet
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm text-gray-700">
+                        Sélection: <b>{selectedTableIds.length}</b>
+                      </div>
+                      <input
+                        className="input input-sm w-24"
+                        value={renumberPrefix}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenumberPrefix(e.target.value)}
+                        placeholder="Préfixe"
+                        title="Préfixe (ex: T, R, C, D ou vide)"
+                      />
+                      <input
+                        className="input input-sm w-20"
+                        type="number"
+                        value={renumberStart}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenumberStart(parseInt(e.target.value) || 1)}
+                        title="Numéro de départ"
+                      />
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={renumberSelectedTables}
+                        disabled={!selectedInstance || selectedTableIds.length === 0}
+                        title="Appliquer une renumérotation sur les tables sélectionnées"
+                      >
+                        ✍️ Renuméroter sélection
+                      </button>
+                    </div>
                     <button className="btn btn-sm" onClick={compareWithPDF} title="Comparer placement ↔ PDF (diagnostic)">
                       🔎 Comparer PDF
                     </button>
@@ -686,6 +757,7 @@ export default function FloorPlanPage() {
             initialScale={currentView?.scale}
             initialOffset={currentView?.offset}
             resetTrigger={resetViewTick}
+            onSelectionChange={(ids) => setSelectedTableIds(ids)}
             onViewChange={(v) => {
               if (!selectedInstance) return
               setViewByInstance(prev => ({ ...prev, [selectedInstance.id]: v }))

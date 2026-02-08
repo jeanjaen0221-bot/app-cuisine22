@@ -17,9 +17,10 @@ type Props = {
   initialOffset?: { x: number; y: number }
   onViewChange?: (view: { scale: number; offset: { x: number; y: number } }) => void
   resetTrigger?: number
+  onSelectionChange?: (tableIds: string[]) => void
 }
 
-export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false, initialScale, initialOffset, onViewChange, resetTrigger }: Props) {
+export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false, initialScale, initialOffset, onViewChange, resetTrigger, onSelectionChange }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [scale, setScale] = useState(0.8)
@@ -58,6 +59,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; target: any } | null>(null)
   const [hoveredItem, setHoveredItem] = useState<{ type: string; id: string } | null>(null)
   const lastHoveredRef = useRef<string | null>(null)
+  const [selectedTableIds, setSelectedTableIds] = useState<string[]>([])
 
   const room = data.room || { width: 1200, height: 800, grid: 50 }
   const tables = data.tables || []
@@ -67,6 +69,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const fixtures = data.fixtures || []
   const roundOnlyZones = (data as any).round_only_zones || []
   const rectOnlyZones = (data as any).rect_only_zones || []
+
+  function updateSelection(next: string[]) {
+    setSelectedTableIds(next)
+    onSelectionChange && onSelectionChange(next)
+  }
 
   useEffect(() => {
     const el = canvasRef.current
@@ -584,6 +591,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     }
 
     for (const t of tables) {
+      const isSelected = selectedTableIds.includes(t.id)
       const assigned = assignments?.tables?.[t.id]
       const isLocked = !!t.locked
       const coll = tableCollides(t)
@@ -604,6 +612,18 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         const w = t.w || 120, h = t.h || 60
         ctx.fillRect(t.x, t.y, w, h)
         ctx.strokeRect(t.x, t.y, w, h)
+      }
+      if (isSelected) {
+        ctx.save()
+        ctx.strokeStyle = '#111827'
+        ctx.lineWidth = 4 / scale
+        if (t.r) {
+          ctx.beginPath(); ctx.arc(t.x, t.y, (t.r as number) + (3 / scale), 0, Math.PI * 2); ctx.stroke()
+        } else {
+          const w = t.w || 120, h = t.h || 60
+          ctx.strokeRect(t.x - (2 / scale), t.y - (2 / scale), w + (4 / scale), h + (4 / scale))
+        }
+        ctx.restore()
       }
       // Indicateur visuel: cadenas pour tables fixes/verrouillées (sans texte)
       if (t.kind === 'fixed' || isLocked) {
@@ -685,7 +705,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     ctx.restore()
   }
 
-  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode, hoveredItem])
+  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode, hoveredItem, selectedTableIds])
 
   function onPointerDown(e: React.PointerEvent) {
     // Ignorer le clic droit (bouton 2) - il est géré par onContextMenu
@@ -723,12 +743,26 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     }
     // Tables on top: drag tables before zones/fixtures
     const tHit = [...tables].reverse().find(t => tableHit(x, y, t))
-    if (tHit && editable && !tHit.locked) {
-      setDraggingId(tHit.id)
-      dragStart.current = { x: tHit.x, y: tHit.y }
-      lastValid.current = { x: tHit.x, y: tHit.y }
-      dragInvalid.current = false
-      dragDelta.current = { x: x - tHit.x, y: y - tHit.y }
+    if (tHit) {
+      const toggle = e.shiftKey || e.ctrlKey || e.metaKey
+      if (toggle) {
+        const next = selectedTableIds.includes(tHit.id)
+          ? selectedTableIds.filter(id => id !== tHit.id)
+          : [...selectedTableIds, tHit.id]
+        updateSelection(next)
+        return
+      }
+      if (!selectedTableIds.includes(tHit.id) || selectedTableIds.length !== 1) {
+        const next = [tHit.id]
+        updateSelection(next)
+      }
+      if (editable && !tHit.locked) {
+        setDraggingId(tHit.id)
+        dragStart.current = { x: tHit.x, y: tHit.y }
+        lastValid.current = { x: tHit.x, y: tHit.y }
+        dragInvalid.current = false
+        dragDelta.current = { x: x - tHit.x, y: y - tHit.y }
+      }
       return
     }
     // Vérifier les handles de redimensionnement des zones (priorité sur le déplacement)
@@ -812,6 +846,9 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       }
     }
     // Plan fixe: ne pas déplacer le fond
+    if (selectedTableIds.length > 0) {
+      updateSelection([])
+    }
   }
 
   function onContextMenu(e: React.MouseEvent) {
@@ -845,6 +882,10 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     // Détecter ce qui est cliqué (priorité visuelle: tables > fixtures > zones > no-go)
     const table = [...tables].reverse().find(t => tableHit(x, y, t))
     if (table) {
+      if (!selectedTableIds.includes(table.id) || selectedTableIds.length !== 1) {
+        const next = [table.id]
+        updateSelection(next)
+      }
       setContextMenu({ x: menuX, y: menuY, target: { type: 'table', data: table } })
       return
     }
