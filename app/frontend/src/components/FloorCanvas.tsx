@@ -24,10 +24,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [scale, setScale] = useState(0.8)
-  const [offset, setOffset] = useState({ x: 100, y: 100 })
+  const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 100, y: 100 })
   const [showMinimap, setShowMinimap] = useState(true)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [isPanning, setIsPanning] = useState(false)
+  const [panMode, setPanMode] = useState<boolean>(false)
   const dragDelta = useRef({ x: 0, y: 0 })
   const [resizeHandle, setResizeHandle] = useState<'none' | 'right' | 'bottom' | 'corner'>('none')
   const [fixtureDraggingId, setFixtureDraggingId] = useState<string | null>(null)
@@ -714,6 +715,16 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
+
+    // Pan au clic molette ou en mode déplacement
+    if (e.button === 1 || panMode) {
+      setIsPanning(true)
+      dragStart.current = { x: sx, y: sy }
+      const el = canvasRef.current
+      if (el) el.style.cursor = 'grabbing'
+      return
+    }
+
     activePointers.current.set(e.pointerId, { x: sx, y: sy })
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
     if (activePointers.current.size === 2) {
@@ -940,6 +951,16 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         setScale(newScale)
         setOffset(newOffset)
       }
+      return
+    }
+
+    if (isPanning && dragStart.current) {
+      const dx = sx - dragStart.current.x
+      const dy = sy - dragStart.current.y
+      setOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }))
+      dragStart.current = { x: sx, y: sy }
+      const el = canvasRef.current
+      if (el) el.style.cursor = 'grabbing'
       return
     }
     const { x, y } = screenToWorld(sx, sy)
@@ -1366,7 +1387,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
           height: '100%', 
           touchAction: 'none', 
           background: 'linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%)',
-          cursor: isPanning ? 'grabbing' : draggingId || fixtureDraggingId || noGoDraggingId || roundZoneDraggingId || rectZoneDraggingId ? 'move' : 'default'
+          cursor: isPanning ? 'grabbing' : (panMode ? 'grab' : (draggingId || fixtureDraggingId || noGoDraggingId || roundZoneDraggingId || rectZoneDraggingId ? 'move' : 'default'))
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -1392,6 +1413,13 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
           title="Zoom arrière (molette souris)"
         >
           <ZoomOut className="w-5 h-5 text-gray-700" />
+        </button>
+        <button
+          onClick={() => setPanMode(v => !v)}
+          className={`p-2 rounded transition-colors ${panMode ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
+          title={panMode ? 'Mode déplacement activé' : 'Activer le mode déplacement (pan)'}
+        >
+          <Move className="w-5 h-5 text-gray-700" />
         </button>
         <button
           onClick={resetView}
