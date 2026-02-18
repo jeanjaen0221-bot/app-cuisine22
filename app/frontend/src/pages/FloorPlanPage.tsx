@@ -228,7 +228,7 @@ export default function FloorPlanPage() {
       setSelectedInstance(res.data)
     } catch (err: any) {
       console.error('Failed to auto-assign:', err)
-      alert('Erreur: ' + (err.response?.data?.detail || 'Auto-assign échoué'))
+      alert('Erreur: ' + (err.response?.data?.detail || 'Placement automatique échoué'))
     }
   }
 
@@ -426,13 +426,17 @@ export default function FloorPlanPage() {
                     <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables du plan de base (1.., T.., R..)">
                       🔢 Numéroter
                     </button>
+                    <button className="btn btn-sm btn-outline" onClick={() => setResetViewTick(t => t + 1)} title="Recentrer et adapter la vue à la salle">
+                      ⤾ Recentrer
+                    </button>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3">
+                  <div className="text-xs font-semibold text-gray-600">Sélection</div>
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="text-sm text-gray-700">
-                      Sélection: <span className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100"><b>{selectedTableIds.length}</b></span>
+                      Tables sélectionnées: <span className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100"><b>{selectedTableIds.length}</b></span>
                     </div>
                     <input
                       className="input input-sm w-24"
@@ -454,11 +458,12 @@ export default function FloorPlanPage() {
                       disabled={selectedTableIds.length === 0}
                       title="Appliquer une renumérotation sur les tables sélectionnées"
                     >
-                      ✍️ Renuméroter sélection
+                      ✍️ Renuméroter
                     </button>
+
                     <div className="ml-auto">
-                      <button className="btn btn-xs btn-outline" onClick={() => setShowStock(s => !s)} title="Afficher/Masquer le stock de tables dynamiques">
-                        {showStock ? '▼' : '►'} Stock dynamiques
+                      <button className="btn btn-sm btn-outline" onClick={() => setShowStock(s => !s)} title="Afficher/Masquer le stock de tables dynamiques">
+                        {showStock ? '▼' : '►'} Stock de tables
                       </button>
                     </div>
                   </div>
@@ -514,7 +519,7 @@ export default function FloorPlanPage() {
                           }}
                         />
                       </label>
-                      <span className="text-xs text-gray-500 lg:col-span-3">(Tables créées automatiquement si besoin lors de l'auto-assign)</span>
+                      <span className="text-xs text-gray-500 lg:col-span-3">(Tables créées automatiquement si besoin lors du placement automatique)</span>
                     </div>
                   )}
                 </div>
@@ -632,11 +637,10 @@ export default function FloorPlanPage() {
 
                 {selectedInstance && (
                   <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3">
-                    <div className="text-xs font-semibold text-gray-600">Actions</div>
-                    <div className="-mx-3 px-3 pb-1 overflow-x-auto">
-                      <div className="flex gap-2 whitespace-nowrap">
+                    <div className="text-xs font-semibold text-gray-600">Réservations</div>
+                    <div className="flex flex-wrap gap-2">
                       <button className="btn btn-sm" onClick={importPDF} disabled={uploadingPDF} title="Importer le PDF de réservations pour cette instance">
-                        <Upload className="w-4 h-4" /> {uploadingPDF ? 'Import...' : 'Import PDF'}
+                        <Upload className="w-4 h-4" /> {uploadingPDF ? 'Import...' : 'Importer PDF'}
                       </button>
                       <button
                         className="btn btn-sm btn-primary"
@@ -644,21 +648,24 @@ export default function FloorPlanPage() {
                         disabled={uploadingPDF || !instanceHasReservations}
                         title={instanceHasReservations ? "Assigner automatiquement les réservations importées sur les tables" : "Importez d'abord un PDF contenant des réservations"}
                       >
-                        ⚡ Auto-assign
+                        ⚡ Placement auto
+                      </button>
+                      <button className="btn btn-sm" onClick={compareWithPDF} title="Comparer placement ↔ PDF (diagnostic)">
+                        🔎 Comparer au PDF
+                      </button>
+                    </div>
+
+                    <div className="text-xs font-semibold text-gray-600">Plan</div>
+                    <div className="flex flex-wrap gap-2">
+                      <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables de l'instance affichée">
+                        🔢 Numéroter
+                      </button>
+                      <button className="btn btn-sm btn-outline" onClick={() => setResetViewTick(t => t + 1)} title="Recentrer et adapter la vue à la salle">
+                        ⤾ Recentrer
                       </button>
                       <button className="btn btn-sm btn-outline" onClick={resetInstanceAction} title="Vider l'instance (supprime tables dynamiques et assignations)">
                         ♻️ Réinitialiser
                       </button>
-                      <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables de l'instance affichée">
-                        🔢 Numéroter
-                      </button>
-                      <button className="btn btn-sm" onClick={compareWithPDF} title="Comparer placement ↔ PDF (diagnostic)">
-                        🔎 Comparer PDF
-                      </button>
-                      <button className="btn btn-sm btn-outline" onClick={() => setResetViewTick(t => t + 1)} title="Recentrer et adapter la vue à la salle">
-                        ⤾ Reset vue
-                      </button>
-                      </div>
                     </div>
 
                     <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
@@ -705,21 +712,22 @@ export default function FloorPlanPage() {
 
           <div className="flex flex-col gap-2 mt-4">
             <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3">
-              <div className="flex flex-wrap gap-3 items-center">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showGrid}
-                  onChange={(e) => setShowGrid(e.target.checked)}
-                />
-                <span className="text-sm">Grille</span>
-              </label>
-              </div>
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                <div className="flex flex-col gap-2">
+                  <div className="text-xs font-semibold text-gray-600">Affichage</div>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={showGrid}
+                      onChange={(e) => setShowGrid(e.target.checked)}
+                    />
+                    <span className="text-sm">Grille</span>
+                  </label>
+                </div>
 
-              <div className="flex flex-col gap-2">
-                <div className="text-xs font-semibold text-gray-600">Ajouter</div>
-                <div className="-mx-3 px-3 pb-1 overflow-x-auto">
-                  <div className="flex gap-2 whitespace-nowrap">
+                <div className="flex flex-col gap-2 lg:col-span-2">
+                  <div className="text-xs font-semibold text-gray-600">Ajouter</div>
+                  <div className="flex flex-wrap gap-2">
                     <button onClick={() => addTable('fixed', 4)} className="btn btn-sm">+ Table fixe (4)</button>
                     <button onClick={() => addTable('rect', 6)} className="btn btn-sm">+ Rect (6→8)</button>
                     <button onClick={() => addTable('round', 10)} className="btn btn-sm">+ Ronde (10)</button>
@@ -736,40 +744,38 @@ export default function FloorPlanPage() {
               </div>
 
               <div className="flex flex-col gap-2">
-                <div className="text-xs font-semibold text-gray-600">Dessiner zones</div>
-                <div className="-mx-3 px-3 pb-1 overflow-x-auto">
-                  <div className="flex gap-2 whitespace-nowrap">
-              <button
-                className={`btn btn-sm ${drawNoGoMode ? 'btn-danger' : 'btn-outline'}`}
-                onClick={() => {
-                  setDrawNoGoMode(!drawNoGoMode)
-                  setDrawRoundOnlyMode(false)
-                  setDrawRectOnlyMode(false)
-                }}
-              >
-                🚫 Zone interdite
-              </button>
-              <button
-                className={`btn btn-sm ${drawRoundOnlyMode ? 'btn-primary' : 'btn-outline'}`}
-                onClick={() => {
-                  setDrawRoundOnlyMode(!drawRoundOnlyMode)
-                  setDrawNoGoMode(false)
-                  setDrawRectOnlyMode(false)
-                }}
-              >
-                🔵 Zone R (rondes)
-              </button>
-              <button
-                className={`btn btn-sm ${drawRectOnlyMode ? 'btn-success' : 'btn-outline'}`}
-                onClick={() => {
-                  setDrawRectOnlyMode(!drawRectOnlyMode)
-                  setDrawNoGoMode(false)
-                  setDrawRoundOnlyMode(false)
-                }}
-              >
-                🟢 Zone T (rectangulaires)
-              </button>
-                  </div>
+                <div className="text-xs font-semibold text-gray-600">Zones</div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className={`btn btn-sm ${drawNoGoMode ? 'btn-danger' : 'btn-outline'}`}
+                    onClick={() => {
+                      setDrawNoGoMode(!drawNoGoMode)
+                      setDrawRoundOnlyMode(false)
+                      setDrawRectOnlyMode(false)
+                    }}
+                  >
+                    🚫 Zone interdite
+                  </button>
+                  <button
+                    className={`btn btn-sm ${drawRoundOnlyMode ? 'btn-primary' : 'btn-outline'}`}
+                    onClick={() => {
+                      setDrawRoundOnlyMode(!drawRoundOnlyMode)
+                      setDrawNoGoMode(false)
+                      setDrawRectOnlyMode(false)
+                    }}
+                  >
+                    🔵 Zone R (rondes)
+                  </button>
+                  <button
+                    className={`btn btn-sm ${drawRectOnlyMode ? 'btn-success' : 'btn-outline'}`}
+                    onClick={() => {
+                      setDrawRectOnlyMode(!drawRectOnlyMode)
+                      setDrawNoGoMode(false)
+                      setDrawRoundOnlyMode(false)
+                    }}
+                  >
+                    🟢 Zone T (rectangulaires)
+                  </button>
                 </div>
               </div>
             </div>
