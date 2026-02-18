@@ -638,6 +638,14 @@ export default function FloorPlanPage() {
                       <button className="btn btn-sm" onClick={importPDF} disabled={uploadingPDF} title="Importer le PDF de réservations pour cette instance">
                         <Upload className="w-4 h-4" /> {uploadingPDF ? 'Import...' : 'Import PDF'}
                       </button>
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={autoAssign}
+                        disabled={uploadingPDF || !instanceHasReservations}
+                        title={instanceHasReservations ? "Assigner automatiquement les réservations importées sur les tables" : "Importez d'abord un PDF contenant des réservations"}
+                      >
+                        ⚡ Auto-assign
+                      </button>
                       <button className="btn btn-sm btn-outline" onClick={resetInstanceAction} title="Vider l'instance (supprime tables dynamiques et assignations)">
                         ♻️ Réinitialiser
                       </button>
