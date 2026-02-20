@@ -393,7 +393,7 @@ export default function FloorPlanPage() {
   const instanceDynamicTables = (selectedInstance?.data?.tables || []).filter((t: any) => t && (t as any).dynamic).length
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 floorplan-page">
       <div className="card floorplan-toolbar sticky top-0 z-20 bg-white/90 backdrop-blur shadow-sm">
         <div className="floorplan-toolbar-body">
           <div className="flex flex-col gap-4">
