@@ -389,14 +389,13 @@ export default function FloorPlanPage() {
   const currentView = editMode === 'instance' && selectedInstance ? viewByInstance[selectedInstance.id] : undefined
   const instanceHasReservations = !!(selectedInstance?.reservations && Array.isArray((selectedInstance as any).reservations?.items) && (selectedInstance as any).reservations.items.length > 0)
   const instanceAssignmentsCount = Object.keys(selectedInstance?.assignments?.tables || {}).length
-  const instanceHasAssignments = instanceAssignmentsCount > 0
   const instanceReservationsCount = (selectedInstance?.reservations && Array.isArray((selectedInstance as any).reservations?.items)) ? (selectedInstance as any).reservations.items.length : 0
   const instanceDynamicTables = (selectedInstance?.data?.tables || []).filter((t: any) => t && (t as any).dynamic).length
 
   return (
-    <div className="flex flex-col gap-4 h-[calc(100vh-1rem)]">
-      <div className="card sticky top-0 z-20 bg-white/90 backdrop-blur shadow-sm">
-        <div className="card-body">
+    <div className="space-y-6">
+      <div className="card floorplan-toolbar sticky top-0 z-20 bg-white/90 backdrop-blur shadow-sm">
+        <div className="floorplan-toolbar-body">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="join">
@@ -744,11 +743,10 @@ export default function FloorPlanPage() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0">
-        <div className="card floorplan-canvas-card h-full">
-          <div className="card-body flex flex-col gap-3 h-full min-h-0">
+      <div className="card floorplan-canvas-card">
+        <div className="floorplan-canvas-body">
             {uiAlerts.length > 0 && (
-              <div className="border border-yellow-300 bg-yellow-50 rounded-lg p-3">
+              <div className="floorplan-alerts border border-yellow-300 bg-yellow-50 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-semibold text-yellow-800">Alerte(s) de placement</div>
                   <button className="btn btn-xs btn-outline" onClick={() => setUiAlerts([])}>Effacer</button>
@@ -761,7 +759,7 @@ export default function FloorPlanPage() {
               </div>
             )}
 
-            <div className="flex-1 min-h-0">
+            <div className="floorplan-canvas-inner">
               {currentData ? (
                 <FloorCanvas
                   key={editMode === 'instance' ? (selectedInstance?.id || 'template') : 'template'}
@@ -789,7 +787,6 @@ export default function FloorPlanPage() {
                 </div>
               )}
             </div>
-          </div>
         </div>
       </div>
 

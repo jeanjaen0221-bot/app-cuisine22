@@ -1792,6 +1792,30 @@ img, video, canvas, svg { max-width: 100%; }
   .floorplan-canvas-card { height: clamp(260px, calc(100vh - 260px), 72vh); }
 }
 
+/* Floorplan toolbar/canvas layout hardening */
+.floorplan-toolbar {
+  padding: 0; /* override .card padding */
+}
+.floorplan-toolbar-body {
+  padding: 0.75rem;
+}
+@media (max-width: 640px) {
+  .floorplan-toolbar-body { padding: 0.5rem; }
+}
+
+.floorplan-canvas-body {
+  height: 100%;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+}
+.floorplan-canvas-inner {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 @media (max-width: 1024px) {
   .content { padding: 1rem; }
   .sidebar { position: sticky; top: 0; z-index: 40; }
