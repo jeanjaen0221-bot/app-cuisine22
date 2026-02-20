@@ -312,6 +312,7 @@ def _draw_reservations_page(
     y = page_h - margin - 10 * mm
     header_h = 7 * mm
     line_h = 6 * mm
+    pad_x = 2.0
 
     def _wrap_text(text: str, max_w: float, font_name: str, font_size: float) -> List[str]:
         s = str(text or "").strip()
@@ -360,10 +361,11 @@ def _draw_reservations_page(
     col_client_x = margin + 25 * mm
     col_pax_x = margin + 110 * mm
     col_tables_x = margin + 125 * mm
-    c.drawString(col_time_x, y, "Heure")
-    c.drawString(col_client_x, y, "Client")
-    c.drawString(col_pax_x, y, "Pax")
-    c.drawString(col_tables_x, y, "Table(s)")
+    pax_col_w = col_tables_x - col_pax_x
+    c.drawString(col_time_x + pad_x, y, "Heure")
+    c.drawString(col_client_x + pad_x, y, "Client")
+    c.drawCentredString(col_pax_x + pax_col_w / 2.0, y, "Pax")
+    c.drawString(col_tables_x + pad_x, y, "Table(s)")
     y -= header_h
     c.setFont("Helvetica", 9)
     col_client_w = col_pax_x - col_client_x - 4
@@ -386,10 +388,10 @@ def _draw_reservations_page(
             c.setFillColor(colors.whitesmoke)
             c.rect(margin - 2, y - 1.5, page_w - 2 * margin + 4, header_h, stroke=0, fill=1)
             c.setFillColor(colors.black)
-            c.drawString(col_time_x, y, "Heure")
-            c.drawString(col_client_x, y, "Client")
-            c.drawString(col_pax_x, y, "Pax")
-            c.drawString(col_tables_x, y, "Table(s)")
+            c.drawString(col_time_x + pad_x, y, "Heure")
+            c.drawString(col_client_x + pad_x, y, "Client")
+            c.drawCentredString(col_pax_x + pax_col_w / 2.0, y, "Pax")
+            c.drawString(col_tables_x + pad_x, y, "Table(s)")
             y -= header_h
             c.setFont("Helvetica", 9)
 
@@ -398,22 +400,22 @@ def _draw_reservations_page(
             c.rect(margin - 2, y - row_h + 2, page_w - 2 * margin + 4, row_h, stroke=0, fill=1)
             c.setFillColor(colors.black)
 
-        c.drawString(col_time_x, y, tstr)
-        c.drawRightString(col_tables_x - 3, y, str(r.pax or 0))
+        c.drawString(col_time_x + pad_x, y, tstr)
+        c.drawRightString(col_tables_x - 2 * mm, y, str(r.pax or 0))
 
         for li in range(row_lines):
             yy = y - li * line_h
             if li < len(client_lines):
-                c.drawString(col_client_x, yy, client_lines[li])
+                c.drawString(col_client_x + pad_x, yy, client_lines[li])
             if li < len(tables_lines):
-                c.drawString(col_tables_x, yy, tables_lines[li])
+                c.drawString(col_tables_x + pad_x, yy, tables_lines[li])
 
         c.setStrokeColor(colors.lightgrey)
         c.setLineWidth(0.5)
         c.line(margin - 2, y - row_h + 2, page_w - margin + 2, y - row_h + 2)
-        c.line(col_client_x - 3, y + 3, col_client_x - 3, y - row_h + 2)
-        c.line(col_pax_x - 3, y + 3, col_pax_x - 3, y - row_h + 2)
-        c.line(col_tables_x - 3, y + 3, col_tables_x - 3, y - row_h + 2)
+        c.line(col_client_x, y + 3, col_client_x, y - row_h + 2)
+        c.line(col_pax_x, y + 3, col_pax_x, y - row_h + 2)
+        c.line(col_tables_x, y + 3, col_tables_x, y - row_h + 2)
 
         y -= row_h
 
@@ -887,11 +889,88 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
     # Sort reservations largest first to minimize waste; tie-breaker by arrival time
     groups = sorted(reservations, key=lambda r: (-int(r.pax), r.arrival_time or dtime(0, 0)))
 
+    # ---- Service load heuristic (aérer vs optimiser) ----
+    # Heuristic goal:
+    # - calm service -> allow more comfort (more spare seats), and allow 2 rect tables "collées" for 12/14 pax
+    # - busy service -> tighter fit to save tables/stock
+    try:
+        total_pax = sum(int(r.pax or 0) for r in reservations)
+    except Exception:
+        total_pax = 0
+    try:
+        fixed_cap = int(plan_data.get("fixed_chair_stock", 28))
+    except Exception:
+        fixed_cap = 28
+    try:
+        rect_cap = sum(max(6, int(t.get("capacity") or 6)) for t in rects)
+    except Exception:
+        rect_cap = 0
+    try:
+        round_cap = sum(int(_capacity_for_table(t)) for t in rounds)
+    except Exception:
+        round_cap = 0
+    approx_total_cap = max(1, fixed_cap + rect_cap + round_cap)
+    load_ratio = float(total_pax) / float(approx_total_cap)
+    # thresholds tuned for this room: <55% calm, >75% busy
+    seat_mode = "aerer" if load_ratio < 0.55 else ("optimiser" if load_ratio > 0.75 else "normal")
+    _dbg_add("INFO", f"AUTO-ASSIGN mode={seat_mode} load_ratio={load_ratio:.2f} pax={total_pax} cap≈{approx_total_cap}")
+
     assignments_by_table: Dict[str, Dict[str, Any]] = {}
     alerts: List[str] = []
     small_on_nonfixed = 0
     unplaced_count = 0  # Compter les réservations non placées
     fixed_chairs_used = 0
+
+    def _assign_tables_to_reservation(res: Reservation, tbls: List[Dict[str, Any]], total: int) -> None:
+        """Assign a single reservation across multiple tables (collées).
+        For optimiser: pack as much as possible on first table(s).
+        For aérer: distribute more evenly when possible.
+        """
+        remaining = int(total)
+
+        # Compute per-table effective capacity (rect can extend to 8)
+        caps: List[int] = []
+        for t in tbls:
+            cap = int(_capacity_for_table(t))
+            if t.get("kind") == "rect":
+                cap = min(8, cap + 2)
+            caps.append(max(0, cap))
+
+        if seat_mode == "aerer" and len(tbls) >= 2:
+            # target near-even distribution while respecting caps
+            target_each = max(1, int(math.ceil(remaining / float(len(tbls)))))
+            for idx, t in enumerate(tbls):
+                cap = caps[idx]
+                take = min(cap, max(0, min(target_each, remaining)))
+                assignments_by_table.setdefault(t.get("id"), {"res_id": str(res.id), "name": (res.client_name or "").upper(), "pax": take})
+                remaining -= take
+            # if still remaining, pack the rest
+            for idx, t in enumerate(tbls):
+                if remaining <= 0:
+                    break
+                already = int(assignments_by_table.get(t.get("id"), {}).get("pax") or 0)
+                cap = caps[idx]
+                add = min(cap - already, remaining)
+                if add > 0:
+                    assignments_by_table[t.get("id")]["pax"] = already + add
+                    remaining -= add
+        else:
+            # optimiser/normal: pack first tables
+            for idx, t in enumerate(tbls):
+                if remaining <= 0:
+                    break
+                cap = caps[idx]
+                take = min(cap, remaining)
+                assignments_by_table.setdefault(t.get("id"), {"res_id": str(res.id), "name": (res.client_name or "").upper(), "pax": take})
+                remaining -= take
+
+        # Remove from pools (safety)
+        for t in tbls:
+            avail_fixed.pop(t.get("id"), None)
+            avail_rects.pop(t.get("id"), None)
+            avail_rounds.pop(t.get("id"), None)
+            avail_sofas.pop(t.get("id"), None)
+            avail_standings.pop(t.get("id"), None)
 
     # Pre-pass: fill fixed zone with all 1–4 pax groups first, up to fixed_chair_stock
     placed_small_ids = set()
@@ -1081,6 +1160,20 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if int(r.pax) <= 4:
             rect_allowed = (fixed_chairs_used + int(r.pax) > fixed_chair_stock) or (len(avail_fixed) == 0)
 
+        # Calm service: allow 2 rect tables "collées" for 9-14 pax (12/14) before creating a dynamic cluster
+        if rect_allowed and seat_mode == "aerer" and 9 <= int(r.pax) <= 14:
+            pair = take_best_rect_combo(int(r.pax))
+            if pair:
+                _assign_tables_to_reservation(r, pair, int(r.pax))
+                placed = True
+                try:
+                    _dbg_add("INFO", f"assign rect-collées -> res={r.id} pax={int(r.pax)} tables={[t.get('id') for t in pair]}")
+                except Exception:
+                    pass
+
+        if placed:
+            continue
+
         if rect_allowed:
             def rect_can_fit(t):
                 cap = _capacity_for_table(t)
@@ -1093,6 +1186,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
 
             def rect_center_pref_key(t):
                 cap = _capacity_for_table(t)
+                cap_ext = min(8, cap + 2) if t.get("kind") == "rect" else cap
+                spare = int(cap_ext) - int(r.pax)
+                # optimiser: prefer minimal spare; aérer: prefer more spare (but cap still bounded by predicate)
+                spare_key = spare if seat_mode != "aerer" else (-spare)
                 try:
                     if int(r.pax) <= 8:
                         zones = plan_data.get("rect_only_zones") or []
@@ -1109,10 +1206,10 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                             if cx >= zx and cx <= zx + zw and cy >= zy and cy <= zy + zh:
                                 dist = cx - zx
                                 break
-                        return (cap, dist)
+                        return (spare_key, cap, dist)
                 except Exception:
                     pass
-                return (cap, float(t.get("x") or 0.0))
+                return (spare_key, cap, float(t.get("x") or 0.0))
 
             best_rect = take_table(avail_rects, predicate=rect_can_fit, sort_key=rect_center_pref_key)
             if best_rect:
@@ -1461,7 +1558,6 @@ def export_base_pdf(session: Session = Depends(get_session)):
     c = pdfcanvas.Canvas(buf, pagesize=A4)
     _draw_plan_page(c, _plan, id_to_label)
     c.showPage()
-    _draw_table_list_page(c, id_to_label, _plan)
     c.save()
     pdf_bytes = buf.getvalue()
     buf.close()
@@ -1576,8 +1672,6 @@ def export_instance_annotated(
     _draw_reservations_page(c, reservations, (row.assignments or {}), id_to_label)
     c.showPage()
     _draw_plan_page(c, _plan, id_to_label, assignments=(row.assignments or {}))
-    c.showPage()
-    _draw_table_list_page(c, id_to_label, _plan)
     c.save()
     plan_reader = PdfReader(io.BytesIO(plan_buf.getvalue()))
     for pg in plan_reader.pages:
@@ -1724,9 +1818,6 @@ def export_instance_pdf(instance_id: uuid.UUID, session: Session = Depends(get_s
     c.showPage()
     # 2) Floor plan with labels and assignments
     _draw_plan_page(c, _plan, id_to_label, assignments=(row.assignments or {}))
-    c.showPage()
-    # 3) Numbered tables list
-    _draw_table_list_page(c, id_to_label, _plan)
     c.save()
     pdf_bytes = buf.getvalue()
     buf.close()
