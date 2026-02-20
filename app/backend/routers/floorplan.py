@@ -1188,8 +1188,12 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                 cap = _capacity_for_table(t)
                 cap_ext = min(8, cap + 2) if t.get("kind") == "rect" else cap
                 spare = int(cap_ext) - int(r.pax)
-                # optimiser: prefer minimal spare; aérer: prefer more spare (but cap still bounded by predicate)
-                spare_key = spare if seat_mode != "aerer" else (-spare)
+                # optimiser: prefer minimal spare
+                # aérer: prefer more spare only for 7-8 pax; for <=6 pax keep best-fit to avoid wasting 8-seaters
+                if seat_mode == "aerer" and int(r.pax) >= 7:
+                    spare_key = -spare
+                else:
+                    spare_key = spare
                 try:
                     if int(r.pax) <= 8:
                         zones = plan_data.get("rect_only_zones") or []
