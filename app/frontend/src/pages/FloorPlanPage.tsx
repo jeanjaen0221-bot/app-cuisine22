@@ -26,6 +26,7 @@ export default function FloorPlanPage() {
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([])
   const [renumberPrefix, setRenumberPrefix] = useState('')
   const [renumberStart, setRenumberStart] = useState(1)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     loadBase()
@@ -393,8 +394,8 @@ export default function FloorPlanPage() {
   const instanceDynamicTables = (selectedInstance?.data?.tables || []).filter((t: any) => t && (t as any).dynamic).length
 
   return (
-    <div className="space-y-6">
-      <div className="card sticky top-0 z-10 bg-white/90 backdrop-blur shadow-sm">
+    <div className="flex flex-col gap-4 h-[calc(100vh-1rem)]">
+      <div className="card sticky top-0 z-20 bg-white/90 backdrop-blur shadow-sm">
         <div className="card-body">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -412,6 +413,23 @@ export default function FloorPlanPage() {
                   title="Gérer une instance (service)"
                 >
                   <Calendar className="w-4 h-4" /> Instances
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 lg:hidden">
+                <button
+                  className="btn btn-sm btn-outline"
+                  onClick={() => setMobileMenuOpen(true)}
+                  title="Ouvrir le menu"
+                >
+                  ☰ Menu
+                </button>
+                <button
+                  className="btn btn-sm btn-outline"
+                  onClick={() => setResetViewTick(t => t + 1)}
+                  title="Recentrer et adapter la vue à la salle"
+                >
+                  ⤾
                 </button>
               </div>
 
@@ -447,7 +465,7 @@ export default function FloorPlanPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3">
+                <div className="hidden lg:flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3">
                   <div className="text-xs font-semibold text-gray-600">Sélection</div>
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="text-sm text-gray-700">
@@ -651,7 +669,7 @@ export default function FloorPlanPage() {
                 </div>
 
                 {selectedInstance && (
-                  <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3">
+                  <div className="hidden lg:flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3">
                     <div className="text-xs font-semibold text-gray-600">Réservations</div>
                     <div className="flex flex-wrap gap-2">
                       <button className="btn btn-sm" onClick={importPDF} disabled={uploadingPDF} title="Importer le PDF de réservations pour cette instance">
@@ -691,7 +709,6 @@ export default function FloorPlanPage() {
 
                     <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
                       <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-xs font-semibold text-gray-600 lg:hidden w-full">Sélection</div>
                         <div className="text-sm text-gray-700">
                           Sélection: <span className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100"><b>{selectedTableIds.length}</b></span>
                         </div>
@@ -718,134 +735,300 @@ export default function FloorPlanPage() {
                           ✍️ Renuméroter sélection
                         </button>
                       </div>
-
-                      <div className="lg:hidden flex items-center gap-2 text-xs">
-                        <span className="px-2 py-1 bg-gray-100 rounded text-gray-700" title="Nombre de réservations importées">Res: <b>{instanceReservationsCount}</b></span>
-                        <span className="px-2 py-1 bg-gray-100 rounded text-gray-700" title="Nombre de tables assignées (côté plan)">Assign: <b>{instanceAssignmentsCount}</b></span>
-                        <span className="px-2 py-1 bg-gray-100 rounded text-gray-700" title="Tables dynamiques présentes dans le plan">Dyn: <b>{instanceDynamicTables}</b></span>
-                      </div>
                     </div>
                   </div>
                 )}
               </div>
             )}
           </div>
+        </div>
+      </div>
 
-          <div className="flex flex-col gap-2 mt-4">
-            <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3">
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                <div className="flex flex-col gap-2">
-                  <div className="text-xs font-semibold text-gray-600">Affichage</div>
+      <div className="flex-1 min-h-0">
+        <div className="card floorplan-canvas-card h-full">
+          <div className="card-body flex flex-col gap-3 h-full min-h-0">
+            {uiAlerts.length > 0 && (
+              <div className="border border-yellow-300 bg-yellow-50 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-semibold text-yellow-800">Alerte(s) de placement</div>
+                  <button className="btn btn-xs btn-outline" onClick={() => setUiAlerts([])}>Effacer</button>
+                </div>
+                <ul className="list-disc pl-5 text-sm text-yellow-900 space-y-1 max-h-40 overflow-auto">
+                  {uiAlerts.map((a, idx) => (
+                    <li key={idx}>{a}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex-1 min-h-0">
+              {currentData ? (
+                <FloorCanvas
+                  key={editMode === 'instance' ? (selectedInstance?.id || 'template') : 'template'}
+                  data={currentData}
+                  assignments={editMode === 'instance' ? selectedInstance?.assignments : undefined}
+                  editable={true}
+                  showGrid={showGrid}
+                  className="w-full h-full"
+                  onChange={editMode === 'template' ? handleBaseChange : handleInstanceChange}
+                  drawNoGoMode={drawNoGoMode}
+                  drawRoundOnlyMode={drawRoundOnlyMode}
+                  drawRectOnlyMode={drawRectOnlyMode}
+                  initialScale={currentView?.scale}
+                  initialOffset={currentView?.offset}
+                  resetTrigger={resetViewTick}
+                  onSelectionChange={(ids) => setSelectedTableIds(ids)}
+                  onViewChange={(v) => {
+                    if (!selectedInstance) return
+                    setViewByInstance(prev => ({ ...prev, [selectedInstance.id]: v }))
+                  }}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  Sélectionnez ou créez un plan
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50" onClick={() => setMobileMenuOpen(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="absolute right-0 top-0 h-full w-[92vw] max-w-md bg-white shadow-xl p-4 overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-bold">Menu</div>
+              <button className="btn btn-sm btn-outline" onClick={() => setMobileMenuOpen(false)}>Fermer</button>
+            </div>
+
+            {editMode === 'template' && (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Actions (plan de base)</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button className="btn btn-sm btn-success" onClick={saveBase} disabled={!baseTemplate}>
+                      <Save className="w-4 h-4" /> Sauvegarder
+                    </button>
+                    <button className="btn btn-sm" onClick={numberTables}>
+                      🔢 Numéroter
+                    </button>
+                    <button className="btn btn-sm" onClick={exportBase} disabled={!baseTemplate}>
+                      <Download className="w-4 h-4" /> Exporter PDF
+                    </button>
+                    <button className="btn btn-sm btn-outline" onClick={() => setResetViewTick(t => t + 1)}>
+                      ⤾ Recentrer
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Sélection</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm text-gray-700">Tables: <b>{selectedTableIds.length}</b></div>
+                    <input className="input input-sm w-24" value={renumberPrefix} onChange={(e) => setRenumberPrefix(e.target.value)} placeholder="Préfixe" />
+                    <input className="input input-sm w-20" type="number" value={renumberStart} onChange={(e) => setRenumberStart(parseInt(e.target.value) || 1)} />
+                    <button className="btn btn-sm btn-outline" onClick={renumberSelectedTables} disabled={selectedTableIds.length === 0}>
+                      ✍️ Renuméroter
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Affichage</div>
                   <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={showGrid}
-                      onChange={(e) => setShowGrid(e.target.checked)}
-                    />
+                    <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
                     <span className="text-sm">Grille</span>
                   </label>
                 </div>
 
-                <div className="flex flex-col gap-2 lg:col-span-2">
-                  <div className="text-xs font-semibold text-gray-600">Ajouter</div>
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Ajouter</div>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={() => addTable('fixed', 4)} className="btn btn-sm">+ Table fixe (4)</button>
                     <button onClick={() => addTable('rect', 6)} className="btn btn-sm">+ Rect (6→8)</button>
                     <button onClick={() => addTable('round', 10)} className="btn btn-sm">+ Ronde (10)</button>
                     <button onClick={() => addTable('sofa', 5)} className="btn btn-sm btn-sofa">+ Canapé (5)</button>
                     <button onClick={() => addTable('standing', 8)} className="btn btn-sm btn-standing">+ Mange-debout (8)</button>
-                    <button className="btn btn-sm btn-outline" onClick={() => addFixture('rect')}>
-                      ➕ Mur
+                    <button className="btn btn-sm btn-outline" onClick={() => addFixture('rect')}>➕ Mur</button>
+                    <button className="btn btn-sm btn-outline" onClick={() => addFixture('round')}>➕ Colonne</button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Zones</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button className={`btn btn-sm ${drawNoGoMode ? 'btn-danger' : 'btn-outline'}`} onClick={() => { setDrawNoGoMode(!drawNoGoMode); setDrawRoundOnlyMode(false); setDrawRectOnlyMode(false) }}>
+                      🚫 Zone interdite
                     </button>
-                    <button className="btn btn-sm btn-outline" onClick={() => addFixture('round')}>
-                      ➕ Colonne
+                    <button className={`btn btn-sm ${drawRoundOnlyMode ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setDrawRoundOnlyMode(!drawRoundOnlyMode); setDrawNoGoMode(false); setDrawRectOnlyMode(false) }}>
+                      🔵 Zone R (rondes)
+                    </button>
+                    <button className={`btn btn-sm ${drawRectOnlyMode ? 'btn-success' : 'btn-outline'}`} onClick={() => { setDrawRectOnlyMode(!drawRectOnlyMode); setDrawNoGoMode(false); setDrawRoundOnlyMode(false) }}>
+                      🟢 Zone T (rectangulaires)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Stock de tables</div>
+                  <button className="btn btn-sm btn-outline" onClick={() => setShowStock(s => !s)}>
+                    {showStock ? '▼' : '►'} Afficher le stock
+                  </button>
+                  {showStock && (
+                    <div className="mt-2 grid grid-cols-1 gap-2 text-sm">
+                      <label className="flex items-center gap-2">
+                        <span>Rect (6-8):</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="50"
+                          className="input input-sm w-20"
+                          value={baseTemplate?.data?.max_dynamic_tables?.rect || 10}
+                          onChange={(e) => {
+                            if (!baseTemplate) return
+                            const val = parseInt(e.target.value) || 0
+                            setBaseTemplate({
+                              ...baseTemplate,
+                              data: {
+                                ...baseTemplate.data,
+                                max_dynamic_tables: {
+                                  ...baseTemplate.data?.max_dynamic_tables,
+                                  rect: val
+                                }
+                              }
+                            })
+                          }}
+                        />
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <span>Rondes (10):</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="50"
+                          className="input input-sm w-20"
+                          value={baseTemplate?.data?.max_dynamic_tables?.round || 5}
+                          onChange={(e) => {
+                            if (!baseTemplate) return
+                            const val = parseInt(e.target.value) || 0
+                            setBaseTemplate({
+                              ...baseTemplate,
+                              data: {
+                                ...baseTemplate.data,
+                                max_dynamic_tables: {
+                                  ...baseTemplate.data?.max_dynamic_tables,
+                                  round: val
+                                }
+                              }
+                            })
+                          }}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {editMode === 'instance' && (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Réservations</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button className="btn btn-sm" onClick={importPDF} disabled={uploadingPDF || !selectedInstance}>
+                      <Upload className="w-4 h-4" /> {uploadingPDF ? 'Import...' : 'Importer PDF'}
+                    </button>
+                    <button className="btn btn-sm btn-primary" onClick={autoAssign} disabled={uploadingPDF || !instanceHasReservations}>
+                      ⚡ Placement auto
+                    </button>
+                    <button className="btn btn-sm" onClick={compareWithPDF} disabled={!selectedInstance}>
+                      🔎 Comparer au PDF
+                    </button>
+                    <button className="btn btn-sm" onClick={exportAnnotated} disabled={uploadingPDF || !selectedInstance}>
+                      <Download className="w-4 h-4" /> PDF annoté
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Plan</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button className="btn btn-sm" onClick={numberTables} disabled={!selectedInstance}>
+                      🔢 Numéroter
+                    </button>
+                    <button className="btn btn-sm" onClick={exportComplete} disabled={!selectedInstance}>
+                      <Download className="w-4 h-4" /> Exporter PDF
+                    </button>
+                    <button className="btn btn-sm btn-outline" onClick={() => setResetViewTick(t => t + 1)}>
+                      ⤾ Recentrer
+                    </button>
+                    <button className="btn btn-sm btn-outline" onClick={resetInstanceAction} disabled={!selectedInstance}>
+                      ♻️ Réinitialiser
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Sélection</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm text-gray-700">Tables: <b>{selectedTableIds.length}</b></div>
+                    <input className="input input-sm w-24" value={renumberPrefix} onChange={(e) => setRenumberPrefix(e.target.value)} placeholder="Préfixe" />
+                    <input className="input input-sm w-20" type="number" value={renumberStart} onChange={(e) => setRenumberStart(parseInt(e.target.value) || 1)} />
+                    <button className="btn btn-sm btn-outline" onClick={renumberSelectedTables} disabled={!selectedInstance || selectedTableIds.length === 0}>
+                      ✍️ Renuméroter sélection
+                    </button>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 text-xs">
+                    <span className="px-2 py-1 bg-gray-100 rounded text-gray-700">Res: <b>{instanceReservationsCount}</b></span>
+                    <span className="px-2 py-1 bg-gray-100 rounded text-gray-700">Assign: <b>{instanceAssignmentsCount}</b></span>
+                    <span className="px-2 py-1 bg-gray-100 rounded text-gray-700">Dyn: <b>{instanceDynamicTables}</b></span>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Affichage</div>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
+                    <span className="text-sm">Grille</span>
+                  </label>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Ajouter</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => addTable('fixed', 4)} className="btn btn-sm">+ Table fixe (4)</button>
+                    <button onClick={() => addTable('rect', 6)} className="btn btn-sm">+ Rect (6→8)</button>
+                    <button onClick={() => addTable('round', 10)} className="btn btn-sm">+ Ronde (10)</button>
+                    <button onClick={() => addTable('sofa', 5)} className="btn btn-sm btn-sofa">+ Canapé (5)</button>
+                    <button onClick={() => addTable('standing', 8)} className="btn btn-sm btn-standing">+ Mange-debout (8)</button>
+                    <button className="btn btn-sm btn-outline" onClick={() => addFixture('rect')}>➕ Mur</button>
+                    <button className="btn btn-sm btn-outline" onClick={() => addFixture('round')}>➕ Colonne</button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Zones</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button className={`btn btn-sm ${drawNoGoMode ? 'btn-danger' : 'btn-outline'}`} onClick={() => { setDrawNoGoMode(!drawNoGoMode); setDrawRoundOnlyMode(false); setDrawRectOnlyMode(false) }}>
+                      🚫 Zone interdite
+                    </button>
+                    <button className={`btn btn-sm ${drawRoundOnlyMode ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setDrawRoundOnlyMode(!drawRoundOnlyMode); setDrawNoGoMode(false); setDrawRectOnlyMode(false) }}>
+                      🔵 Zone R (rondes)
+                    </button>
+                    <button className={`btn btn-sm ${drawRectOnlyMode ? 'btn-success' : 'btn-outline'}`} onClick={() => { setDrawRectOnlyMode(!drawRectOnlyMode); setDrawNoGoMode(false); setDrawRoundOnlyMode(false) }}>
+                      🟢 Zone T (rectangulaires)
                     </button>
                   </div>
                 </div>
               </div>
-
-              <div className="flex flex-col gap-2">
-                <div className="text-xs font-semibold text-gray-600">Zones</div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    className={`btn btn-sm ${drawNoGoMode ? 'btn-danger' : 'btn-outline'}`}
-                    onClick={() => {
-                      setDrawNoGoMode(!drawNoGoMode)
-                      setDrawRoundOnlyMode(false)
-                      setDrawRectOnlyMode(false)
-                    }}
-                  >
-                    🚫 Zone interdite
-                  </button>
-                  <button
-                    className={`btn btn-sm ${drawRoundOnlyMode ? 'btn-primary' : 'btn-outline'}`}
-                    onClick={() => {
-                      setDrawRoundOnlyMode(!drawRoundOnlyMode)
-                      setDrawNoGoMode(false)
-                      setDrawRectOnlyMode(false)
-                    }}
-                  >
-                    🔵 Zone R (rondes)
-                  </button>
-                  <button
-                    className={`btn btn-sm ${drawRectOnlyMode ? 'btn-success' : 'btn-outline'}`}
-                    onClick={() => {
-                      setDrawRectOnlyMode(!drawRectOnlyMode)
-                      setDrawNoGoMode(false)
-                      setDrawRoundOnlyMode(false)
-                    }}
-                  >
-                    🟢 Zone T (rectangulaires)
-                  </button>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
-      </div>
-
-      <div className="card floorplan-canvas-card">
-        {uiAlerts.length > 0 && (
-          <div className="card mb-4 border border-yellow-300 bg-yellow-50">
-            <div className="card-body">
-              <div className="flex items-center justify-between mb-2">
-                <div className="font-semibold text-yellow-800">Alerte(s) de placement</div>
-                <button className="btn btn-xs btn-outline" onClick={() => setUiAlerts([])}>Effacer</button>
-              </div>
-              <ul className="list-disc pl-5 text-sm text-yellow-900 space-y-1">
-                {uiAlerts.map((a, idx) => (
-                  <li key={idx}>{a}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-        {currentData ? (
-          <FloorCanvas
-            key={editMode === 'instance' ? (selectedInstance?.id || 'template') : 'template'}
-            data={currentData}
-            assignments={editMode === 'instance' ? selectedInstance?.assignments : undefined}
-            editable={true}
-            showGrid={showGrid}
-            onChange={editMode === 'template' ? handleBaseChange : handleInstanceChange}
-            drawNoGoMode={drawNoGoMode}
-            drawRoundOnlyMode={drawRoundOnlyMode}
-            drawRectOnlyMode={drawRectOnlyMode}
-            initialScale={currentView?.scale}
-            initialOffset={currentView?.offset}
-            resetTrigger={resetViewTick}
-            onSelectionChange={(ids) => setSelectedTableIds(ids)}
-            onViewChange={(v) => {
-              if (!selectedInstance) return
-              setViewByInstance(prev => ({ ...prev, [selectedInstance.id]: v }))
-            }}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            Sélectionnez ou créez un plan
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Modal création instance */}
       {showCreateModal && (
