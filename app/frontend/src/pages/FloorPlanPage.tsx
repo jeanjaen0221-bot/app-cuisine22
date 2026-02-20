@@ -191,6 +191,18 @@ export default function FloorPlanPage() {
     input.click()
   }
 
+  async function exportBase() {
+    try {
+      const res = await api.get('/api/floorplan/base/export-pdf', {
+        responseType: 'blob'
+      })
+      fileDownload(res.data, 'plan_de_base.pdf')
+    } catch (err) {
+      console.error('Failed to export base pdf:', err)
+      alert('Erreur export')
+    }
+  }
+
   async function autoAssign() {
     if (!selectedInstance) {
       alert('Sélectionnez d\'abord une instance')
@@ -426,6 +438,9 @@ export default function FloorPlanPage() {
                     <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables du plan de base (1.., T.., R..)">
                       🔢 Numéroter
                     </button>
+                    <button className="btn btn-sm" onClick={exportBase} disabled={!baseTemplate} title="Exporter le plan de base en PDF">
+                      <Download className="w-4 h-4" /> Exporter PDF
+                    </button>
                     <button className="btn btn-sm btn-outline" onClick={() => setResetViewTick(t => t + 1)} title="Recentrer et adapter la vue à la salle">
                       ⤾ Recentrer
                     </button>
@@ -653,12 +668,18 @@ export default function FloorPlanPage() {
                       <button className="btn btn-sm" onClick={compareWithPDF} title="Comparer placement ↔ PDF (diagnostic)">
                         🔎 Comparer au PDF
                       </button>
+                      <button className="btn btn-sm" onClick={exportAnnotated} disabled={uploadingPDF || !selectedInstance} title="Exporter un PDF annoté (ajoute les numéros de table sur votre PDF d'origine)">
+                        <Download className="w-4 h-4" /> PDF annoté
+                      </button>
                     </div>
 
                     <div className="text-xs font-semibold text-gray-600">Plan</div>
                     <div className="flex flex-wrap gap-2">
                       <button className="btn btn-sm" onClick={numberTables} title="Numéroter les tables de l'instance affichée">
                         🔢 Numéroter
+                      </button>
+                      <button className="btn btn-sm" onClick={exportComplete} disabled={!selectedInstance} title="Exporter le plan et la liste des réservations en PDF">
+                        <Download className="w-4 h-4" /> Exporter PDF
                       </button>
                       <button className="btn btn-sm btn-outline" onClick={() => setResetViewTick(t => t + 1)} title="Recentrer et adapter la vue à la salle">
                         ⤾ Recentrer

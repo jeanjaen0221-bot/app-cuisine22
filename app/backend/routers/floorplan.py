@@ -176,14 +176,15 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
 
         # Determine pax/capacity to display (pax if assigned, otherwise capacity)
         pax_val: Optional[int] = None
-        if assignments and isinstance(assignments.get("tables"), dict):
+        has_assignments = bool(assignments and isinstance(assignments.get("tables"), dict))
+        if has_assignments:
             a = assignments["tables"].get(str(t.get("id")))
             if a and isinstance(a, dict):
                 try:
                     pax_val = int(a.get("pax"))
                 except Exception:
                     pax_val = None
-        if pax_val is None:
+        else:
             try:
                 pax_val = int(_capacity_for_table(t))
             except Exception:
@@ -192,8 +193,8 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
                 except Exception:
                     pax_val = 0
 
-        def draw_centered_table_text(cx: float, cy: float, lbl: str, pax: int) -> None:
-            if not lbl and not pax:
+        def draw_centered_table_text(cx: float, cy: float, lbl: str, pax: Optional[int]) -> None:
+            if not lbl and (pax is None or pax == 0):
                 return
             num_size = 10
             pax_size = 8
@@ -201,7 +202,7 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
             if lbl:
                 c.setFont("Helvetica-Bold", num_size)
                 c.drawCentredString(cx, cy + 3, str(lbl))
-            if pax:
+            if pax is not None and pax != 0:
                 c.setFont("Helvetica", pax_size)
                 c.drawCentredString(cx, cy - 8, f"{int(pax)} pl.")
 
@@ -210,7 +211,7 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
             y = float(t.get("y") or 0)
             r = float(t.get("r") or 0)
             c.circle(tx(x), ty(y), scale * r, stroke=1, fill=1)
-            draw_centered_table_text(tx(x), ty(y), lbl, pax_val or 0)
+            draw_centered_table_text(tx(x), ty(y), lbl, pax_val)
         else:
             x = float(t.get("x") or 0)
             y = float(t.get("y") or 0)
@@ -219,7 +220,7 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
             c.rect(tx(x), ty(y + h), scale * w, scale * h, stroke=1, fill=1)
             cx = tx(x + w / 2.0)
             cy = ty(y + h / 2.0)
-            draw_centered_table_text(cx, cy, lbl, pax_val or 0)
+            draw_centered_table_text(cx, cy, lbl, pax_val)
 
     # title
     c.setFont("Helvetica", 10)
@@ -310,7 +311,36 @@ def _draw_reservations_page(
     c.drawString(margin, page_h - margin, "Liste du service avec numéros de table")
     y = page_h - margin - 10 * mm
     header_h = 7 * mm
-    line_h = 7 * mm
+    line_h = 6 * mm
+
+    def _wrap_text(text: str, max_w: float, font_name: str, font_size: float) -> List[str]:
+        s = str(text or "").strip()
+        if not s:
+            return [""]
+        words = s.split()
+        lines: List[str] = []
+        cur = ""
+        for w in words:
+            nxt = (cur + " " + w).strip() if cur else w
+            if stringWidth(nxt, font_name, font_size) <= max_w:
+                cur = nxt
+                continue
+            if cur:
+                lines.append(cur)
+            if stringWidth(w, font_name, font_size) <= max_w:
+                cur = w
+            else:
+                part = w
+                while part and stringWidth(part, font_name, font_size) > max_w:
+                    cut = len(part)
+                    while cut > 1 and stringWidth(part[:cut] + "…", font_name, font_size) > max_w:
+                        cut -= 1
+                    lines.append(part[:cut] + "…")
+                    part = part[cut:]
+                cur = part
+        if cur:
+            lines.append(cur)
+        return lines if lines else [""]
     c.setFillColor(colors.whitesmoke)
     c.rect(margin - 2, y - 1.5, page_w - 2 * margin + 4, header_h, stroke=0, fill=1)
     c.setFillColor(colors.black)
@@ -326,35 +356,29 @@ def _draw_reservations_page(
         lab_by_res.setdefault(res_id, []).append(lbl)
     # Reservations already sorted by _load_reservations (arrival_time asc, created_at asc)
     rows = reservations
-    c.drawString(margin, y, "Heure")
-    c.drawString(margin + 25 * mm, y, "Client")
-    c.drawString(margin + 110 * mm, y, "Pax")
-    c.drawString(margin + 125 * mm, y, "Table(s)")
+    col_time_x = margin
+    col_client_x = margin + 25 * mm
+    col_pax_x = margin + 110 * mm
+    col_tables_x = margin + 125 * mm
+    c.drawString(col_time_x, y, "Heure")
+    c.drawString(col_client_x, y, "Client")
+    c.drawString(col_pax_x, y, "Pax")
+    c.drawString(col_tables_x, y, "Table(s)")
     y -= header_h
     c.setFont("Helvetica", 9)
-    col_client_w = (110 * mm) - (25 * mm) - 6
-    col_tables_w = (page_w - margin) - (125 * mm) - 6
+    col_client_w = col_pax_x - col_client_x - 4
+    col_tables_w = (page_w - margin) - col_tables_x - 4
     for i, r in enumerate(rows):
-        # Zebra background for readability
-        if i % 2 == 1:
-            c.setFillColor(colors.Color(0.965, 0.965, 0.965))
-            c.rect(margin - 2, y - (line_h - 3), page_w - 2 * margin + 4, line_h - 2, stroke=0, fill=1)
-            c.setFillColor(colors.black)
         t = getattr(r, "arrival_time", None)
         tstr = str(t)[:5] if t else ""
-        c.drawString(margin, y, tstr)
-        client_txt = _fit_text(c, (r.client_name or "").upper(), col_client_w, "Helvetica", 9)
-        c.drawString(margin + 25 * mm, y, client_txt)
-        # Right align Pax just before the Table(s) column
-        c.drawRightString(margin + 122 * mm, y, str(r.pax or 0))
         lst_raw = ", ".join(sorted(lab_by_res.get(str(r.id), []), key=lambda s: (s.startswith('R'), s)))
-        lst = _fit_text(c, lst_raw, col_tables_w, "Helvetica", 9)
-        c.drawString(margin + 125 * mm, y, lst)
-        c.setStrokeColor(colors.lightgrey)
-        c.setLineWidth(0.5)
-        c.line(margin - 2, y - 3, page_w - margin + 2, y - 3)
-        y -= line_h
-        if y < margin + 2 * line_h:
+
+        client_lines = _wrap_text((r.client_name or "").upper(), col_client_w, "Helvetica", 9)
+        tables_lines = _wrap_text(lst_raw, col_tables_w, "Helvetica", 9)
+        row_lines = max(1, len(client_lines), len(tables_lines))
+        row_h = row_lines * line_h
+
+        if y - row_h < margin + 2 * line_h:
             c.showPage()
             # Redraw header on new page
             c.setFont("Helvetica-Bold", 10)
@@ -362,12 +386,36 @@ def _draw_reservations_page(
             c.setFillColor(colors.whitesmoke)
             c.rect(margin - 2, y - 1.5, page_w - 2 * margin + 4, header_h, stroke=0, fill=1)
             c.setFillColor(colors.black)
-            c.drawString(margin, y, "Heure")
-            c.drawString(margin + 25 * mm, y, "Client")
-            c.drawString(margin + 110 * mm, y, "Pax")
-            c.drawString(margin + 125 * mm, y, "Table(s)")
+            c.drawString(col_time_x, y, "Heure")
+            c.drawString(col_client_x, y, "Client")
+            c.drawString(col_pax_x, y, "Pax")
+            c.drawString(col_tables_x, y, "Table(s)")
             y -= header_h
             c.setFont("Helvetica", 9)
+
+        if i % 2 == 1:
+            c.setFillColor(colors.Color(0.965, 0.965, 0.965))
+            c.rect(margin - 2, y - row_h + 2, page_w - 2 * margin + 4, row_h, stroke=0, fill=1)
+            c.setFillColor(colors.black)
+
+        c.drawString(col_time_x, y, tstr)
+        c.drawRightString(col_tables_x - 3, y, str(r.pax or 0))
+
+        for li in range(row_lines):
+            yy = y - li * line_h
+            if li < len(client_lines):
+                c.drawString(col_client_x, yy, client_lines[li])
+            if li < len(tables_lines):
+                c.drawString(col_tables_x, yy, tables_lines[li])
+
+        c.setStrokeColor(colors.lightgrey)
+        c.setLineWidth(0.5)
+        c.line(margin - 2, y - row_h + 2, page_w - margin + 2, y - row_h + 2)
+        c.line(col_client_x - 3, y + 3, col_client_x - 3, y - row_h + 2)
+        c.line(col_pax_x - 3, y + 3, col_pax_x - 3, y - row_h + 2)
+        c.line(col_tables_x - 3, y + 3, col_tables_x - 3, y - row_h + 2)
+
+        y -= row_h
 
 import io
 import uuid
