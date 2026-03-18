@@ -1961,6 +1961,139 @@ img, video, canvas, svg { max-width: 100%; }
   border-color: #fb923c;
 }
 
+/* ===== Pax presets ===== */
+.pax-preset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 1.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  background: #fff;
+  color: var(--gray-600, #4b5563);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.pax-preset-btn:hover { background: var(--gray-50, #f9fafb); border-color: var(--primary, #693381); }
+.pax-preset-btn.is-active { background: var(--primary, #693381); border-color: var(--primary, #693381); color: #fff; }
+
+/* ===== Dish POS tabs ===== */
+.dishes-tabs {
+  display: flex;
+  gap: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border-color, #e5e7eb);
+}
+.dishes-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  background: #fff;
+  color: var(--gray-600, #4b5563);
+  border: none;
+  border-right: 1px solid var(--border-color, #e5e7eb);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.dishes-tab:last-child { border-right: none; }
+.dishes-tab:hover { background: var(--gray-50, #f9fafb); }
+.dishes-tab.is-active {
+  background: var(--primary, #693381);
+  color: #fff;
+  font-weight: 600;
+}
+.dishes-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: rgba(0,0,0,.08);
+  color: inherit;
+  min-width: 2.2rem;
+}
+.dishes-tab-badge.is-partial { background: rgba(105,51,129,.15); color: var(--primary, #693381); }
+.dishes-tab-badge.is-full { background: #D1FAE5; color: #065F46; }
+.dishes-tab-badge.is-over { background: #FEE2E2; color: #B91C1C; }
+.dishes-tab.is-active .dishes-tab-badge { background: rgba(255,255,255,.22); color: #fff; }
+
+/* ===== Dish POS grid ===== */
+.dish-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.5rem;
+}
+.dish-tile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-color, #e5e7eb);
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+  min-height: 2.6rem;
+}
+.dish-tile:hover { border-color: rgba(105,51,129,.35); background: rgba(105,51,129,.03); }
+.dish-tile.is-active { border-color: transparent; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+.dish-tile.is-active.is-entree { background: #ECFDF5; border-color: #A7F3D0; }
+.dish-tile.is-active.is-plat { background: #EFF6FF; border-color: #BFDBFE; }
+.dish-tile.is-active.is-dessert { background: #FFFBEB; border-color: #FDE68A; }
+
+.dish-tile-name {
+  flex: 1;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--gray-800, #1f2937);
+  line-height: 1.25;
+  word-break: break-word;
+}
+.dish-tile.is-active .dish-tile-name { font-weight: 600; }
+
+.dish-tile-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+.dish-tile-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(0,0,0,.12);
+  background: rgba(255,255,255,.8);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--gray-700, #374151);
+  transition: background 0.1s;
+}
+.dish-tile-btn:hover { background: rgba(255,255,255,1); }
+.dish-tile-qty {
+  min-width: 1.2rem;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--gray-800, #1f2937);
+}
+
 /* Summary panel (right sidebar) */
 .form-summary-panel {
   max-height: calc(100vh - 5rem);

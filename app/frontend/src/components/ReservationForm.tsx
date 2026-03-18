@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   Circle,
   X,
+  ChevronDown,
 } from 'lucide-react';
 
 const TIME_PRESETS = ['12:00', '12:30', '13:00', '13:30', '19:30', '20:00']
@@ -91,11 +92,9 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
   const [itemsError, setItemsError] = useState<string | null>(null)
   const [allergenOptions, setAllergenOptions] = useState<AllergenOption[]>(DEFAULT_ALLERGENS)
   const [allergenQuery, setAllergenQuery] = useState('')
-
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [pickerItems, setPickerItems] = useState<MenuItem[]>([])
-  const [pickerQ, setPickerQ] = useState('')
-  const [pickerTypeFilter, setPickerTypeFilter] = useState<'all' | 'entrée' | 'plat' | 'dessert'>('all')
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([])
+  const [dishTab, setDishTab] = useState<'entrée' | 'plat' | 'dessert'>('entrée')
+  const [notesOpen, setNotesOpen] = useState(false)
 
   const clientNameRef = useRef<HTMLInputElement>(null)
 
@@ -112,14 +111,27 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     return { entree: t['entrée'], plat: t['plat'], dessert: t['dessert'] }
   }, [items])
 
-  const filteredPicker = useMemo(() => {
-    const ql = pickerQ.trim().toLowerCase()
-    return pickerItems.filter(it => {
-      if (pickerTypeFilter !== 'all' && it.type !== pickerTypeFilter) return false
-      if (ql && !it.name.toLowerCase().includes(ql)) return false
-      return true
+  const menuItemsByType = useMemo(() => ({
+    'entrée': menuItems.filter(mi => mi.type === 'entrée'),
+    'plat': menuItems.filter(mi => mi.type === 'plat'),
+    'dessert': menuItems.filter(mi => mi.type === 'dessert'),
+  }), [menuItems])
+
+  const catalogueSet = useMemo(() =>
+    new Set(menuItems.map(mi => `${mi.type}::${mi.name.trim().toLowerCase()}`)),
+    [menuItems]
+  )
+
+  const customItemsForCurrentTab = useMemo(() => {
+    const result: { item: ReservationItem; idx: number }[] = []
+    items.forEach((it, idx) => {
+      if (it.type === dishTab && !catalogueSet.has(`${it.type}::${it.name.trim().toLowerCase()}`)) {
+        result.push({ item: it, idx })
+      }
     })
-  }, [pickerItems, pickerQ, pickerTypeFilter])
+    return result
+  }, [items, catalogueSet, dishTab])
+
 
   const filteredAllergens = useMemo(() => {
     const ql = allergenQuery.trim().toLowerCase();
@@ -253,13 +265,10 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
   }, [initial]);
 
   useEffect(() => {
-    if (!items.length) {
-      setItems([
-        { type: 'entrée', name: '', quantity: 0 },
-        { type: 'plat', name: '', quantity: 0 },
-        { type: 'dessert', name: '', quantity: 0 },
-      ])
-    }
+    api.get('/api/menu-items').then(res => {
+      const arr: MenuItem[] = Array.isArray(res.data) ? res.data : []
+      setMenuItems(arr.filter(mi => mi.active))
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -287,39 +296,34 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     });
   };
 
-  const addItem = () => {
-    setItems(prev => {
-      const next = [...prev, { name: '', type: 'entrée', quantity: 1 }];
-      setOpenRow(next.length - 1);
-      return next;
-    });
-  };
-
-  async function loadPicker() {
-    const res = await api.get('/api/menu-items')
-    const arr: MenuItem[] = Array.isArray(res.data) ? res.data : []
-    setPickerItems(arr.filter(it => it.active))
+  function getQty(mi: MenuItem): number {
+    const found = items.find(it =>
+      it.type === mi.type &&
+      it.name.trim().toLowerCase() === mi.name.trim().toLowerCase()
+    )
+    return found?.quantity || 0
   }
 
-  const openPicker = async () => {
-    if (!pickerOpen) await loadPicker()
-    setPickerOpen(true)
-  }
-
-  function addFromPicker(it: MenuItem) {
+  function setQty(mi: MenuItem, qty: number) {
     setItems(prev => {
-      const next = [...prev]
-      const idx = next.findIndex(x => (String(x.type).toLowerCase() === String(it.type).toLowerCase()) && String(x.name).trim().toLowerCase() === String(it.name).trim().toLowerCase())
+      const idx = prev.findIndex(it =>
+        it.type === mi.type &&
+        it.name.trim().toLowerCase() === mi.name.trim().toLowerCase()
+      )
+      if (qty <= 0) return idx >= 0 ? prev.filter((_, i) => i !== idx) : prev
       if (idx >= 0) {
-        const q = Number(next[idx].quantity || 0) + 1
-        next[idx] = { ...next[idx], quantity: q }
-        setOpenRow(idx)
-      } else {
-        next.push({ type: it.type, name: it.name, quantity: 1 })
-        setOpenRow(next.length - 1)
+        const next = [...prev]
+        next[idx] = { ...next[idx], quantity: qty }
+        return next
       }
-      return next
+      return [...prev, { type: mi.type, name: mi.name, quantity: qty }]
     })
+  }
+
+  function addCustomItem(type: string) {
+    const newIdx = items.length
+    setItems(prev => [...prev, { type, name: '', quantity: 1 }])
+    setOpenRow(newIdx)
   }
 
   function validate(): boolean {
@@ -547,6 +551,16 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
                         <Plus className="w-4 h-4" />
                       </button>
                     </div>
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {[2, 4, 6, 8, 10, 12].map(n => (
+                        <button
+                          key={n}
+                          type="button"
+                          className={`pax-preset-btn ${pax === n ? 'is-active' : ''}`}
+                          onClick={() => setPax(n)}
+                        >{n}</button>
+                      ))}
+                    </div>
                   </div>
 
                   {/* ── Formule boisson — chips visuels ── */}
@@ -661,121 +675,160 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
               </div>
             </div>
 
-            {/* ── Card 2 : Notes ── */}
+            {/* ── Card 2 : Notes (collapsible) ── */}
             <div className="card">
-              <div className="card-header">
-                <h2 className="text-lg font-medium">Notes</h2>
-              </div>
-              <div className="card-body">
-                <div className="rich-text-toolbar mb-2">
-                  <div className="rich-text-toolbar-group">
-                    <button type="button" className="btn btn-sm btn-outline" onClick={formatText('**', '**', 'Gras')} title="Gras">
-                      <Bold className="w-4 h-4" />
-                    </button>
-                    <button type="button" className="btn btn-sm btn-outline" onClick={formatText('_', '_', 'Italique')} title="Italique">
-                      <Italic className="w-4 h-4" />
-                    </button>
-                    <button type="button" className="btn btn-sm btn-outline" onClick={formatText('', '', 'Couleur', true)} title="Couleur">
-                      <Palette className="w-4 h-4" />
-                    </button>
+              <button
+                type="button"
+                className="card-header w-full flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
+                onClick={() => setNotesOpen(o => !o)}
+              >
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-medium">Notes</h2>
+                  {notes && !notesOpen && (
+                    <span className="text-xs text-gray-400 italic truncate max-w-xs">{notes.substring(0, 60)}{notes.length > 60 ? '…' : ''}</span>
+                  )}
+                  {!notes && <span className="text-xs text-gray-400">(facultatif)</span>}
+                </div>
+                <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform shrink-0 ${notesOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {notesOpen && (
+                <div className="card-body">
+                  <div className="rich-text-toolbar mb-2">
+                    <div className="rich-text-toolbar-group">
+                      <button type="button" className="btn btn-sm btn-outline" onClick={formatText('**', '**', 'Gras')} title="Gras">
+                        <Bold className="w-4 h-4" />
+                      </button>
+                      <button type="button" className="btn btn-sm btn-outline" onClick={formatText('_', '_', 'Italique')} title="Italique">
+                        <Italic className="w-4 h-4" />
+                      </button>
+                      <button type="button" className="btn btn-sm btn-outline" onClick={formatText('', '', 'Couleur', true)} title="Couleur">
+                        <Palette className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="rich-text-editor-container border rounded-md overflow-hidden">
-                  <textarea
-                    name="notes"
-                    className="rich-text-editor w-full p-3 font-sans text-gray-800 focus:outline-none"
-                    value={notes}
-                    onChange={e => setNotes(e.target.value)}
-                    placeholder="Saisissez vos notes ici…"
-                    rows={5}
-                  />
-                </div>
-                {notes && (
-                  <div className="mt-3">
-                    <p className="text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Aperçu</p>
-                    <div
-                      className="rich-text-preview p-3 bg-white border border-gray-200 rounded-md text-sm"
-                      style={{ minHeight: '48px', maxHeight: '200px', overflowY: 'auto' }}
-                      dangerouslySetInnerHTML={{ __html: formatPreview(notes) }}
+                  <div className="rich-text-editor-container border rounded-md overflow-hidden">
+                    <textarea
+                      name="notes"
+                      className="rich-text-editor w-full p-3 font-sans text-gray-800 focus:outline-none"
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                      placeholder="Saisissez vos notes ici…"
+                      rows={5}
                     />
                   </div>
-                )}
-              </div>
+                  {notes && (
+                    <div className="mt-3">
+                      <p className="text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Aperçu</p>
+                      <div
+                        className="rich-text-preview p-3 bg-white border border-gray-200 rounded-md text-sm"
+                        style={{ minHeight: '48px', maxHeight: '200px', overflowY: 'auto' }}
+                        dangerouslySetInnerHTML={{ __html: formatPreview(notes) }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* ── Card 3 : Plats ── */}
+            {/* ── Card 3 : Plats — interface POS ── */}
             <div className="card">
               <div className="card-header">
-                <div className="flex flex-wrap items-center gap-2 w-full justify-between">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-medium">Plats</h2>
-                    <PaxBadge label="Entrées" count={totalsByType.entree} pax={pax} />
-                    <PaxBadge label="Plats" count={totalsByType.plat} pax={pax} />
-                    <PaxBadge label="Desserts" count={totalsByType.dessert} pax={pax} />
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    <button type="button" className="btn btn-sm" onClick={addItem}>
-                      <Plus className="w-4 h-4" /> Ajouter
-                    </button>
-                    <button type="button" className="btn btn-sm btn-outline" onClick={openPicker}>Catalogue</button>
-                  </div>
-                </div>
+                <h2 className="text-lg font-medium">Plats</h2>
               </div>
-              <div className="card-body space-y-2">
+              <div className="card-body space-y-3 overflow-visible">
+
                 {itemsError && (
                   <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{itemsError}</div>
                 )}
-                {items.map((it, idx) => (
-                  <ItemRow
-                    key={idx}
-                    item={it}
-                    open={openRow === idx}
-                    onFocus={() => setOpenRow(idx)}
-                    onClose={() => setOpenRow(prev => prev === idx ? null : prev)}
-                    onChange={p => updateItem(idx, p)}
-                    onRemove={() => setItems(prev => prev.filter((_, i) => i !== idx))}
-                  />
-                ))}
+
+                {/* ── Onglets Entrées / Plats / Desserts ── */}
+                <div className="dishes-tabs">
+                  {([
+                    ['entrée', 'Entrées', totalsByType.entree],
+                    ['plat', 'Plats', totalsByType.plat],
+                    ['dessert', 'Desserts', totalsByType.dessert],
+                  ] as const).map(([tab, label, count]) => {
+                    const full = count > 0 && count <= pax
+                    const over = count > pax
+                    return (
+                      <button
+                        key={tab}
+                        type="button"
+                        className={`dishes-tab ${dishTab === tab ? 'is-active' : ''}`}
+                        onClick={() => setDishTab(tab)}
+                      >
+                        <span>{label}</span>
+                        <span className={`dishes-tab-badge ${over ? 'is-over' : full ? 'is-full' : count > 0 ? 'is-partial' : ''}`}>
+                          {count}/{pax}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* ── Grille de tuiles ── */}
+                {menuItems.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6">Chargement du catalogue…</p>
+                ) : menuItemsByType[dishTab].length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6">Aucun plat dans cette catégorie</p>
+                ) : (
+                  <div className="dish-grid">
+                    {menuItemsByType[dishTab].map(mi => {
+                      const qty = getQty(mi)
+                      const typeClass = dishTab === 'entrée' ? 'is-entree' : dishTab === 'plat' ? 'is-plat' : 'is-dessert'
+                      return (
+                        <button
+                          key={mi.id}
+                          type="button"
+                          className={`dish-tile ${qty > 0 ? `is-active ${typeClass}` : ''}`}
+                          onClick={() => qty === 0 && setQty(mi, 1)}
+                        >
+                          <span className="dish-tile-name">{mi.name}</span>
+                          {qty > 0 ? (
+                            <div className="dish-tile-controls" onClick={e => e.stopPropagation()}>
+                              <button type="button" className="dish-tile-btn" onClick={() => setQty(mi, qty - 1)}>−</button>
+                              <span className="dish-tile-qty">{qty}</span>
+                              <button type="button" className="dish-tile-btn" onClick={() => setQty(mi, qty + 1)}>+</button>
+                            </div>
+                          ) : (
+                            <Plus className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* ── Plats personnalisés pour cet onglet ── */}
+                {customItemsForCurrentTab.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Plats personnalisés</p>
+                    {customItemsForCurrentTab.map(({ item, idx }) => (
+                      <ItemRow
+                        key={idx}
+                        item={item}
+                        open={openRow === idx}
+                        onFocus={() => setOpenRow(idx)}
+                        onClose={() => setOpenRow(prev => prev === idx ? null : prev)}
+                        onChange={p => updateItem(idx, p)}
+                        onRemove={() => setItems(prev => prev.filter((_, i) => i !== idx))}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* ── Ajouter un plat personnalisé ── */}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline w-full text-gray-500"
+                  onClick={() => addCustomItem(dishTab)}
+                >
+                  <Plus className="w-4 h-4" />
+                  Plat personnalisé (hors catalogue)
+                </button>
+
               </div>
             </div>
-
-            {/* Catalogue picker modal */}
-            {pickerOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                <div className="card w-[90vw] max-w-2xl max-h-[80vh] overflow-hidden">
-                  <div className="card-header flex items-center justify-between">
-                    <h2 className="text-lg font-medium">Ajouter depuis le catalogue</h2>
-                    <button type="button" className="btn btn-sm btn-outline" onClick={() => setPickerOpen(false)}>Fermer</button>
-                  </div>
-                  <div className="card-body space-y-3">
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <input className="input flex-1" placeholder="Rechercher" value={pickerQ} onChange={e => setPickerQ(e.target.value)} />
-                      <div className="flex gap-1 flex-wrap">
-                        {(['all', 'entrée', 'plat', 'dessert'] as const).map(t => (
-                          <button key={t} type="button" className={`filter-chip ${pickerTypeFilter === t ? 'is-active' : ''}`} onClick={() => setPickerTypeFilter(t)}>
-                            {t === 'all' ? 'Tous' : t.charAt(0).toUpperCase() + t.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="border rounded-md overflow-auto max-h-[50vh]">
-                      <ul>
-                        {filteredPicker.map(it => (
-                          <li key={it.id} className="flex items-center justify-between px-3 py-2 border-b last:border-b-0">
-                            <div className="flex items-center gap-3">
-                              <span className="font-medium text-gray-900">{it.name}</span>
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${it.type === 'entrée' ? 'bg-emerald-50 text-emerald-700' : it.type === 'plat' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{it.type}</span>
-                            </div>
-                            <button type="button" className="btn btn-sm btn-primary" onClick={() => addFromPicker(it)}>Ajouter</button>
-                          </li>
-                        ))}
-                        {filteredPicker.length === 0 && <li className="px-3 py-6 text-center text-gray-500">Aucun élément</li>}
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
 
           </form>
         </div>
