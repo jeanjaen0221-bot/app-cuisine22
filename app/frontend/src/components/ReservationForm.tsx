@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, useMemo, useRef } from 'react';
+import * as ReactDOM from 'react-dom';
 import { api } from '../lib/api';
 import { Reservation, ReservationCreate, ReservationItem, MenuItem } from '../types';
 import {
@@ -942,6 +943,8 @@ const ItemRow = React.memo(function ItemRow({
   const [qtyInput, setQtyInput] = useState<string>(item.quantity !== undefined ? String(item.quantity) : '')
   const [activeIdx, setActiveIdx] = useState<number>(-1)
   const [showComment, setShowComment] = useState<boolean>(Boolean(item.comment))
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null)
 
   async function loadDefault() {
     const res = await api.get('/api/menu-items/search', { params: { type: item.type } })
@@ -963,6 +966,15 @@ const ItemRow = React.memo(function ItemRow({
   useEffect(() => {
     setQtyInput(item.quantity !== undefined ? String(item.quantity) : '');
   }, [item.quantity]);
+
+  useEffect(() => {
+    if (open && inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 2, left: rect.left, width: rect.width });
+    } else {
+      setDropdownPos(null);
+    }
+  }, [open]);
 
   const typeColors: Record<string, string> = {
     'entrée': 'bg-emerald-100 text-emerald-700 border-emerald-300',
@@ -994,8 +1006,9 @@ const ItemRow = React.memo(function ItemRow({
         </div>
 
         {/* Nom du plat + autocomplete */}
-        <div className="relative flex-1 min-w-0">
+        <div className="flex-1 min-w-0">
           <input
+            ref={inputRef}
             className="input w-full text-sm py-1"
             placeholder="Nom du plat"
             value={item.name}
@@ -1014,8 +1027,17 @@ const ItemRow = React.memo(function ItemRow({
               } else if (e.key === 'Escape') { setSuggest([]); onClose(); }
             }}
           />
-          {open && suggest.length > 0 && (
-            <div className="absolute z-10 bg-white border rounded-md mt-1 max-h-48 overflow-auto w-full shadow-lg">
+          {open && suggest.length > 0 && dropdownPos && ReactDOM.createPortal(
+            <div
+              style={{
+                position: 'fixed',
+                top: dropdownPos.top,
+                left: dropdownPos.left,
+                width: dropdownPos.width,
+                zIndex: 9999,
+              }}
+              className="bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-auto"
+            >
               {suggest.map((s, i) => (
                 <div
                   key={i}
@@ -1026,7 +1048,8 @@ const ItemRow = React.memo(function ItemRow({
                   {s.name}
                 </div>
               ))}
-            </div>
+            </div>,
+            document.body
           )}
         </div>
 
