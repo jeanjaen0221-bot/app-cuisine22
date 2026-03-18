@@ -1,18 +1,25 @@
 import * as React from 'react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../lib/api';
 import { Reservation, ReservationCreate, ReservationItem, MenuItem } from '../types';
-import { 
-  User, 
-  CalendarDays, 
-  Clock, 
-  Wine, 
-  Plus, 
-  Minus, 
-  Bold, 
-  Italic, 
-  Palette
+import {
+  User,
+  CalendarDays,
+  Clock,
+  Wine,
+  Plus,
+  Minus,
+  Bold,
+  Italic,
+  Palette,
+  Trash2,
+  MessageSquare,
+  CheckCircle2,
+  Circle,
+  X,
 } from 'lucide-react';
+
+const TIME_PRESETS = ['12:00', '12:30', '13:00', '13:30', '19:30', '20:00']
 
 const DRINKS = [
   'sans alcool',
@@ -43,14 +50,29 @@ const DEFAULT_ALLERGENS: AllergenOption[] = [
   { key: 'mollusques', label: 'Mollusques' },
 ]
 
+function PaxBadge({ label, count, pax }: { label: string; count: number; pax: number }) {
+  const cls =
+    count === 0
+      ? 'bg-gray-100 text-gray-500'
+      : count <= pax
+      ? 'bg-green-100 text-green-700'
+      : 'bg-red-100 text-red-700';
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>
+      {label}: <b>{count}</b>/{pax}
+    </span>
+  );
+}
+
 type Props = {
   initial?: Partial<Reservation>
   onSubmit: (payload: Partial<ReservationCreate>) => Promise<void>
   formId?: string
   onOpenBilling?: () => void
+  navActions?: React.ReactNode
 }
 
-export default function ReservationForm({ initial, onSubmit, formId, onOpenBilling }: Props) {
+export default function ReservationForm({ initial, onSubmit, formId, onOpenBilling, navActions }: Props) {
   const [client_name, setClient] = useState(initial?.client_name || '')
   const [service_date, setDate] = useState(initial?.service_date || '')
   const [arrival_time, setTime] = useState(initial?.arrival_time || '')
@@ -74,6 +96,8 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
   const [pickerQ, setPickerQ] = useState('')
   const [pickerTypeFilter, setPickerTypeFilter] = useState<'all' | 'entrée' | 'plat' | 'dessert'>('all')
 
+  const clientNameRef = useRef<HTMLInputElement>(null)
+
   const totalsByType = useMemo(() => {
     const effective = items.filter(it => (it.name || '').trim() !== '' || (it.quantity || 0) > 0)
     const t: Record<'entrée' | 'plat' | 'dessert', number> = { 'entrée': 0, 'plat': 0, 'dessert': 0 }
@@ -96,9 +120,6 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     })
   }, [pickerItems, pickerQ, pickerTypeFilter])
 
-  // État pour la taille de police
-  const [fontSize, setFontSize] = useState('text-base');
-
   const filteredAllergens = useMemo(() => {
     const ql = allergenQuery.trim().toLowerCase();
     const arr = [...allergenOptions];
@@ -111,23 +132,24 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     return arr.filter(a => !ql || a.key.toLowerCase().includes(ql) || String(a.label || '').toLowerCase().includes(ql));
   }, [allergenOptions, allergens, allergenQuery]);
 
-  // Options de taille de police
-  const fontSizes = [
-    { value: 'text-xs', label: 'Petit' },
-    { value: 'text-sm', label: 'Normal' },
-    { value: 'text-base', label: 'Moyen' },
-    { value: 'text-lg', label: 'Grand' },
-    { value: 'text-xl', label: 'Très grand' },
-    { value: 'text-2xl', label: 'Énorme' },
-  ];
-
-  // Fonction pour appliquer la taille de police
-  const applyFontSize = (size: string) => {
-    setFontSize(size);
-  };
+  const isDirty = useMemo(() => {
+    if (!initial?.id) return true
+    if (client_name !== (initial.client_name || '')) return true
+    if (service_date !== (initial.service_date || '')) return true
+    if (arrival_time !== (initial.arrival_time || '')) return true
+    if (pax !== (initial.pax || 2)) return true
+    if (drink_formula !== (initial.drink_formula || DRINKS[0])) return true
+    if (notes !== (initial.notes || '')) return true
+    if (status !== (initial.status || 'draft')) return true
+    if (finalVersion !== Boolean(initial.final_version)) return true
+    if (onInvoice !== Boolean((initial as any).on_invoice)) return true
+    const initAllergens = initial.allergens ? String(initial.allergens).split(',').map(s => s.trim()).filter(Boolean) : []
+    if (allergens.slice().sort().join(',') !== initAllergens.slice().sort().join(',')) return true
+    return false
+  }, [client_name, service_date, arrival_time, pax, drink_formula, notes, status, finalVersion, onInvoice, allergens, initial])
 
   // Fonction pour formater le texte sélectionné
-  const formatText = (prefix: string, suffix: string, title: string, showColorPicker = false, sizeTag = '') => {
+  const formatText = (prefix: string, suffix: string, title: string, showColorPicker = false) => {
     return (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault();
       const textarea = document.querySelector('textarea[name="notes"]') as HTMLTextAreaElement;
@@ -144,7 +166,6 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
         colorPicker.type = 'color';
         colorPicker.onchange = (e) => {
           const color = (e.target as HTMLInputElement).value;
-          // Si du texte est sélectionné, on l'entoure des balises de couleur
           if (selectedText) {
             setNotes(`${before}[color=${color}]${selectedText}[/color]${after}`);
             setTimeout(() => {
@@ -152,7 +173,6 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
               textarea.setSelectionRange(start, end + 15 + color.length);
             }, 0);
           } else {
-            // Sinon, on insère juste les balises et on place le curseur entre elles
             const newPosition = start + `[color=${color}][/color]`.length;
             setNotes(`${before}[color=${color}][/color]${after}`);
             setTimeout(() => {
@@ -162,32 +182,13 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
           }
         };
         colorPicker.click();
-      } else if (sizeTag) {
-        // Gestion des tailles de police
-        if (selectedText) {
-          setNotes(`${before}[size=${sizeTag}]${selectedText}[/size]${after}`);
-          setTimeout(() => {
-            textarea.focus();
-            textarea.setSelectionRange(start, end + 13 + sizeTag.length);
-          }, 0);
-        } else {
-          const newPosition = start + `[size=${sizeTag}][/size]`.length;
-          setNotes(`${before}[size=${sizeTag}][/size]${after}`);
-          setTimeout(() => {
-            textarea.focus();
-            textarea.setSelectionRange(newPosition - 8, newPosition - 8);
-          }, 0);
-        }
       } else {
-        // Formatage standard (gras, italique, etc.)
         setNotes(`${before}${prefix}${selectedText}${suffix}${after}`);
         setTimeout(() => {
           textarea.focus();
           if (selectedText) {
-            // Si du texte était sélectionné, on sélectionne le texte + les balises
             textarea.setSelectionRange(start, end + prefix.length + suffix.length);
           } else {
-            // Si pas de sélection, on place le curseur entre les balises
             textarea.setSelectionRange(start + prefix.length, start + prefix.length);
           }
         }, 0);
@@ -220,15 +221,6 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
         return `<span style="color:${color}">${inner}</span>`;
       });
     } while (html !== prev);
-    // Taille
-    const validSizes = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl'];
-    do {
-      prev = html;
-      html = html.replace(/\[size=([^\]]+)\]([\s\S]*?)\[\/size\]/g, (_m, size, inner) => {
-        const safe = validSizes.includes(size) ? size : 'text-base';
-        return `<span class="${safe}">${inner}</span>`;
-      });
-    } while (html !== prev);
     // Autres formats
     html = html
       .replace(/\*\*([^*]+)\*\*|\*([^*]+)\*/g, (_m, p1, p2) => `<strong>${p1 || p2}</strong>`)
@@ -238,6 +230,10 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
       .replace(/&amp;(?=#?\w+;)/g, '&');
     return html;
   };
+
+  useEffect(() => {
+    if (!initial?.id) clientNameRef.current?.focus()
+  }, [])
 
   // Sync when initial changes (e.g., when loading an existing reservation)
   useEffect(() => {
@@ -466,421 +462,486 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     );
   }
 
+  const activeAllergenOptions = allergens.map(k => allergenOptions.find(a => a.key === k) || { key: k, label: k })
+  const effectiveItems = items.filter(it => (it.name || '').trim() !== '' || (it.quantity || 0) > 0)
+  const completionChecks = [
+    { label: 'Nom du client', ok: Boolean(client_name.trim()) },
+    { label: 'Date de service', ok: Boolean(service_date) },
+    { label: "Heure d'arrivée", ok: Boolean(arrival_time) },
+    { label: 'Au moins un plat', ok: effectiveItems.length > 0 },
+  ]
+
   return (
-    <div className="container py-6 space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">
-          {initial?.id ? 'Modifier la réservation' : 'Nouvelle réservation'}
-        </h1>
-        <div className="flex items-center space-x-2">
-          <span className={`status-badge ${
-            status === 'confirmed' ? 'is-confirmed' :
-            status === 'printed' ? 'is-printed' :
-            'is-draft'
-          }`}>
-            {status === 'confirmed' ? 'Confirmée' : 
-             status === 'printed' ? 'Imprimée' : 'Brouillon'}
-          </span>
-        </div>
-      </div>
+    <div className="container py-6 pb-28">
+      <div className="lg:grid lg:grid-cols-[2fr_1fr] lg:gap-6 lg:items-start">
 
-      <form id={formId || 'reservation-form'} onSubmit={handleSubmit} className="space-y-8">
-        <div className="card">
-          <div className="card-header">
-            <h2 className="text-lg font-medium">Informations générales</h2>
-          </div>
-          <div className="card-body">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="form-group">
-                <label className="label label-required">Nom du client</label>
-                <div className="input-group">
-                  <span className="input-group-text">
-                    <User className="w-4 h-4 text-gray-500" />
-                  </span>
-                  <input 
-                    className="input" 
-                    value={client_name} 
-                    onChange={e => setClient(e.target.value)} 
-                    placeholder="Entrez le nom du client"
-                    required
-                  />
-                </div>
-                {errs.client && <div className="text-red-500 text-sm mt-1">{errs.client}</div>}
+        {/* ════════════════ LEFT — form ════════════════ */}
+        <div className="space-y-5">
+          <form id={formId || 'reservation-form'} onSubmit={handleSubmit} className="space-y-5">
+
+            {/* ── Card 1 : Informations ── */}
+            <div className="card">
+              <div className="card-header">
+                <h2 className="text-lg font-medium">Informations</h2>
               </div>
+              <div className="card-body space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-              <div className="form-group">
-                <label className="label label-required">Date de service</label>
-                <div className="input-group">
-                  <span className="input-group-text">
-                    <CalendarDays className="w-4 h-4 text-gray-500" />
-                  </span>
-                  <input 
-                    type="date" 
-                    className="input" 
-                    value={service_date} 
-                    onChange={e => setDate(e.target.value)}
-                    required
-                  />
-                </div>
-                {errs.date && <div className="text-red-500 text-sm mt-1">{errs.date}</div>}
-              </div>
-
-              <div className="form-group">
-                <label className="label label-required">Heure d'arrivée</label>
-                <div className="input-group">
-                  <span className="input-group-text">
-                    <Clock className="w-4 h-4 text-gray-500" />
-                  </span>
-                  <input 
-                    type="time" 
-                    className="input" 
-                    value={arrival_time} 
-                    onChange={e => setTime(e.target.value)}
-                    required
-                  />
-                </div>
-                {errs.time && <div className="text-red-500 text-sm mt-1">{errs.time}</div>}
-              </div>
-
-              <div className="form-group">
-                <label className="label label-required">Nombre de couverts</label>
-                <div className="flex items-center">
-                  <button 
-                    type="button" 
-                    className="btn btn-outline rounded-r-none px-3 border-r-0"
-                    onClick={() => setPax(p => Math.max(1, p - 1))}
-                    aria-label="Réduire le nombre de couverts"
-                  >
-                    <Minus className="w-4 h-4" />
-                  </button>
-                  <div className="relative flex-1">
-                    <input 
-                      type="number" 
-                      min="1"
-                      className="input text-center rounded-none"
-                      value={pax} 
-                      onChange={e => setPax(Math.max(1, Number(e.target.value)))}
-                      required
-                    />
+                  {/* Nom du client */}
+                  <div className="form-group">
+                    <label className="label label-required">Nom du client</label>
+                    <div className="input-group">
+                      <span className="input-group-text"><User className="w-4 h-4 text-gray-500" /></span>
+                      <input
+                        ref={clientNameRef}
+                        className="input"
+                        value={client_name}
+                        onChange={e => setClient(e.target.value)}
+                        placeholder="Nom du client"
+                        required
+                      />
+                    </div>
+                    {errs.client && <div className="text-red-500 text-sm mt-1">{errs.client}</div>}
                   </div>
-                  <button 
-                    type="button" 
-                    className="btn btn-outline rounded-l-none px-3 border-l-0"
-                    onClick={() => setPax(p => p + 1)}
-                    aria-label="Augmenter le nombre de couverts"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
 
-              <div className="form-group">
-                <label className="label">Formule boisson</label>
-                <div className="input-group">
-                  <span className="input-group-text">
-                    <Wine className="w-4 h-4 text-gray-500" />
-                  </span>
-                  <select 
-                    className="input" 
-                    value={drink_formula} 
-                    onChange={e => setDrink(e.target.value)}
-                  >
-                    {DRINKS.map(drink => (
-                      <option key={drink} value={drink}>{drink}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="mt-2">
-                  <DrinkBadge value={drink_formula} />
-                </div>
-              </div>
+                  {/* Date */}
+                  <div className="form-group">
+                    <label className="label label-required">Date de service</label>
+                    <div className="input-group">
+                      <span className="input-group-text"><CalendarDays className="w-4 h-4 text-gray-500" /></span>
+                      <input type="date" className="input" value={service_date} onChange={e => setDate(e.target.value)} required />
+                    </div>
+                    {errs.date && <div className="text-red-500 text-sm mt-1">{errs.date}</div>}
+                  </div>
 
-              <div className="form-group">
-                <label className="label">Allergènes</label>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                  <input
-                    className="input w-full sm:w-64"
-                    placeholder="Rechercher un allergène"
-                    value={allergenQuery}
-                    onChange={e=>setAllergenQuery(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline w-full sm:w-auto"
-                    onClick={()=>setAllergens([])}
-                    disabled={allergens.length===0}
-                  >
-                    Effacer tout
-                  </button>
-                </div>
-                <div className="allergens-grid">
-                  {filteredAllergens.map(a => {
-                    const active = allergens.includes(a.key)
-                    const toggle = () => setAllergens(prev => active ? prev.filter(k => k !== a.key) : [...prev, a.key])
-                    return (
-                      <div key={a.key} className="allergen-pill" onClick={toggle}>
+                  {/* Heure + raccourcis */}
+                  <div className="form-group">
+                    <label className="label label-required">Heure d'arrivée</label>
+                    <div className="input-group">
+                      <span className="input-group-text"><Clock className="w-4 h-4 text-gray-500" /></span>
+                      <input type="time" className="input" value={arrival_time} onChange={e => setTime(e.target.value)} required />
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {TIME_PRESETS.map(t => (
                         <button
+                          key={t}
                           type="button"
-                          className={`btn btn-sm btn-outline allergen-btn ${active ? 'is-active' : ''}`}
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggle(); }}
-                          aria-pressed={active}
-                          aria-label={a.label}
-                          title={a.label}
+                          className={`px-2 py-0.5 rounded text-xs border transition-colors ${arrival_time === t ? 'bg-primary text-white border-primary' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                          onClick={() => setTime(t)}
+                        >{t}</button>
+                      ))}
+                    </div>
+                    {errs.time && <div className="text-red-500 text-sm mt-1">{errs.time}</div>}
+                  </div>
+
+                  {/* Couverts */}
+                  <div className="form-group">
+                    <label className="label label-required">Couverts</label>
+                    <div className="flex items-center">
+                      <button type="button" className="btn btn-outline rounded-r-none px-3 border-r-0" onClick={() => setPax(p => Math.max(1, p - 1))} aria-label="Réduire">
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <input type="number" min="1" className="input text-center rounded-none flex-1" value={pax} onChange={e => setPax(Math.max(1, Number(e.target.value)))} required />
+                      <button type="button" className="btn btn-outline rounded-l-none px-3 border-l-0" onClick={() => setPax(p => p + 1)} aria-label="Augmenter">
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* ── Formule boisson — chips visuels ── */}
+                  <div className="form-group md:col-span-2">
+                    <label className="label flex items-center gap-1.5">
+                      <Wine className="w-4 h-4 text-gray-500" /> Formule boisson
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      {DRINKS.map(d => (
+                        <button
+                          key={d}
+                          type="button"
+                          className={`drink-chip ${drink_formula === d ? 'is-active' : ''}`}
+                          onClick={() => setDrink(d)}
+                        >{d}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Statut — contrôle segmenté ── */}
+                  <div className="form-group">
+                    <label className="label">Statut</label>
+                    <div className="flex rounded-lg overflow-hidden border border-gray-200 text-sm">
+                      {([['draft', 'Brouillon'], ['confirmed', 'Confirmée'], ['printed', 'Imprimée']] as const).map(([val, lbl]) => (
+                        <button
+                          key={val}
+                          type="button"
+                          className={`status-seg-btn flex-1 ${status === val ? `is-${val}` : ''}`}
+                          onClick={() => setStatus(val)}
+                        >{lbl}</button>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex flex-col gap-1.5">
+                      <label className="flex items-center gap-2 cursor-pointer text-sm">
+                        <input id="finalVersionInline" type="checkbox" className="form-check-input" checked={finalVersion} onChange={e => setFinalVersion(e.target.checked)} />
+                        <span>Tampon PDF : Version finale</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer text-sm">
+                        <input id="onInvoiceInline" type="checkbox" className="form-check-input" checked={onInvoice} onChange={e => setOnInvoice(e.target.checked)} />
+                        <span>Sur facture</span>
+                      </label>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* ── Allergènes pleine largeur ── */}
+                <div className="form-group border-t pt-4">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <label className="label mb-0 font-medium">Allergènes</label>
+                    <input
+                      className="input w-44 text-sm"
+                      placeholder="Rechercher…"
+                      value={allergenQuery}
+                      onChange={e => setAllergenQuery(e.target.value)}
+                    />
+                    <button type="button" className="btn btn-sm btn-outline" onClick={() => setAllergens([])} disabled={allergens.length === 0}>
+                      Effacer tout
+                    </button>
+                  </div>
+
+                  {/* Chips actifs en résumé */}
+                  {allergens.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-3 p-2 bg-orange-50 border border-orange-100 rounded-lg">
+                      {activeAllergenOptions.map(a => (
+                        <button
+                          key={a.key}
+                          type="button"
+                          className="allergen-active-chip"
+                          onClick={() => setAllergens(prev => prev.filter(k => k !== a.key))}
+                          title={`Retirer ${a.label}`}
                         >
                           <img
-                            src={a.icon_url || `/backend-assets/allergens/${a.key}.png`}
+                            src={(a as any).icon_url || `/backend-assets/allergens/${a.key}.png`}
                             alt={a.label}
-                            className="allergen-icon"
-                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                            className="w-4 h-4 object-contain"
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                           />
+                          <span>{a.label}</span>
+                          <X className="w-3 h-3 opacity-60" />
                         </button>
-                        <span className="allergen-label" role="button">{a.label}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
+                      ))}
+                    </div>
+                  )}
 
-              <div className="form-group">
-                <label className="label">Statut</label>
-                <select 
-                  className="input" 
-                  value={status} 
-                  onChange={e => setStatus(e.target.value as Reservation['status'])}
-                >
-                  <option value="draft">Brouillon</option>
-                  <option value="confirmed">Confirmée</option>
-                  <option value="printed">Imprimée</option>
-                </select>
-                <div className="mt-2 flex items-center gap-2">
-                  <input
-                    id="finalVersionInline"
-                    type="checkbox"
-                    className="form-check-input"
-                    checked={finalVersion}
-                    onChange={e => setFinalVersion(e.target.checked)}
-                  />
-                  <label htmlFor="finalVersionInline" className="form-check-label text-sm">Tampon PDF: Version finale</label>
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <input
-                    id="onInvoiceInline"
-                    type="checkbox"
-                    className="form-check-input"
-                    checked={onInvoice}
-                    onChange={e => setOnInvoice(e.target.checked)}
-                  />
-                  <label htmlFor="onInvoiceInline" className="form-check-label text-sm">Sur facture</label>
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="label">Version finale</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="finalVersion"
-                    type="checkbox"
-                    className="form-check-input"
-                    checked={finalVersion}
-                    onChange={e => setFinalVersion(e.target.checked)}
-                  />
-                  <label htmlFor="finalVersion" className="form-check-label">Afficher le tampon « Version finale » en bas du PDF</label>
+                  <div className="allergens-grid">
+                    {filteredAllergens.map(a => {
+                      const active = allergens.includes(a.key)
+                      const toggle = () => setAllergens(prev => active ? prev.filter(k => k !== a.key) : [...prev, a.key])
+                      return (
+                        <div key={a.key} className="allergen-pill" onClick={toggle}>
+                          <button
+                            type="button"
+                            className={`btn btn-sm btn-outline allergen-btn ${active ? 'is-active' : ''}`}
+                            onClick={e => { e.preventDefault(); e.stopPropagation(); toggle(); }}
+                            aria-pressed={active}
+                            title={a.label}
+                          >
+                            <img
+                              src={a.icon_url || `/backend-assets/allergens/${a.key}.png`}
+                              alt={a.label}
+                              className="allergen-icon"
+                              onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                            />
+                          </button>
+                          <span className="allergen-label" role="button">{a.label}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <div className="card">
-          <div className="card-header">
-            <h2 className="text-lg font-medium">Détails supplémentaires</h2>
-          </div>
-          <div className="card-body">
-            <div className="form-group">
-              <div className="flex justify-between items-center mb-2">
-                <label className="label">Notes</label>
+            {/* ── Card 2 : Notes ── */}
+            <div className="card">
+              <div className="card-header">
+                <h2 className="text-lg font-medium">Notes</h2>
               </div>
-              <div className="rich-text-toolbar">
-                <div className="rich-text-toolbar-group">
-                  <button 
-                    type="button" 
-                    className="btn btn-sm btn-outline"
-                    onClick={formatText('**', '**', 'Gras')}
-                    title="Gras"
-                    aria-label="Mettre en gras"
-                  >
-                    <Bold className="w-4 h-4" />
-                  </button>
-                  <button 
-                    type="button" 
-                    className="btn btn-sm btn-outline"
-                    onClick={formatText('_', '_', 'Italique')}
-                    title="Italique"
-                    aria-label="Mettre en italique"
-                  >
-                    <Italic className="w-4 h-4" />
-                  </button>
-                  <button 
-                    type="button" 
-                    className="btn btn-sm btn-outline"
-                    onClick={formatText('', '', 'Couleur', true)}
-                    title="Couleur"
-                    aria-label="Changer la couleur du texte"
-                  >
-                    <Palette className="w-4 h-4" />
-                  </button>
+              <div className="card-body">
+                <div className="rich-text-toolbar mb-2">
+                  <div className="rich-text-toolbar-group">
+                    <button type="button" className="btn btn-sm btn-outline" onClick={formatText('**', '**', 'Gras')} title="Gras">
+                      <Bold className="w-4 h-4" />
+                    </button>
+                    <button type="button" className="btn btn-sm btn-outline" onClick={formatText('_', '_', 'Italique')} title="Italique">
+                      <Italic className="w-4 h-4" />
+                    </button>
+                    <button type="button" className="btn btn-sm btn-outline" onClick={formatText('', '', 'Couleur', true)} title="Couleur">
+                      <Palette className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <select 
-                  className="input input-sm w-auto" 
-                  value={fontSize} 
-                  onChange={e => applyFontSize(e.target.value)}
-                  title="Taille de police"
-                  aria-label="Taille de police"
-                >
-                  {fontSizes.map(size => (
-                    <option key={size.value} value={size.value}>{size.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="relative">
                 <div className="rich-text-editor-container border rounded-md overflow-hidden">
                   <textarea
                     name="notes"
-                    className="rich-text-editor w-full p-4 font-sans text-gray-800 focus:outline-none"
+                    className="rich-text-editor w-full p-3 font-sans text-gray-800 focus:outline-none"
                     value={notes}
                     onChange={e => setNotes(e.target.value)}
-                    placeholder="Saisissez vos notes ici..."
-                    rows={6}
+                    placeholder="Saisissez vos notes ici…"
+                    rows={5}
                   />
                 </div>
                 {notes && (
-                  <div className="mt-4">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Aperçu :</p>
-                    <div 
-                      className="rich-text-preview p-4 bg-white border border-gray-200 rounded-md"
-                      style={{ 
-                        minHeight: '80px',
-                        maxHeight: '200px',
-                        overflowY: 'auto'
-                      }}
-                      dangerouslySetInnerHTML={{ 
-                        __html: formatPreview(notes) 
-                      }} 
+                  <div className="mt-3">
+                    <p className="text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Aperçu</p>
+                    <div
+                      className="rich-text-preview p-3 bg-white border border-gray-200 rounded-md text-sm"
+                      style={{ minHeight: '48px', maxHeight: '200px', overflowY: 'auto' }}
+                      dangerouslySetInnerHTML={{ __html: formatPreview(notes) }}
                     />
                   </div>
                 )}
               </div>
             </div>
-          </div>
-        </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <h3 className="text-lg font-semibold text-primary">Plats</h3>
-            <div className="text-sm text-gray-600 flex gap-3">
-              <span>Entrées: <b>{totalsByType.entree}</b>/{pax}</span>
-              <span>Plats: <b>{totalsByType.plat}</b>/{pax}</span>
-              <span>Desserts: <b>{totalsByType.dessert}</b>/{pax}</span>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button type="button" className="btn w-full sm:w-auto" onClick={addItem}>+ Ajouter un plat</button>
-            <button type="button" className="btn btn-outline w-full sm:w-auto" onClick={openPicker}>Catalogue</button>
-          </div>
-        </div>
-        {itemsError && (
-          <div className="mt-2 text-xs text-red-600">{itemsError}</div>
-        )}
-        <div className="mt-3 space-y-2">
-          {items.map((it, idx) => (
-            <div key={idx}>
-              <ItemRow
-                item={it}
-                open={openRow === idx}
-                onFocus={()=>setOpenRow(idx)}
-                onClose={()=>setOpenRow(prev => prev === idx ? null : prev)}
-                onChange={(p)=>updateItem(idx,p)}
-                onRemove={() => {
-                  setItems(prev => prev.filter((item, index) => index !== idx));
-                }}
-              />
-            </div>
-          ))}
-        </div>
-
-        {pickerOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="card w-[90vw] max-w-2xl max-h-[80vh] overflow-hidden">
-              <div className="card-header flex items-center justify-between">
-                <h2 className="text-lg font-medium">Ajouter depuis le catalogue</h2>
-                <button type="button" className="btn btn-sm btn-outline" onClick={()=>setPickerOpen(false)}>Fermer</button>
+            {/* ── Card 3 : Plats ── */}
+            <div className="card">
+              <div className="card-header">
+                <div className="flex flex-wrap items-center gap-2 w-full justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-medium">Plats</h2>
+                    <PaxBadge label="Entrées" count={totalsByType.entree} pax={pax} />
+                    <PaxBadge label="Plats" count={totalsByType.plat} pax={pax} />
+                    <PaxBadge label="Desserts" count={totalsByType.dessert} pax={pax} />
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button type="button" className="btn btn-sm" onClick={addItem}>
+                      <Plus className="w-4 h-4" /> Ajouter
+                    </button>
+                    <button type="button" className="btn btn-sm btn-outline" onClick={openPicker}>Catalogue</button>
+                  </div>
+                </div>
               </div>
-              <div className="card-body space-y-3">
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input className="input flex-1" placeholder="Rechercher" value={pickerQ} onChange={e=>setPickerQ(e.target.value)} />
-                  <div className="flex gap-2">
-                    {(['all','entrée','plat','dessert'] as const).map(t => (
-                      <button key={t} type="button" className={`filter-chip ${pickerTypeFilter===t ? 'is-active' : ''}`} onClick={()=>setPickerTypeFilter(t)}>
-                        {t === 'all' ? 'Tous' : t.charAt(0).toUpperCase()+t.slice(1)}
-                      </button>
+              <div className="card-body space-y-2">
+                {itemsError && (
+                  <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{itemsError}</div>
+                )}
+                {items.map((it, idx) => (
+                  <ItemRow
+                    key={idx}
+                    item={it}
+                    open={openRow === idx}
+                    onFocus={() => setOpenRow(idx)}
+                    onClose={() => setOpenRow(prev => prev === idx ? null : prev)}
+                    onChange={p => updateItem(idx, p)}
+                    onRemove={() => setItems(prev => prev.filter((_, i) => i !== idx))}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Catalogue picker modal */}
+            {pickerOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                <div className="card w-[90vw] max-w-2xl max-h-[80vh] overflow-hidden">
+                  <div className="card-header flex items-center justify-between">
+                    <h2 className="text-lg font-medium">Ajouter depuis le catalogue</h2>
+                    <button type="button" className="btn btn-sm btn-outline" onClick={() => setPickerOpen(false)}>Fermer</button>
+                  </div>
+                  <div className="card-body space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input className="input flex-1" placeholder="Rechercher" value={pickerQ} onChange={e => setPickerQ(e.target.value)} />
+                      <div className="flex gap-1 flex-wrap">
+                        {(['all', 'entrée', 'plat', 'dessert'] as const).map(t => (
+                          <button key={t} type="button" className={`filter-chip ${pickerTypeFilter === t ? 'is-active' : ''}`} onClick={() => setPickerTypeFilter(t)}>
+                            {t === 'all' ? 'Tous' : t.charAt(0).toUpperCase() + t.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="border rounded-md overflow-auto max-h-[50vh]">
+                      <ul>
+                        {filteredPicker.map(it => (
+                          <li key={it.id} className="flex items-center justify-between px-3 py-2 border-b last:border-b-0">
+                            <div className="flex items-center gap-3">
+                              <span className="font-medium text-gray-900">{it.name}</span>
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${it.type === 'entrée' ? 'bg-emerald-50 text-emerald-700' : it.type === 'plat' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{it.type}</span>
+                            </div>
+                            <button type="button" className="btn btn-sm btn-primary" onClick={() => addFromPicker(it)}>Ajouter</button>
+                          </li>
+                        ))}
+                        {filteredPicker.length === 0 && <li className="px-3 py-6 text-center text-gray-500">Aucun élément</li>}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </form>
+        </div>
+
+        {/* ════════════════ RIGHT — panneau récapitulatif (desktop only) ════════════════ */}
+        <aside className="hidden lg:block">
+          <div className="sticky top-4 card form-summary-panel">
+            <div className="card-header py-3 px-4">
+              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Récapitulatif</h3>
+            </div>
+            <div className="card-body space-y-4 text-sm">
+
+              {/* Checklist complétude */}
+              <div className="space-y-1.5">
+                {completionChecks.map(c => (
+                  <div key={c.label} className="flex items-center gap-2">
+                    {c.ok
+                      ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                      : <Circle className="w-4 h-4 text-gray-300 shrink-0" />}
+                    <span className={c.ok ? 'text-gray-700' : 'text-gray-400'}>{c.label}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="border-t" />
+
+              {/* Identité */}
+              <div>
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Client</p>
+                <p className="font-semibold text-gray-900 truncate">{client_name || <span className="text-gray-300 italic">—</span>}</p>
+                <span className={`status-badge mt-1 ${status === 'confirmed' ? 'is-confirmed' : status === 'printed' ? 'is-printed' : 'is-draft'}`}>
+                  {status === 'confirmed' ? 'Confirmée' : status === 'printed' ? 'Imprimée' : 'Brouillon'}
+                </span>
+              </div>
+
+              {/* Date / heure / pax */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-gray-50 rounded-lg p-2">
+                  <p className="text-xs text-gray-400">Date</p>
+                  <p className="font-medium text-gray-800 text-xs mt-0.5">{service_date ? new Date(service_date + 'T00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) : '—'}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-2">
+                  <p className="text-xs text-gray-400">Heure</p>
+                  <p className="font-medium text-gray-800 text-xs mt-0.5">{arrival_time || '—'}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-2">
+                  <p className="text-xs text-gray-400">Couverts</p>
+                  <p className="font-medium text-gray-800 text-xs mt-0.5">{pax}</p>
+                </div>
+              </div>
+
+              {/* Boisson */}
+              {drink_formula && (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Boisson</p>
+                  <span className={`drink-badge ${drinkVariantOf(drink_formula)}`}>
+                    <Wine className="w-3.5 h-3.5" />
+                    <span className="drink-text">{drink_formula}</span>
+                  </span>
+                </div>
+              )}
+
+              {/* Allergènes */}
+              {allergens.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">Allergènes ({allergens.length})</p>
+                  <div className="flex flex-wrap gap-1">
+                    {activeAllergenOptions.map(a => (
+                      <span key={a.key} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-orange-50 border border-orange-200 text-orange-700 rounded-full text-xs">
+                        <img src={(a as any).icon_url || `/backend-assets/allergens/${a.key}.png`} alt={a.label} className="w-3 h-3 object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                        {a.label}
+                      </span>
                     ))}
                   </div>
                 </div>
-                <div className="border rounded-md overflow-auto max-h-[50vh]">
-                  <ul>
-                    {filteredPicker.map(it => (
-                      <li key={it.id} className="flex items-center justify-between px-3 py-2 border-b last:border-b-0">
-                        <div className="flex items-center gap-3">
-                          <span className="font-medium text-gray-900">{it.name}</span>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${it.type==='entrée' ? 'bg-emerald-50 text-emerald-700' : it.type==='plat' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{it.type}</span>
-                        </div>
-                        <button type="button" className="btn btn-sm btn-primary" onClick={()=>addFromPicker(it)}>Ajouter</button>
-                      </li>
+              )}
+
+              {/* Plats */}
+              {effectiveItems.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">Plats</p>
+                  <div className="space-y-1">
+                    {effectiveItems.map((it, i) => (
+                      <div key={i} className="flex items-center justify-between gap-2">
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${it.type === 'entrée' ? 'bg-emerald-100 text-emerald-700' : it.type === 'plat' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {it.type === 'entrée' ? 'E' : it.type === 'plat' ? 'P' : 'D'}
+                        </span>
+                        <span className="flex-1 text-gray-700 text-xs truncate">{it.name}</span>
+                        <span className="text-xs font-semibold text-gray-500">×{it.quantity}</span>
+                      </div>
                     ))}
-                    {filteredPicker.length === 0 && (
-                      <li className="px-3 py-6 text-center text-gray-500">Aucun élément</li>
-                    )}
-                  </ul>
+                  </div>
+                  <div className="flex gap-1.5 mt-2 flex-wrap">
+                    <PaxBadge label="E" count={totalsByType.entree} pax={pax} />
+                    <PaxBadge label="P" count={totalsByType.plat} pax={pax} />
+                    <PaxBadge label="D" count={totalsByType.dessert} pax={pax} />
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Notes preview */}
+              {notes && (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Notes</p>
+                  <p className="text-xs text-gray-600 line-clamp-3">{notes.replace(/\*\*|__|_|\[.+?\]/g, '')}</p>
+                </div>
+              )}
+
             </div>
           </div>
-        )}
-        <div className="card-footer">
-          <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
-            {initial?.id && onOpenBilling && (
-              <button type="button" className="btn btn-outline btn-sm w-full sm:w-auto" onClick={onOpenBilling}>
-                Facturation
-              </button>
+        </aside>
+
+      </div>
+
+      {/* ── Barre sticky : navActions + dirty + sauvegarder ── */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200 shadow-md">
+        <div className="container flex items-center gap-2 py-2.5 px-4">
+          {navActions && (
+            <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto">
+              {navActions}
+            </div>
+          )}
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            {isDirty && !submitting && (
+              <span className="hidden sm:flex items-center gap-1 text-xs text-amber-600 font-medium">
+                <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
+                Non sauvegardé
+              </span>
             )}
-            <button type="submit" className="btn btn-primary btn-sm disabled:opacity-60 w-full sm:w-auto" disabled={submitting}>
+            {initial?.id && onOpenBilling && (
+              <button type="button" className="btn btn-outline btn-sm" onClick={onOpenBilling}>Facturation</button>
+            )}
+            <button
+              type="submit"
+              form={formId || 'reservation-form'}
+              className="btn btn-primary btn-sm disabled:opacity-60"
+              disabled={submitting}
+            >
               {submitting ? 'Sauvegarde…' : 'Sauvegarder'}
             </button>
           </div>
         </div>
-      </form>
+      </div>
     </div>
   );
 }
 
-const ItemRow = React.memo(function ItemRow({ 
-  item, 
-  onChange, 
-  open, 
-  onFocus, 
-  onClose, 
-  onRemove 
-}: { 
-  item: ReservationItem; 
-  onChange: (p: Partial<ReservationItem>) => void; 
-  open: boolean; 
+const ItemRow = React.memo(function ItemRow({
+  item,
+  onChange,
+  open,
+  onFocus,
+  onClose,
+  onRemove,
+}: {
+  item: ReservationItem;
+  onChange: (p: Partial<ReservationItem>) => void;
+  open: boolean;
   onFocus: () => void;
   onClose: () => void;
   onRemove: () => void;
 }) {
-  const [suggest, setSuggest] = useState<{name:string,type:string}[]>([])
+  const [suggest, setSuggest] = useState<{ name: string; type: string }[]>([])
   const [q, setQ] = useState('')
   const [qtyInput, setQtyInput] = useState<string>(item.quantity !== undefined ? String(item.quantity) : '')
   const [activeIdx, setActiveIdx] = useState<number>(-1)
+  const [showComment, setShowComment] = useState<boolean>(Boolean(item.comment))
 
   async function loadDefault() {
     const res = await api.get('/api/menu-items/search', { params: { type: item.type } })
@@ -903,130 +964,131 @@ const ItemRow = React.memo(function ItemRow({
     setQtyInput(item.quantity !== undefined ? String(item.quantity) : '');
   }, [item.quantity]);
 
+  const typeColors: Record<string, string> = {
+    'entrée': 'bg-emerald-100 text-emerald-700 border-emerald-300',
+    'plat': 'bg-blue-100 text-blue-700 border-blue-300',
+    'dessert': 'bg-amber-100 text-amber-700 border-amber-300',
+  }
+
   return (
-    <div 
-      className="grid grid-cols-12 gap-2" 
-      onBlur={(e) => { 
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) onClose(); 
+    <div
+      className="border border-gray-100 rounded-lg p-2 bg-white shadow-sm space-y-1.5"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) onClose();
       }}
     >
-      <div className="col-span-12 sm:col-span-2">
-        <div className="btn-group w-full">
-          {(['entrée','plat','dessert'] as const).map(t => (
+      <div className="flex items-center gap-2">
+        {/* Type chips compact */}
+        <div className="flex gap-0.5 shrink-0">
+          {(['entrée', 'plat', 'dessert'] as const).map(t => (
             <button
               key={t}
               type="button"
-              className={`btn btn-outline btn-sm ${item.type===t ? 'btn-primary' : ''}`}
+              title={t.charAt(0).toUpperCase() + t.slice(1)}
+              className={`w-7 h-7 rounded text-xs font-semibold border transition-colors ${item.type === t ? typeColors[t] : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'}`}
               onClick={() => { onChange({ type: t }); setQ(''); }}
             >
-              {t.charAt(0).toUpperCase()+t.slice(1)}
+              {t === 'entrée' ? 'E' : t === 'plat' ? 'P' : 'D'}
             </button>
           ))}
         </div>
-      </div>
-      <div className="col-span-12 sm:col-span-8 relative">
-        <input 
-          className="input w-full" 
-          placeholder="Nom du plat" 
-          value={item.name} 
-          onFocus={() => { 
-            onFocus(); 
-            if (!q) loadDefault(); 
-          }} 
-          onChange={(e) => { 
-            onChange({ name: e.target.value }); 
-            setQ(e.target.value); 
-          }} 
-          onKeyDown={(e) => {
-            if (!open || suggest.length === 0) return;
-            if (e.key === 'ArrowDown') {
-              e.preventDefault();
-              setActiveIdx(idx => (idx + 1) % suggest.length);
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault();
-              setActiveIdx(idx => (idx <= 0 ? suggest.length - 1 : idx - 1));
-            } else if (e.key === 'Enter') {
-              if (activeIdx >= 0 && activeIdx < suggest.length) {
-                e.preventDefault();
-                const s = suggest[activeIdx];
-                onChange({ name: s.name, type: s.type });
-                setSuggest([]);
-                onClose();
-              }
-            } else if (e.key === 'Escape') {
-              setSuggest([]);
-              onClose();
-            }
-          }}
-        />
-        {open && suggest.length > 0 && (
-          <div className="absolute z-10 bg-white border rounded-md mt-1 max-h-48 overflow-auto w-full">
-            {suggest.map((s, i) => (
-              <div
-                key={i}
-                className={`px-3 py-2 cursor-pointer menu-item ${activeIdx === i ? 'active' : ''}`}
-                onMouseEnter={() => setActiveIdx(i)}
-                onMouseDown={(e) => {
+
+        {/* Nom du plat + autocomplete */}
+        <div className="relative flex-1 min-w-0">
+          <input
+            className="input w-full text-sm py-1"
+            placeholder="Nom du plat"
+            value={item.name}
+            onFocus={() => { onFocus(); if (!q) loadDefault(); }}
+            onChange={(e) => { onChange({ name: e.target.value }); setQ(e.target.value); }}
+            onKeyDown={(e) => {
+              if (!open || suggest.length === 0) return;
+              if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => (i + 1) % suggest.length); }
+              else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => (i <= 0 ? suggest.length - 1 : i - 1)); }
+              else if (e.key === 'Enter') {
+                if (activeIdx >= 0 && activeIdx < suggest.length) {
                   e.preventDefault();
-                  onChange({ name: s.name, type: s.type });
-                  setSuggest([]);
-                  onClose();
-                }}
-              >
-                {s.name}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="col-span-12 sm:col-span-2 flex items-center">
-        <button 
-          type="button" 
-          className="btn btn-outline rounded-r-none px-3 border-r-0"
-          onClick={() => {
-            const n = Math.max(0, (Number(qtyInput || '0') || 0) - 1)
-            setQtyInput(String(n))
-            onChange({ quantity: n })
-          }}
-          aria-label="Diminuer la quantité"
+                  onChange({ name: suggest[activeIdx].name, type: suggest[activeIdx].type });
+                  setSuggest([]); onClose();
+                }
+              } else if (e.key === 'Escape') { setSuggest([]); onClose(); }
+            }}
+          />
+          {open && suggest.length > 0 && (
+            <div className="absolute z-10 bg-white border rounded-md mt-1 max-h-48 overflow-auto w-full shadow-lg">
+              {suggest.map((s, i) => (
+                <div
+                  key={i}
+                  className={`px-3 py-2 cursor-pointer text-sm hover:bg-gray-50 ${activeIdx === i ? 'bg-gray-100' : ''}`}
+                  onMouseEnter={() => setActiveIdx(i)}
+                  onMouseDown={(e) => { e.preventDefault(); onChange({ name: s.name, type: s.type }); setSuggest([]); onClose(); }}
+                >
+                  {s.name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Quantité ± */}
+        <div className="flex items-center shrink-0">
+          <button
+            type="button"
+            className="btn btn-outline rounded-r-none px-2 py-1 border-r-0"
+            onClick={() => { const n = Math.max(0, (Number(qtyInput) || 0) - 1); setQtyInput(String(n)); onChange({ quantity: n }); }}
+            aria-label="Diminuer"
+          >
+            <Minus className="w-3 h-3" />
+          </button>
+          <input
+            type="text"
+            className="input text-center rounded-none w-10 py-1 text-sm"
+            value={qtyInput}
+            onChange={(e) => { const v = e.target.value; if (/^\d*$/.test(v)) { setQtyInput(v); onChange({ quantity: v === '' ? 0 : parseInt(v, 10) }); } }}
+            onBlur={() => { if (qtyInput === '') setQtyInput('0'); }}
+          />
+          <button
+            type="button"
+            className="btn btn-outline rounded-l-none px-2 py-1 border-l-0"
+            onClick={() => { const n = (Number(qtyInput) || 0) + 1; setQtyInput(String(n)); onChange({ quantity: n }); }}
+            aria-label="Augmenter"
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+        </div>
+
+        {/* Commentaire toggle */}
+        <button
+          type="button"
+          className={`btn btn-sm btn-outline px-1.5 shrink-0 ${showComment || item.comment ? 'text-primary border-primary' : 'text-gray-400'}`}
+          onClick={() => setShowComment(v => !v)}
+          title="Ajouter un commentaire"
         >
-          <Minus className="w-4 h-4" />
+          <MessageSquare className="w-3.5 h-3.5" />
         </button>
+
+        {/* Supprimer */}
+        <button
+          type="button"
+          className="btn btn-sm btn-outline text-red-500 border-red-200 hover:bg-red-50 px-1.5 shrink-0"
+          onClick={onRemove}
+          aria-label="Supprimer cette ligne"
+          title="Supprimer"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Commentaire (togglable) */}
+      {(showComment || Boolean(item.comment)) && (
         <input
-          type="text"
-          className="input text-center rounded-none"
-          value={qtyInput}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (/^\d*$/.test(v)) {
-              setQtyInput(v);
-              onChange({ quantity: v === '' ? 0 : parseInt(v, 10) });
-            }
-          }}
-          onBlur={() => { if (qtyInput === '') setQtyInput('0'); }}
+          className="input w-full text-sm py-1 text-gray-600"
+          placeholder="Commentaire (facultatif)"
+          value={item.comment || ''}
+          onChange={(e) => onChange({ comment: e.target.value })}
+          autoFocus={showComment && !item.comment}
         />
-        <button 
-          type="button" 
-          className="btn btn-outline rounded-l-none px-3 border-l-0"
-          onClick={() => {
-            const n = (Number(qtyInput || '0') || 0) + 1
-            setQtyInput(String(n))
-            onChange({ quantity: n })
-          }}
-          aria-label="Augmenter la quantité"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-      </div>
-      <input
-        className="input col-span-12"
-        placeholder="Commentaire (facultatif)"
-        value={item.comment || ''}
-        onChange={(e) => onChange({ comment: e.target.value })}
-      />
-      <div className="col-span-12 flex justify-end">
-        <button type="button" className="btn btn-outline btn-sm w-full sm:w-auto" onClick={onRemove}>Supprimer la ligne</button>
-      </div>
+      )}
     </div>
   );
 });

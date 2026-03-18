@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
 import BillingModal from '../components/BillingModal'
+import { ArrowLeft, Copy, FileText, Receipt } from 'lucide-react'
 
 export default function EditReservation() {
   const { id } = useParams()
@@ -75,29 +76,38 @@ export default function EditReservation() {
     }
   }
 
-  return (
-    <div className="container space-y-4">
-      {error && (
-        <div className="p-3 rounded-md bg-red-50 border border-red-200 text-red-700">{error}</div>
+  const navActions = (
+    <>
+      <button className="btn btn-sm btn-outline" onClick={() => navigate(-1)}>
+        <ArrowLeft className="w-4 h-4" /> Retour
+      </button>
+      {id && id !== 'new' && (
+        <>
+          <button className="btn btn-sm btn-outline" onClick={duplicate}>
+            <Copy className="w-4 h-4" /> Dupliquer
+          </button>
+          <button className="btn btn-sm btn-outline" onClick={() => fileDownload(`/api/reservations/${id}/pdf`)}>
+            <FileText className="w-4 h-4" /> PDF
+          </button>
+          <button className="btn btn-sm btn-outline" onClick={() => fileDownload(`/api/reservations/${id}/invoice-pdf`)}>
+            <FileText className="w-4 h-4" /> Facture PDF
+          </button>
+        </>
       )}
-      <div className="card">
-        <div className="card-header">
-          <h2 className="text-lg font-medium">{id && id !== 'new' ? 'Modifier la réservation' : 'Nouvelle réservation'}</h2>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <button className="btn w-full sm:w-auto" onClick={()=>navigate(-1)}>Retour</button>
-            {id && id !== 'new' && (
-              <>
-                <button className="btn w-full sm:w-auto" onClick={duplicate}>Dupliquer</button>
-                <button className="btn w-full sm:w-auto" onClick={()=>fileDownload(`/api/reservations/${id}/pdf`)}>PDF</button>
-                <button className="btn w-full sm:w-auto" onClick={()=>setBillingOpen(true)}>Facturation</button>
-                <button className="btn btn-outline w-full sm:w-auto" onClick={()=>fileDownload(`/api/reservations/${id}/invoice-pdf`)}>PDF Facture</button>
-              </>
-            )}
-          </div>
+    </>
+  )
+
+  return (
+    <div>
+      {error && (
+        <div className="container pt-4">
+          <div className="p-3 rounded-md bg-red-50 border border-red-200 text-red-700">{error}</div>
         </div>
-      </div>
+      )}
       {(isExisting && (loading || !data)) ? (
-        <div className="card"><div className="card-body text-gray-600">Chargement…</div></div>
+        <div className="container pt-6">
+          <div className="card"><div className="card-body text-gray-600">Chargement…</div></div>
+        </div>
       ) : (
         <div key={(data && (data as any).id) || (!isExisting ? 'new' : id)}>
           <ReservationForm
@@ -105,13 +115,13 @@ export default function EditReservation() {
             onSubmit={save}
             formId="reservation-form"
             onOpenBilling={() => setBillingOpen(true)}
+            navActions={navActions}
           />
         </div>
       )}
       {id && id !== 'new' && (
-        <BillingModal reservationId={id} open={billingOpen} onClose={()=>setBillingOpen(false)} />
+        <BillingModal reservationId={id} open={billingOpen} onClose={() => setBillingOpen(false)} />
       )}
-      {/* Spacer to avoid sticky bar overlap on mobile */}
     </div>
   )
 }

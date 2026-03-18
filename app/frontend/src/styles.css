@@ -1892,3 +1892,79 @@ img, video, canvas, svg { max-width: 100%; }
     overflow: visible !important;
   }
 }
+
+/* ===== Reservation form v2 ===== */
+
+/* Drink formula chips */
+.drink-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, rgba(105,51,129,.22));
+  background: #fff;
+  color: var(--gray-700, #374151);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, box-shadow 0.12s;
+  white-space: nowrap;
+  text-align: center;
+}
+.drink-chip:hover {
+  background: rgba(105,51,129,.05);
+  border-color: rgba(105,51,129,.35);
+}
+.drink-chip.is-active {
+  background: var(--primary, #693381);
+  border-color: var(--primary, #693381);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(66,32,82,.2);
+}
+
+/* Status segmented control buttons */
+.status-seg-btn {
+  padding: 0.45rem 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  background: #fff;
+  color: var(--gray-600, #4b5563);
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  border-right: 1px solid var(--border-color, #e5e7eb);
+}
+.status-seg-btn:last-child { border-right: none; }
+.status-seg-btn:hover { background: var(--gray-50, #f9fafb); }
+.status-seg-btn.is-draft { background: var(--gray-100, #f3f4f6); color: var(--gray-800, #1f2937); font-weight: 600; }
+.status-seg-btn.is-confirmed { background: #DCFCE7; color: #065F46; font-weight: 600; }
+.status-seg-btn.is-printed { background: #DBEAFE; color: #1E40AF; font-weight: 600; }
+
+/* Active allergen chips (removable) */
+.allergen-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #c2410c;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.allergen-active-chip:hover {
+  background: #ffedd5;
+  border-color: #fb923c;
+}
+
+/* Summary panel (right sidebar) */
+.form-summary-panel {
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
+}
+.form-summary-panel .card-body { padding: 1rem; }
+.form-summary-panel .card-header { padding: 0.75rem 1rem; }
