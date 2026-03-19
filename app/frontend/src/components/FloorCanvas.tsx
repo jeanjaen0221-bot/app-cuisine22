@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ZoomIn, ZoomOut, Maximize2, Move } from 'lucide-react'
-import type { AssignmentMap, FloorCircle, FloorPlanData, FloorRect, FloorTable } from '../types'
+import type { AssignmentMap, FloorCircle, FloorPlanData, FloorRect, FloorTable, FloorZone } from '../types'
 
 type Props = {
   data: FloorPlanData
@@ -13,6 +13,7 @@ type Props = {
   drawNoGoMode?: boolean
   drawRoundOnlyMode?: boolean
   drawRectOnlyMode?: boolean
+  drawZoneMode?: { label: string; color: string }
   initialScale?: number
   initialOffset?: { x: number; y: number }
   onViewChange?: (view: { scale: number; offset: { x: number; y: number } }) => void
@@ -20,7 +21,7 @@ type Props = {
   onSelectionChange?: (tableIds: string[]) => void
 }
 
-export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false, initialScale, initialOffset, onViewChange, resetTrigger, onSelectionChange }: Props) {
+export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false, drawZoneMode, initialScale, initialOffset, onViewChange, resetTrigger, onSelectionChange }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [scale, setScale] = useState(0.8)
@@ -43,6 +44,10 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const [roundZoneResize, setRoundZoneResize] = useState<{ id: string; handle: 'right' | 'bottom' | 'corner' } | null>(null)
   const [rectZoneDraggingId, setRectZoneDraggingId] = useState<string | null>(null)
   const [rectZoneResize, setRectZoneResize] = useState<{ id: string; handle: 'right' | 'bottom' | 'corner' } | null>(null)
+  const [namedZoneDraggingId, setNamedZoneDraggingId] = useState<string | null>(null)
+  const [namedZoneResize, setNamedZoneResize] = useState<{ id: string; handle: 'right' | 'bottom' | 'corner' } | null>(null)
+  const [draftZone, setDraftZone] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null)
+  const drawStartZone = useRef<{ x: number; y: number } | null>(null)
   const dragStart = useRef<{ x: number; y: number } | null>(null)
   const lastValid = useRef<{ x: number; y: number } | null>(null)
   const dragInvalid = useRef(false)
@@ -70,6 +75,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
   const fixtures = data.fixtures || []
   const roundOnlyZones = (data as any).round_only_zones || []
   const rectOnlyZones = (data as any).rect_only_zones || []
+  const zones: FloorZone[] = data.zones || []
 
   function updateSelection(next: string[]) {
     setSelectedTableIds(next)
@@ -220,8 +226,41 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     }
     return null
   }
+
+  function namedZoneHandleAt(sx: number, sy: number): { id: string; handle: 'right' | 'bottom' | 'corner' } | null {
+    const M = 12
+    const list = [...zones].reverse()
+    for (const z of list) {
+      const cr = worldToScreen(z.x + z.w, z.y + z.h)
+      if (Math.abs(sx - cr.x) <= M && Math.abs(sy - cr.y) <= M) return { id: z.id, handle: 'corner' }
+      const rr = worldToScreen(z.x + z.w, z.y + z.h / 2)
+      if (Math.abs(sx - rr.x) <= M && Math.abs(sy - rr.y) <= M) return { id: z.id, handle: 'right' }
+      const bb = worldToScreen(z.x + z.w / 2, z.y + z.h)
+      if (Math.abs(sx - bb.x) <= M && Math.abs(sy - bb.y) <= M) return { id: z.id, handle: 'bottom' }
+    }
+    return null
+  }
+
+  function namedZoneHit(x: number, y: number) {
+    const list = [...zones].reverse()
+    for (const z of list) {
+      if (rectHit(x, y, { id: z.id, x: z.x, y: z.y, w: z.w, h: z.h })) return z
+    }
+    return null
+  }
   function screenToWorld(x: number, y: number) {
     return { x: (x - offset.x) / scale, y: (y - offset.y) / scale }
+  }
+
+  function hexToRgba(hex: string, alpha: number): string {
+    try {
+      const r = parseInt(hex.slice(1, 3), 16)
+      const g = parseInt(hex.slice(3, 5), 16)
+      const b = parseInt(hex.slice(5, 7), 16)
+      return `rgba(${r},${g},${b},${alpha})`
+    } catch {
+      return `rgba(59,130,246,${alpha})`
+    }
   }
 
   function rectHit(px: number, py: number, r: FloorRect) {
@@ -411,6 +450,53 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     ctx.strokeStyle = '#2c3e50'
     ctx.lineWidth = 3 / scale
     ctx.strokeRect(0, 0, room.width, room.height)
+
+    // Zones nommées (Terrasse, Salle, Mezzanine…)
+    for (const z of zones) {
+      const isHovered = hoveredItem?.type === 'zone' && hoveredItem?.id === z.id
+      const col = z.color || '#3b82f6'
+      ctx.save()
+      ctx.fillStyle = hexToRgba(col, isHovered ? 0.22 : 0.10)
+      ctx.fillRect(z.x, z.y, z.w, z.h)
+      ctx.strokeStyle = hexToRgba(col, isHovered ? 0.9 : 0.55)
+      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
+      ctx.setLineDash([14 / scale, 6 / scale])
+      ctx.strokeRect(z.x, z.y, z.w, z.h)
+      ctx.setLineDash([])
+      ctx.fillStyle = hexToRgba(col, 0.65)
+      ctx.font = `bold ${22 / scale}px sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(z.label, z.x + z.w / 2, z.y + z.h / 2)
+      if (editable) {
+        const hs2 = 6 / scale
+        ctx.fillStyle = hexToRgba(col, 0.8)
+        ctx.fillRect(z.x + z.w - hs2 / 2, z.y + z.h - hs2 / 2, hs2, hs2)
+        ctx.fillRect(z.x + z.w - hs2 / 2, z.y + z.h / 2 - hs2 / 2, hs2, hs2)
+        ctx.fillRect(z.x + z.w / 2 - hs2 / 2, z.y + z.h - hs2 / 2, hs2, hs2)
+      }
+      ctx.restore()
+    }
+
+    if (draftZone && drawZoneMode) {
+      ctx.save()
+      const col = drawZoneMode.color || '#3b82f6'
+      ctx.fillStyle = hexToRgba(col, 0.18)
+      ctx.fillRect(draftZone.x, draftZone.y, draftZone.w, draftZone.h)
+      ctx.strokeStyle = col
+      ctx.setLineDash([8 / scale, 4 / scale])
+      ctx.lineWidth = 2 / scale
+      ctx.strokeRect(draftZone.x, draftZone.y, draftZone.w, draftZone.h)
+      if (drawZoneMode.label) {
+        ctx.fillStyle = hexToRgba(col, 0.7)
+        ctx.font = `bold ${18 / scale}px sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(drawZoneMode.label, draftZone.x + draftZone.w / 2, draftZone.y + draftZone.h / 2)
+      }
+      ctx.setLineDash([])
+      ctx.restore()
+    }
 
     const hs = 8 / scale
     ctx.fillStyle = '#222'
@@ -706,7 +792,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     ctx.restore()
   }
 
-  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode, hoveredItem, selectedTableIds])
+  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draftZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, namedZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, namedZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode, drawZoneMode, hoveredItem, selectedTableIds])
 
   function onPointerDown(e: React.PointerEvent) {
     // Ignorer le clic droit (bouton 2) - il est géré par onContextMenu
@@ -821,6 +907,17 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       }
       return
     }
+    const nzHandle = namedZoneHandleAt(sx, sy)
+    if (editable && nzHandle && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode && !drawZoneMode) {
+      setNamedZoneResize(nzHandle)
+      return
+    }
+    const nzHit = namedZoneHit(x, y)
+    if (editable && nzHit && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode && !drawZoneMode) {
+      setNamedZoneDraggingId(nzHit.id)
+      dragDelta.current = { x: x - nzHit.x, y: y - nzHit.y }
+      return
+    }
     const h = handleAt(sx, sy)
     if (editable && h !== 'none') {
       setResizeHandle(h)
@@ -853,6 +950,16 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         const sy0 = snapGrid ? snap(y) : y
         drawStartRectZone.current = { x: sx0, y: sy0 }
         setDraftRectZone({ id: 'draft', x: sx0, y: sy0, w: 0, h: 0 })
+        return
+      }
+    }
+    if (editable && drawZoneMode) {
+      if (x >= 0 && y >= 0 && x <= room.width && y <= room.height) {
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const sx0 = snapGrid ? snap(x) : x
+        const sy0 = snapGrid ? snap(y) : y
+        drawStartZone.current = { x: sx0, y: sy0 }
+        setDraftZone({ id: 'draft', x: sx0, y: sy0, w: 0, h: 0 })
         return
       }
     }
@@ -918,6 +1025,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const ng = noGoHit(x, y)
     if (ng) {
       setContextMenu({ x: menuX, y: menuY, target: { type: 'noGo', data: ng } })
+      return
+    }
+    const nzone = namedZoneHit(x, y)
+    if (nzone) {
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'namedZone', data: nzone } })
       return
     }
   }
@@ -1084,6 +1196,34 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       }
       return
     }
+    if (namedZoneResize && editable) {
+      const idx = zones.findIndex(z => z.id === namedZoneResize.id)
+      if (idx >= 0) {
+        const z = { ...zones[idx] }
+        let nw = z.w
+        let nh = z.h
+        if (namedZoneResize.handle === 'right' || namedZoneResize.handle === 'corner') nw = Math.max(10, x - z.x)
+        if (namedZoneResize.handle === 'bottom' || namedZoneResize.handle === 'corner') nh = Math.max(10, y - z.y)
+        if (showGrid && room.grid && room.grid > 0) { nw = snap(nw); nh = snap(nh) }
+        const next = [...zones]
+        next[idx] = { ...z, w: nw, h: nh }
+        onChange && onChange({ ...data, zones: next })
+      }
+      return
+    }
+    if (namedZoneDraggingId) {
+      const idx = zones.findIndex(z => z.id === namedZoneDraggingId)
+      if (idx >= 0) {
+        const z = { ...zones[idx] }
+        const nx = x - dragDelta.current.x
+        const ny = y - dragDelta.current.y
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const next = [...zones]
+        next[idx] = { ...z, x: snapGrid ? snap(nx) : nx, y: snapGrid ? snap(ny) : ny }
+        onChange && onChange({ ...data, zones: next })
+      }
+      return
+    }
     if (resizeHandle !== 'none' && editable) {
       let nw = room.width
       let nh = room.height
@@ -1133,6 +1273,18 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       setDraftRectZone({ id: 'draft', x: left, y: top, w, h })
       return
     }
+    if (drawStartZone.current && editable && drawZoneMode) {
+      const p0 = drawStartZone.current
+      let x0 = p0.x, y0 = p0.y
+      let x1 = x, y1 = y
+      if (showGrid && room.grid && room.grid > 0) { x1 = snap(x1); y1 = snap(y1) }
+      const left = Math.min(x0, x1)
+      const top = Math.min(y0, y1)
+      const w = Math.abs(x1 - x0)
+      const h = Math.abs(y1 - y0)
+      setDraftZone({ id: 'draft', x: left, y: top, w, h })
+      return
+    }
     if (draggingId) {
       const t = tables.find(t => t.id === draggingId)
       if (!t) return
@@ -1170,6 +1322,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const rz = roundZoneHit(x, y)
     const tz = rectZoneHit(x, y)
     const ng = noGoHit(x, y)
+    const nz = namedZoneHit(x, y)
     
     // Update hovered item only if changed (prevent re-render loop)
     let newHoveredKey: string | null = null
@@ -1178,6 +1331,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     else if (rz) newHoveredKey = `rz-${rz.id}`
     else if (tz) newHoveredKey = `tz-${tz.id}`
     else if (ng) newHoveredKey = `ng-${ng.id}`
+    else if (nz) newHoveredKey = `zone-${nz.id}`
     
     if (newHoveredKey !== lastHoveredRef.current) {
       lastHoveredRef.current = newHoveredKey
@@ -1193,6 +1347,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     const ngr = noGoHandleAt(sx, sy)
     const rzr = roundZoneHandleAt(sx, sy)
     const tzr = rectZoneHandleAt(sx, sy)
+    const nzr = namedZoneHandleAt(sx, sy)
     const h = handleAt(sx, sy)
     const el = canvasRef.current
     if (el) {
@@ -1204,9 +1359,11 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
         el.style.cursor = rzr.handle === 'corner' ? 'nwse-resize' : rzr.handle === 'right' ? 'ew-resize' : 'ns-resize'
       } else if (tzr) {
         el.style.cursor = tzr.handle === 'corner' ? 'nwse-resize' : tzr.handle === 'right' ? 'ew-resize' : 'ns-resize'
-      } else if (drawNoGoMode || drawRoundOnlyMode || drawRectOnlyMode) {
+      } else if (nzr) {
+        el.style.cursor = nzr.handle === 'corner' ? 'nwse-resize' : nzr.handle === 'right' ? 'ew-resize' : 'ns-resize'
+      } else if (drawNoGoMode || drawRoundOnlyMode || drawRectOnlyMode || drawZoneMode) {
         el.style.cursor = 'crosshair'
-      } else if (rz || tz || ng || fx || table) {
+      } else if (rz || tz || ng || fx || table || nz) {
         el.style.cursor = 'context-menu'  // Indique qu'un clic droit est possible
       } else {
         el.style.cursor = h === 'corner' ? 'nwse-resize' : h === 'right' ? 'ew-resize' : h === 'bottom' ? 'ns-resize' : 'default'
@@ -1259,6 +1416,25 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       drawStartRectZone.current = null
       setDraftRectZone(null)
     }
+    if (drawStartZone.current && draftZone && editable && drawZoneMode) {
+      const minSize = 10
+      if (draftZone.w >= minSize && draftZone.h >= minSize) {
+        const id = `zone_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
+        const newZone: FloorZone = {
+          id,
+          label: drawZoneMode.label,
+          color: drawZoneMode.color,
+          x: draftZone.x,
+          y: draftZone.y,
+          w: draftZone.w,
+          h: draftZone.h
+        }
+        const next = [...zones, newZone]
+        onChange && onChange({ ...data, zones: next })
+      }
+      drawStartZone.current = null
+      setDraftZone(null)
+    }
     // Revert invalid drop before clearing ids/state
     if (dragStart.current && lastValid.current && dragInvalid.current && editable && currentDraggingId) {
       const t = tables.find(tt => tt.id === currentDraggingId)
@@ -1282,6 +1458,8 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
     setRoundZoneResize(null)
     setRectZoneDraggingId(null)
     setRectZoneResize(null)
+    setNamedZoneDraggingId(null)
+    setNamedZoneResize(null)
     const el = canvasRef.current
     if (el) el.style.cursor = 'default'
   }
@@ -1450,6 +1628,14 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
           Mode dessin zone tables rectangulaires (T)
         </div>
       )}
+      {drawZoneMode && (
+        <div
+          className="absolute top-4 left-4 px-4 py-2 rounded-lg shadow-lg font-medium text-white"
+          style={{ backgroundColor: drawZoneMode.color || '#3b82f6' }}
+        >
+          ✏️ Dessiner zone : {drawZoneMode.label}
+        </div>
+      )}
 
       {/* Légende */}
       <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-3 border border-gray-200 text-xs">
@@ -1496,6 +1682,7 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
               {contextMenu.target.type === 'roundZone' && 'Zone Tables Rondes (R)'}
               {contextMenu.target.type === 'rectZone' && 'Zone Tables Rect (T)'}
               {contextMenu.target.type === 'noGo' && 'Zone Interdite'}
+              {contextMenu.target.type === 'namedZone' && `Zone : ${contextMenu.target.data.label}`}
               {contextMenu.target.type === 'fixture' && 'Objet'}
               {contextMenu.target.type === 'table' && `Table ${contextMenu.target.data.label || contextMenu.target.data.id}`}
             </div>
@@ -1539,6 +1726,20 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
                 }}
               >
                 🗑️ Supprimer la zone interdite
+              </button>
+            )}
+            {contextMenu.target.type === 'namedZone' && (
+              <button
+                style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                onClick={() => {
+                  const next = zones.filter(z => z.id !== contextMenu.target.data.id)
+                  onChange && onChange({ ...data, zones: next })
+                  setContextMenu(null)
+                }}
+              >
+                🗑️ Supprimer la zone
               </button>
             )}
             {contextMenu.target.type === 'fixture' && (

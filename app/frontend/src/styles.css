@@ -2101,3 +2101,280 @@ img, video, canvas, svg { max-width: 100%; }
 }
 .form-summary-panel .card-body { padding: 1rem; }
 .form-summary-panel .card-header { padding: 0.75rem 1rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   FLOOR PLAN — Nouveau layout sidebar + canvas
+   ═══════════════════════════════════════════════════════════ */
+
+/* Conteneur principal : remplit le viewport sans scrollbar */
+.fp-layout {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px); /* hauteur viewport moins la nav principale */
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+/* ── Barre supérieure ── */
+.fp-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  z-index: 20;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.fp-topbar-left  { display: flex; align-items: center; gap: 0.5rem; }
+.fp-topbar-center { flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-width: 0; }
+.fp-topbar-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+
+.fp-sidebar-toggle {
+  background: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+  font-size: 1rem;
+  color: #374151;
+  line-height: 1;
+  transition: background 0.15s;
+}
+.fp-sidebar-toggle:hover { background: #f3f4f6; }
+
+.fp-plan-name {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fp-stat-badge {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  background: #f3f4f6;
+  border-radius: 9999px;
+  color: #374151;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ── Corps (sidebar + canvas) ── */
+.fp-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Sidebar ── */
+.fp-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.fp-sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 1rem;
+}
+
+/* ── Section accordion ── */
+.fp-section {
+  border-bottom: 1px solid #f3f4f6;
+}
+.fp-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #374151;
+  transition: background 0.12s;
+}
+.fp-section-header:hover { background: #f9fafb; }
+
+.fp-section-body {
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+.fp-section-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
+  margin-bottom: 0.4rem;
+}
+
+/* ── Grille de boutons d'ajout ── */
+.fp-btn-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+.fp-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem !important;
+}
+.fp-table-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Zones nommées ── */
+.fp-zone-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.fp-zone-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  border: 1.5px solid;
+  font-size: 0.72rem;
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fp-zone-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+.fp-zone-preset-btn {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  border: 1.5px solid;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+.fp-zone-preset-btn:hover { opacity: 0.75; }
+
+.fp-draw-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.4rem;
+  border: 1.5px dashed;
+  background: #fafafa;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+}
+
+/* ── Stats service ── */
+.fp-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+.fp-stat-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.3rem;
+  text-align: center;
+}
+.fp-stat-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1f2937;
+  line-height: 1.2;
+}
+.fp-stat-label {
+  font-size: 0.65rem;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+/* ── Zone canvas ── */
+.fp-canvas-area {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Alertes de placement (band jaune en haut du canvas) */
+.fp-ui-alerts {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  background: #fef9c3;
+  border: 1px solid #fbbf24;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  min-width: 260px;
+  max-width: 480px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+
+/* ── Toast stack ── */
+.fp-toast-stack {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  pointer-events: none;
+}
+.fp-toast {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+  animation: fp-toast-in 0.2s ease;
+  pointer-events: auto;
+  max-width: 320px;
+}
+@keyframes fp-toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fp-toast-success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.fp-toast-error   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.fp-toast-warning { background: #fef9c3; color: #92400e; border: 1px solid #fcd34d; }
+.fp-toast-info    { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+
+/* ── Responsive mobile ── */
+@media (max-width: 768px) {
+  .fp-layout { height: calc(100vh - 48px); }
+  .fp-sidebar { width: 100%; border-right: none; border-bottom: 1px solid #e5e7eb; max-height: 45vh; }
+  .fp-body { flex-direction: column; }
+  .fp-topbar-center { justify-content: flex-start; }
+}

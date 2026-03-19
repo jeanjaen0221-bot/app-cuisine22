@@ -150,6 +150,16 @@ export type FloorTable = {
 export type FloorRect = { id: string; x: number; y: number; w: number; h: number }
 export type FloorCircle = { id: string; x: number; y: number; r: number }
 
+export type FloorZone = {
+  id: string
+  label: string
+  x: number
+  y: number
+  w: number
+  h: number
+  color?: string
+}
+
 export type FloorPlanData = {
   room?: { width: number; height: number; grid?: number }
   walls?: FloorRect[]
@@ -160,6 +170,7 @@ export type FloorPlanData = {
   fixtures?: ((FloorRect & { shape?: 'rect'; label?: string; locked?: boolean }) | (FloorCircle & { shape?: 'round'; label?: string; locked?: boolean }))[]
   tables: FloorTable[]
   max_dynamic_tables?: { rect?: number; round?: number }
+  zones?: FloorZone[]
 }
 
 export type AssignmentMap = {
