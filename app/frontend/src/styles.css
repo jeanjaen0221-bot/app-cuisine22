@@ -2371,6 +2371,57 @@ img, video, canvas, svg { max-width: 100%; }
 .fp-toast-warning { background: #fef9c3; color: #92400e; border: 1px solid #fcd34d; }
 .fp-toast-info    { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
 
+/* ── Onglets sidebar ── */
+.fp-tabs {
+  display: flex;
+  border-bottom: 2px solid #e5e7eb;
+  flex-shrink: 0;
+  background: #fff;
+}
+.fp-tab-btn {
+  flex: 1;
+  padding: 0.55rem 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fp-tab-btn:hover { color: #374151; background: #f9fafb; }
+.fp-tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; background: #fff; }
+
+/* ── Contenu d'onglet ── */
+.fp-tab-content {
+  padding: 0.75rem;
+}
+.fp-group-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #9ca3af;
+  margin-bottom: 0.4rem;
+  display: block;
+}
+.fp-hint {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin: 0;
+  line-height: 1.4;
+}
+.fp-divider {
+  height: 1px;
+  background: #f3f4f6;
+  margin: 0.75rem 0;
+}
+
 /* ── Responsive mobile ── */
 @media (max-width: 768px) {
   .fp-layout { height: calc(100vh - 48px); }

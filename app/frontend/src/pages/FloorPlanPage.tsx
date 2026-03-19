@@ -2,10 +2,11 @@
 import { api, fileDownload, getFloorBase, updateFloorBase } from '../lib/api'
 import FloorCanvas from '../components/FloorCanvas'
 import type { FloorPlanData, FloorPlanBase, FloorPlanInstance } from '../types'
-import { Plus, Save, Trash2, Download, Upload, Calendar, ChevronDown, ChevronRight, Layers } from 'lucide-react'
+import { Plus, Save, Trash2, Download, Upload, Calendar, Layers } from 'lucide-react'
 
 type Toast = { id: string; type: 'success' | 'error' | 'warning' | 'info'; message: string }
-type SectionKey = 'elements' | 'zones' | 'special_zones' | 'numbering' | 'actions' | 'stock' | 'display' | 'service' | 'reservations' | 'plan_instance'
+type TemplateTab = 'elements' | 'config'
+type InstanceTab = 'reservations' | 'plan'
 
 const ZONE_PRESETS = [
   { label: 'Salle', color: '#3b82f6' },
@@ -42,11 +43,8 @@ export default function FloorPlanPage() {
   const [newZoneLabel, setNewZoneLabel] = useState('')
   const [newZoneColor, setNewZoneColor] = useState('#22c55e')
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
-    elements: true, zones: true, special_zones: false, numbering: false,
-    actions: true, stock: false, display: false,
-    service: true, reservations: true, plan_instance: false,
-  })
+  const [templateTab, setTemplateTab] = useState<TemplateTab>('elements')
+  const [instanceTab, setInstanceTab] = useState<InstanceTab>('reservations')
 
   useEffect(() => {
     loadBase()
@@ -374,10 +372,6 @@ export default function FloorPlanPage() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
   }
 
-  function toggleSection(key: SectionKey) {
-    setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
-  }
-
   function clearDrawModes() {
     setDrawNoGoMode(false)
     setDrawRoundOnlyMode(false)
@@ -386,16 +380,6 @@ export default function FloorPlanPage() {
   }
 
   const labelService = (label: string) => label === 'lunch' ? 'Midi' : label === 'dinner' ? 'Soir' : label === 'brunch' ? 'Brunch' : label
-
-  function SectionHeader({ sKey, title, icon }: { sKey: SectionKey; title: string; icon?: string }) {
-    return (
-      <button className="fp-section-header" onClick={() => toggleSection(sKey)}>
-        {icon && <span>{icon}</span>}
-        <span className="flex-1 text-left font-semibold text-sm">{title}</span>
-        {openSections[sKey] ? <ChevronDown className="w-4 h-4 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 flex-shrink-0" />}
-      </button>
-    )
-  }
 
   const currentData = editMode === 'template' ? baseTemplate?.data : selectedInstance?.data
   const currentView = editMode === 'instance' && selectedInstance ? viewByInstance[selectedInstance.id] : undefined
@@ -407,12 +391,12 @@ export default function FloorPlanPage() {
   return (
     <div className="fp-layout">
 
-      {/* â”€â”€ Barre supÃ©rieure â”€â”€ */}
+      {/* Barre superieure */}
       <div className="fp-topbar">
         <div className="fp-topbar-left">
-          <button className="fp-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)} title="Afficher/Masquer la barre latÃ©rale">â˜°</button>
+          <button className="fp-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)} title="Sidebar">&#9776;</button>
           <div className="join">
-            <button className={`btn btn-sm join-item ${editMode === 'template' ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setEditMode('template'); clearDrawModes() }}>ðŸ— Plan de base</button>
+            <button className={`btn btn-sm join-item ${editMode === 'template' ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setEditMode('template'); clearDrawModes() }}>Plan de base</button>
             <button className={`btn btn-sm join-item ${editMode === 'instance' ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setEditMode('instance'); clearDrawModes() }}><Calendar className="w-4 h-4" /> Services</button>
           </div>
         </div>
@@ -422,331 +406,243 @@ export default function FloorPlanPage() {
           ) : (
             <div className="flex items-center gap-2">
               <select className="input input-sm" style={{ minWidth: 200 }} value={selectedInstance?.id || ''} onChange={(e) => { const inst = instances.find(i => i.id === e.target.value); setSelectedInstance(inst || null); clearDrawModes() }}>
-                <option value="">â€” SÃ©lectionner un service â€”</option>
-                {instances.map(i => (<option key={i.id} value={i.id}>{i.service_date} Â· {labelService(i.service_label || 'lunch')}</option>))}
+                <option value="">— Selectionner un service —</option>
+                {instances.map(i => (<option key={i.id} value={i.id}>{i.service_date} · {labelService(i.service_label || 'lunch')}</option>))}
               </select>
-              <button className="btn btn-sm btn-outline" onClick={() => setShowCreateModal(true)} title="CrÃ©er un service"><Plus className="w-4 h-4" /></button>
+              <button className="btn btn-sm btn-outline" onClick={() => setShowCreateModal(true)} title="Creer"><Plus className="w-4 h-4" /></button>
             </div>
           )}
         </div>
         <div className="fp-topbar-right">
           {editMode === 'instance' && selectedInstance && (
             <>
-              <span className="fp-stat-badge" title="RÃ©servations">ðŸ“‹ {instanceReservationsCount}</span>
-              <span className="fp-stat-badge" title="Tables assignÃ©es">ðŸª‘ {instanceAssignmentsCount}</span>
-              <span className="fp-stat-badge" title="Tables dynamiques">âš¡ {instanceDynamicTables}</span>
+              <span className="fp-stat-badge">{instanceReservationsCount} res.</span>
+              <span className="fp-stat-badge">{instanceAssignmentsCount} tables</span>
+              <span className="fp-stat-badge">{instanceDynamicTables} dyn.</span>
             </>
           )}
           <button className="btn btn-sm btn-success" onClick={editMode === 'template' ? saveBase : saveInstance} disabled={!currentData}><Save className="w-4 h-4" /> Sauvegarder</button>
-          <button className="btn btn-sm btn-outline" onClick={() => setResetViewTick(t => t + 1)} title="Recentrer la vue">â¤¾</button>
+          <button className="btn btn-sm btn-outline" onClick={() => setResetViewTick(t => t + 1)} title="Recentrer">&#8632;</button>
         </div>
       </div>
 
-      {/* â”€â”€ Corps principal â”€â”€ */}
+      {/* Corps */}
       <div className="fp-body">
 
-        {/* â”€â”€ Sidebar â”€â”€ */}
+        {/* Sidebar */}
         {sidebarOpen && (
           <aside className="fp-sidebar">
+            {editMode === 'template' && (
+              <div className="fp-tabs">
+                <button className={`fp-tab-btn${templateTab === 'elements' ? ' active' : ''}`} onClick={() => setTemplateTab('elements')}>Elements &amp; Zones</button>
+                <button className={`fp-tab-btn${templateTab === 'config' ? ' active' : ''}`} onClick={() => setTemplateTab('config')}>Config</button>
+              </div>
+            )}
+            {editMode === 'instance' && (
+              <div className="fp-tabs">
+                <button className={`fp-tab-btn${instanceTab === 'reservations' ? ' active' : ''}`} onClick={() => setInstanceTab('reservations')}>Reservations</button>
+                <button className={`fp-tab-btn${instanceTab === 'plan' ? ' active' : ''}`} onClick={() => setInstanceTab('plan')}>Plan</button>
+              </div>
+            )}
             <div className="fp-sidebar-scroll">
 
-              {/* ===== MODE TEMPLATE ===== */}
-              {editMode === 'template' && (<>
-
-                {/* Ã‰LÃ‰MENTS */}
-                <div className="fp-section">
-                  <SectionHeader sKey="elements" title="Ã‰lÃ©ments" icon="ðŸª‘" />
-                  {openSections.elements && (
-                    <div className="fp-section-body">
-                      <div className="fp-section-label">Tables</div>
-                      <div className="fp-btn-grid">
-                        <button onClick={() => addTable('fixed', 4)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#2ca' }}></span> Fixe (4)</button>
-                        <button onClick={() => addTable('rect', 6)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#39f' }}></span> Rect (6â†’8)</button>
-                        <button onClick={() => addTable('round', 10)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#f93' }}></span> Ronde (10)</button>
-                        <button onClick={() => addTable('sofa', 5)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#9c27b0' }}></span> CanapÃ© (5)</button>
-                        <button onClick={() => addTable('standing', 8)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#ff5722' }}></span> Debout (8)</button>
+              {/* TEMPLATE — Elements & Zones */}
+              {editMode === 'template' && templateTab === 'elements' && (
+                <div className="fp-tab-content">
+                  <p className="fp-group-label">Tables</p>
+                  <div className="fp-btn-grid">
+                    <button onClick={() => addTable('fixed', 4)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#2ca' }}></span> Fixe (4)</button>
+                    <button onClick={() => addTable('rect', 6)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#39f' }}></span> Rect (6-8)</button>
+                    <button onClick={() => addTable('round', 10)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#f93' }}></span> Ronde (10)</button>
+                    <button onClick={() => addTable('sofa', 5)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#9c27b0' }}></span> Canape (5)</button>
+                    <button onClick={() => addTable('standing', 8)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#ff5722' }}></span> Debout (8)</button>
+                  </div>
+                  <p className="fp-group-label mt-2">Objets</p>
+                  <div className="fp-btn-grid">
+                    <button className="btn btn-sm btn-outline" onClick={() => addFixture('rect')}>Mur</button>
+                    <button className="btn btn-sm btn-outline" onClick={() => addFixture('round')}>Colonne</button>
+                  </div>
+                  <div className="fp-divider" />
+                  <p className="fp-group-label">Zones nommees</p>
+                  {(currentData?.zones || []).length === 0 && <p className="fp-hint">Aucune zone. Creez-en une ci-dessous.</p>}
+                  <div className="space-y-1 mb-2">
+                    {(currentData?.zones || []).map(z => (
+                      <div key={z.id} className="fp-zone-row">
+                        <span className="fp-zone-chip" style={{ background: z.color + '22', borderColor: z.color, color: z.color }}>{z.label}</span>
+                        <button className={`btn btn-xs ${drawZoneMode?.label === z.label ? 'btn-primary' : 'btn-outline'}`} onClick={() => { if (drawZoneMode?.label === z.label) clearDrawModes(); else { clearDrawModes(); setDrawZoneMode({ label: z.label, color: z.color || '#3b82f6' }) } }}>{drawZoneMode?.label === z.label ? 'Stop' : 'Dessiner'}</button>
+                        <button className="btn btn-xs btn-ghost text-red-400" onClick={() => { if (!currentData) return; handleBaseChange({ ...currentData, zones: (currentData.zones || []).filter(zz => zz.id !== z.id) }) }}>Suppr.</button>
                       </div>
-                      <div className="fp-section-label mt-3">Objets structurels</div>
-                      <div className="fp-btn-grid">
-                        <button className="btn btn-sm btn-outline" onClick={() => addFixture('rect')}>â–¬ Mur</button>
-                        <button className="btn btn-sm btn-outline" onClick={() => addFixture('round')}>â— Colonne</button>
+                    ))}
+                  </div>
+                  <div className="fp-zone-presets">
+                    {ZONE_PRESETS.map(p => (<button key={p.label} className="fp-zone-preset-btn" style={{ borderColor: p.color, color: p.color }} onClick={() => { clearDrawModes(); setDrawZoneMode({ label: p.label, color: p.color }) }}>{p.label}</button>))}
+                  </div>
+                  <div className="flex gap-2 items-center mt-2">
+                    <input className="input input-sm flex-1" placeholder="Nom (ex: VIP)" value={newZoneLabel} onChange={(e) => setNewZoneLabel(e.target.value)} />
+                    <input type="color" className="w-8 h-8 rounded cursor-pointer border border-gray-300" value={newZoneColor} onChange={(e) => setNewZoneColor(e.target.value)} />
+                    <button className="btn btn-xs btn-primary" disabled={!newZoneLabel.trim()} onClick={() => { if (!newZoneLabel.trim()) return; clearDrawModes(); setDrawZoneMode({ label: newZoneLabel.trim(), color: newZoneColor }); setNewZoneLabel('') }}>+</button>
+                  </div>
+                  {drawZoneMode && (
+                    <div className="fp-draw-hint mt-2" style={{ borderColor: drawZoneMode.color }}>
+                      <span style={{ color: drawZoneMode.color }}>Dessin : <b>{drawZoneMode.label}</b></span>
+                      <button className="btn btn-xs btn-ghost" onClick={() => setDrawZoneMode(null)}>Annuler</button>
+                    </div>
+                  )}
+                  <div className="fp-divider" />
+                  <p className="fp-group-label">Zones speciales</p>
+                  <p className="fp-hint">Contraintes pour le placement auto.</p>
+                  <div className="space-y-1">
+                    <button className={`btn btn-sm w-full ${drawNoGoMode ? 'btn-error' : 'btn-outline'}`} onClick={() => { setDrawNoGoMode(!drawNoGoMode); setDrawRoundOnlyMode(false); setDrawRectOnlyMode(false); setDrawZoneMode(null) }}>Zone interdite{drawNoGoMode ? ' (actif)' : ''}</button>
+                    <button className={`btn btn-sm w-full ${drawRoundOnlyMode ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setDrawRoundOnlyMode(!drawRoundOnlyMode); setDrawNoGoMode(false); setDrawRectOnlyMode(false); setDrawZoneMode(null) }}>Rondes seul.{drawRoundOnlyMode ? ' (actif)' : ''}</button>
+                    <button className={`btn btn-sm w-full ${drawRectOnlyMode ? 'btn-success' : 'btn-outline'}`} onClick={() => { setDrawRectOnlyMode(!drawRectOnlyMode); setDrawNoGoMode(false); setDrawRoundOnlyMode(false); setDrawZoneMode(null) }}>Rect seul.{drawRectOnlyMode ? ' (actif)' : ''}</button>
+                  </div>
+                </div>
+              )}
+
+              {/* TEMPLATE — Config */}
+              {editMode === 'template' && templateTab === 'config' && (
+                <div className="fp-tab-content">
+                  <p className="fp-group-label">Numerotation</p>
+                  <button className="btn btn-sm w-full mb-2" onClick={numberTables}>Numeroter tout</button>
+                  {selectedTableIds.length > 0 ? (
+                    <div className="mb-2">
+                      <p className="fp-hint mb-1">Renuméroter {selectedTableIds.length} table(s) :</p>
+                      <div className="flex gap-2">
+                        <input className="input input-sm flex-1" value={renumberPrefix} onChange={(e) => setRenumberPrefix(e.target.value)} placeholder="Préfixe" />
+                        <input className="input input-sm w-16" type="number" value={renumberStart} onChange={(e) => setRenumberStart(parseInt(e.target.value) || 1)} />
+                        <button className="btn btn-sm btn-outline" onClick={renumberSelectedTables}>OK</button>
                       </div>
                     </div>
-                  )}
+                  ) : <p className="fp-hint mb-2">Selectionnez des tables sur le plan.</p>}
+                  <div className="fp-divider" />
+                  <p className="fp-group-label">Stock dynamique</p>
+                  <p className="fp-hint">Tables creeees automatiquement lors du placement.</p>
+                  <div className="space-y-2 mt-1">
+                    <label className="flex items-center justify-between text-sm">
+                      <span>Rect (6-8 pax)</span>
+                      <input type="number" min="0" max="50" className="input input-sm w-16" value={baseTemplate?.data?.max_dynamic_tables?.rect ?? 10} onChange={(e) => { if (!baseTemplate) return; const val = parseInt(e.target.value) || 0; setBaseTemplate({ ...baseTemplate, data: { ...baseTemplate.data, max_dynamic_tables: { ...baseTemplate.data?.max_dynamic_tables, rect: val } } }) }} />
+                    </label>
+                    <label className="flex items-center justify-between text-sm">
+                      <span>Rondes (10 pax)</span>
+                      <input type="number" min="0" max="50" className="input input-sm w-16" value={baseTemplate?.data?.max_dynamic_tables?.round ?? 5} onChange={(e) => { if (!baseTemplate) return; const val = parseInt(e.target.value) || 0; setBaseTemplate({ ...baseTemplate, data: { ...baseTemplate.data, max_dynamic_tables: { ...baseTemplate.data?.max_dynamic_tables, round: val } } }) }} />
+                    </label>
+                  </div>
+                  <div className="fp-divider" />
+                  <label className="flex items-center gap-2 text-sm cursor-pointer mb-3">
+                    <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
+                    Afficher la grille
+                  </label>
+                  <button className="btn btn-sm w-full" onClick={exportBase} disabled={!baseTemplate}><Download className="w-4 h-4" /> Exporter PDF</button>
                 </div>
+              )}
 
-                {/* ZONES NOMMÃ‰ES */}
-                <div className="fp-section">
-                  <SectionHeader sKey="zones" title="Zones" icon="ðŸ—º" />
-                  {openSections.zones && (
-                    <div className="fp-section-body">
-                      {(currentData?.zones || []).length === 0 && <p className="text-xs text-gray-400 mb-2">Aucune zone. CrÃ©ez-en une ci-dessous.</p>}
-                      <div className="space-y-1 mb-3">
-                        {(currentData?.zones || []).map((z) => (
-                          <div key={z.id} className="fp-zone-row">
-                            <span className="fp-zone-chip" style={{ background: z.color + '22', borderColor: z.color, color: z.color }}>{z.label}</span>
-                            <button className={`btn btn-xs ${drawZoneMode?.label === z.label ? 'btn-primary' : 'btn-outline'}`} onClick={() => { if (drawZoneMode?.label === z.label) clearDrawModes(); else { clearDrawModes(); setDrawZoneMode({ label: z.label, color: z.color || '#3b82f6' }) } }} title="Dessiner">{drawZoneMode?.label === z.label ? 'âœ• Stop' : 'âœï¸ Dessiner'}</button>
-                            <button className="btn btn-xs btn-ghost text-red-400" onClick={() => { if (!currentData) return; handleBaseChange({ ...currentData, zones: (currentData.zones || []).filter(zz => zz.id !== z.id) }) }} title="Supprimer">ðŸ—‘</button>
-                          </div>
-                        ))}
+              {/* INSTANCE — Reservations */}
+              {editMode === 'instance' && instanceTab === 'reservations' && (
+                <div className="fp-tab-content">
+                  {!selectedInstance ? (
+                    <p className="fp-hint">Selectionnez un service dans la barre du haut.</p>
+                  ) : (
+                    <>
+                      <div className="fp-stats-grid mb-3">
+                        <div className="fp-stat-card"><div className="fp-stat-value">{instanceReservationsCount}</div><div className="fp-stat-label">Res.</div></div>
+                        <div className="fp-stat-card"><div className="fp-stat-value">{instanceAssignmentsCount}</div><div className="fp-stat-label">Tables</div></div>
+                        <div className="fp-stat-card"><div className="fp-stat-value">{instanceDynamicTables}</div><div className="fp-stat-label">Dyn.</div></div>
                       </div>
-                      <div className="fp-section-label">PrÃ©rÃ©glages</div>
-                      <div className="fp-zone-presets">
-                        {ZONE_PRESETS.map(p => (<button key={p.label} className="fp-zone-preset-btn" style={{ borderColor: p.color, color: p.color }} onClick={() => { clearDrawModes(); setDrawZoneMode({ label: p.label, color: p.color }) }}>{p.label}</button>))}
+                      <div className="space-y-2">
+                        <button className="btn btn-sm w-full" onClick={importPDF} disabled={uploadingPDF}><Upload className="w-4 h-4" /> {uploadingPDF ? 'Import...' : 'Importer PDF'}</button>
+                        <button className="btn btn-sm btn-primary w-full" onClick={autoAssign} disabled={uploadingPDF || !instanceHasReservations}>Placement automatique</button>
+                        <button className="btn btn-sm btn-outline w-full" onClick={compareWithPDF}>Comparer au PDF</button>
+                        <button className="btn btn-sm w-full" onClick={exportAnnotated}><Download className="w-4 h-4" /> PDF annote</button>
                       </div>
-                      <div className="fp-section-label mt-2">Zone personnalisÃ©e</div>
-                      <div className="flex gap-2 items-center">
-                        <input className="input input-sm flex-1" placeholder="Nom (ex: VIP)" value={newZoneLabel} onChange={(e) => setNewZoneLabel(e.target.value)} />
-                        <input type="color" className="w-8 h-8 rounded cursor-pointer border border-gray-300" value={newZoneColor} onChange={(e) => setNewZoneColor(e.target.value)} title="Couleur" />
-                        <button className="btn btn-xs btn-primary" disabled={!newZoneLabel.trim()} onClick={() => { if (!newZoneLabel.trim()) return; clearDrawModes(); setDrawZoneMode({ label: newZoneLabel.trim(), color: newZoneColor }); setNewZoneLabel('') }}>âœï¸</button>
-                      </div>
-                      {drawZoneMode && (
-                        <div className="fp-draw-hint" style={{ borderColor: drawZoneMode.color }}>
-                          <span style={{ color: drawZoneMode.color }}>Mode dessin : <b>{drawZoneMode.label}</b></span>
-                          <button className="btn btn-xs btn-ghost" onClick={() => setDrawZoneMode(null)}>Annuler</button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* ZONES SPÃ‰CIALES */}
-                <div className="fp-section">
-                  <SectionHeader sKey="special_zones" title="Zones spÃ©ciales" icon="ðŸ”²" />
-                  {openSections.special_zones && (
-                    <div className="fp-section-body space-y-2">
-                      <p className="text-xs text-gray-500">Zones de contrainte pour le placement auto.</p>
-                      <button className={`btn btn-sm w-full ${drawNoGoMode ? 'btn-error' : 'btn-outline'}`} onClick={() => { setDrawNoGoMode(!drawNoGoMode); setDrawRoundOnlyMode(false); setDrawRectOnlyMode(false); setDrawZoneMode(null) }}>ðŸš« Zone interdite{drawNoGoMode ? ' (actif)' : ''}</button>
-                      <button className={`btn btn-sm w-full ${drawRoundOnlyMode ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setDrawRoundOnlyMode(!drawRoundOnlyMode); setDrawNoGoMode(false); setDrawRectOnlyMode(false); setDrawZoneMode(null) }}>ðŸ”µ Zone rondes (R){drawRoundOnlyMode ? ' (actif)' : ''}</button>
-                      <button className={`btn btn-sm w-full ${drawRectOnlyMode ? 'btn-success' : 'btn-outline'}`} onClick={() => { setDrawRectOnlyMode(!drawRectOnlyMode); setDrawNoGoMode(false); setDrawRoundOnlyMode(false); setDrawZoneMode(null) }}>ðŸŸ¢ Zone rect (T){drawRectOnlyMode ? ' (actif)' : ''}</button>
-                    </div>
-                  )}
-                </div>
-
-                {/* NUMÃ‰ROTATION */}
-                <div className="fp-section">
-                  <SectionHeader sKey="numbering" title="NumÃ©rotation" icon="ðŸ”¢" />
-                  {openSections.numbering && (
-                    <div className="fp-section-body space-y-3">
-                      <button className="btn btn-sm w-full" onClick={numberTables}>ðŸ”¢ NumÃ©roter tout (1, T1, R1â€¦)</button>
-                      {selectedTableIds.length > 0 ? (
-                        <div>
-                          <div className="fp-section-label">RenumÃ©roter sÃ©lection ({selectedTableIds.length})</div>
-                          <div className="flex gap-2 mt-1">
-                            <input className="input input-sm w-24" value={renumberPrefix} onChange={(e) => setRenumberPrefix(e.target.value)} placeholder="PrÃ©fixe" />
-                            <input className="input input-sm w-16" type="number" value={renumberStart} onChange={(e) => setRenumberStart(parseInt(e.target.value) || 1)} />
-                            <button className="btn btn-sm btn-outline" onClick={renumberSelectedTables}>âœï¸</button>
-                          </div>
-                        </div>
-                      ) : <p className="text-xs text-gray-400">Cliquez des tables pour les sÃ©lectionner.</p>}
-                    </div>
-                  )}
-                </div>
-
-                {/* ACTIONS */}
-                <div className="fp-section">
-                  <SectionHeader sKey="actions" title="Actions" icon="âš™ï¸" />
-                  {openSections.actions && (
-                    <div className="fp-section-body space-y-2">
-                      <button className="btn btn-sm btn-success w-full" onClick={saveBase} disabled={!baseTemplate}><Save className="w-4 h-4" /> Sauvegarder</button>
-                      <button className="btn btn-sm w-full" onClick={exportBase} disabled={!baseTemplate}><Download className="w-4 h-4" /> Exporter PDF</button>
-                      <button className="btn btn-sm btn-outline w-full" onClick={() => setResetViewTick(t => t + 1)}>â¤¾ Recentrer la vue</button>
-                    </div>
-                  )}
-                </div>
-
-                {/* STOCK DYNAMIQUE */}
-                <div className="fp-section">
-                  <SectionHeader sKey="stock" title="Stock dynamique" icon="ðŸ“¦" />
-                  {openSections.stock && (
-                    <div className="fp-section-body space-y-3">
-                      <p className="text-xs text-gray-500">Tables crÃ©ables lors du placement auto.</p>
-                      <label className="flex items-center justify-between gap-2 text-sm">
-                        <span>Rect (6â€“8 pax)</span>
-                        <input type="number" min="0" max="50" className="input input-sm w-20" value={baseTemplate?.data?.max_dynamic_tables?.rect ?? 10} onChange={(e) => { if (!baseTemplate) return; const val = parseInt(e.target.value) || 0; setBaseTemplate({ ...baseTemplate, data: { ...baseTemplate.data, max_dynamic_tables: { ...baseTemplate.data?.max_dynamic_tables, rect: val } } }) }} />
-                      </label>
-                      <label className="flex items-center justify-between gap-2 text-sm">
-                        <span>Rondes (10 pax)</span>
-                        <input type="number" min="0" max="50" className="input input-sm w-20" value={baseTemplate?.data?.max_dynamic_tables?.round ?? 5} onChange={(e) => { if (!baseTemplate) return; const val = parseInt(e.target.value) || 0; setBaseTemplate({ ...baseTemplate, data: { ...baseTemplate.data, max_dynamic_tables: { ...baseTemplate.data?.max_dynamic_tables, round: val } } }) }} />
-                      </label>
-                    </div>
-                  )}
-                </div>
-
-                {/* AFFICHAGE */}
-                <div className="fp-section">
-                  <SectionHeader sKey="display" title="Affichage" icon="ðŸ‘" />
-                  {openSections.display && (
-                    <div className="fp-section-body">
-                      <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
-                        <span>Afficher la grille</span>
-                      </label>
-                    </div>
-                  )}
-                </div>
-
-              </>)}
-
-              {/* ===== MODE INSTANCE ===== */}
-              {editMode === 'instance' && (<>
-
-                {/* SERVICE */}
-                <div className="fp-section">
-                  <SectionHeader sKey="service" title="Service" icon="ðŸ“‹" />
-                  {openSections.service && (
-                    <div className="fp-section-body">
-                      {!selectedInstance ? (
-                        <p className="text-xs text-gray-400">SÃ©lectionnez un service dans la barre du haut.</p>
+                      <div className="fp-divider" />
+                      {!confirmDelete ? (
+                        <button className="btn btn-xs btn-outline text-red-500 w-full" onClick={() => setConfirmDelete(true)}><Trash2 className="w-3 h-3" /> Supprimer ce service</button>
                       ) : (
-                        <>
-                          <div className="fp-stats-grid">
-                            <div className="fp-stat-card"><div className="fp-stat-value">{instanceReservationsCount}</div><div className="fp-stat-label">RÃ©servations</div></div>
-                            <div className="fp-stat-card"><div className="fp-stat-value">{instanceAssignmentsCount}</div><div className="fp-stat-label">AssignÃ©es</div></div>
-                            <div className="fp-stat-card"><div className="fp-stat-value">{instanceDynamicTables}</div><div className="fp-stat-label">Dyn.</div></div>
-                          </div>
-                          {!confirmDelete ? (
-                            <button className="btn btn-xs btn-outline text-red-500 w-full mt-2" onClick={() => setConfirmDelete(true)}><Trash2 className="w-3 h-3" /> Supprimer ce service</button>
-                          ) : (
-                            <div className="flex gap-2 mt-2">
-                              <button className="btn btn-xs btn-error flex-1" onClick={deleteInstance}>Confirmer</button>
-                              <button className="btn btn-xs btn-outline flex-1" onClick={() => setConfirmDelete(false)}>Annuler</button>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* RÃ‰SERVATIONS */}
-                <div className="fp-section">
-                  <SectionHeader sKey="reservations" title="RÃ©servations" icon="ðŸ“¤" />
-                  {openSections.reservations && (
-                    <div className="fp-section-body space-y-2">
-                      <button className="btn btn-sm w-full" onClick={importPDF} disabled={uploadingPDF || !selectedInstance}><Upload className="w-4 h-4" /> {uploadingPDF ? 'Import en coursâ€¦' : 'Importer PDF'}</button>
-                      <button className="btn btn-sm btn-primary w-full" onClick={autoAssign} disabled={uploadingPDF || !instanceHasReservations || !selectedInstance}>âš¡ Placement automatique</button>
-                      <button className="btn btn-sm btn-outline w-full" onClick={compareWithPDF} disabled={!selectedInstance}>ðŸ”Ž Comparer au PDF</button>
-                      <button className="btn btn-sm w-full" onClick={exportAnnotated} disabled={!selectedInstance}><Download className="w-4 h-4" /> PDF annotÃ©</button>
-                    </div>
-                  )}
-                </div>
-
-                {/* PLAN INSTANCE */}
-                <div className="fp-section">
-                  <SectionHeader sKey="plan_instance" title="Plan" icon="ðŸ—º" />
-                  {openSections.plan_instance && (
-                    <div className="fp-section-body space-y-2">
-                      <button className="btn btn-sm btn-success w-full" onClick={saveInstance} disabled={!selectedInstance}><Save className="w-4 h-4" /> Sauvegarder</button>
-                      <button className="btn btn-sm w-full" onClick={numberTables} disabled={!selectedInstance}>ðŸ”¢ NumÃ©roter</button>
-                      <button className="btn btn-sm w-full" onClick={exportComplete} disabled={!selectedInstance}><Download className="w-4 h-4" /> Exporter PDF</button>
-                      <button className="btn btn-sm btn-outline w-full" onClick={() => setResetViewTick(t => t + 1)}>â¤¾ Recentrer</button>
-                      <button className="btn btn-sm btn-outline w-full" onClick={resetInstanceAction} disabled={!selectedInstance}>â™»ï¸ RÃ©initialiser</button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Ã‰LÃ‰MENTS (instance) */}
-                <div className="fp-section">
-                  <SectionHeader sKey="elements" title="Ã‰lÃ©ments" icon="ðŸª‘" />
-                  {openSections.elements && (
-                    <div className="fp-section-body">
-                      <div className="fp-btn-grid">
-                        <button onClick={() => addTable('fixed', 4)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#2ca' }}></span> Fixe (4)</button>
-                        <button onClick={() => addTable('rect', 6)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#39f' }}></span> Rect (6â†’8)</button>
-                        <button onClick={() => addTable('round', 10)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#f93' }}></span> Ronde (10)</button>
-                        <button onClick={() => addTable('sofa', 5)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#9c27b0' }}></span> CanapÃ© (5)</button>
-                        <button onClick={() => addTable('standing', 8)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#ff5722' }}></span> Debout (8)</button>
-                        <button className="btn btn-sm btn-outline" onClick={() => addFixture('rect')}>â–¬ Mur</button>
-                        <button className="btn btn-sm btn-outline" onClick={() => addFixture('round')}>â— Colonne</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* ZONES (instance) */}
-                <div className="fp-section">
-                  <SectionHeader sKey="zones" title="Zones" icon="ðŸ—º" />
-                  {openSections.zones && (
-                    <div className="fp-section-body">
-                      {(currentData?.zones || []).length === 0 && <p className="text-xs text-gray-400 mb-2">Aucune zone dÃ©finie.</p>}
-                      <div className="space-y-1 mb-2">
-                        {(currentData?.zones || []).map((z) => (
-                          <div key={z.id} className="fp-zone-row">
-                            <span className="fp-zone-chip" style={{ background: z.color + '22', borderColor: z.color, color: z.color }}>{z.label}</span>
-                            <button className={`btn btn-xs ${drawZoneMode?.label === z.label ? 'btn-primary' : 'btn-outline'}`} onClick={() => { if (drawZoneMode?.label === z.label) clearDrawModes(); else { clearDrawModes(); setDrawZoneMode({ label: z.label, color: z.color || '#3b82f6' }) } }}>{drawZoneMode?.label === z.label ? 'âœ•' : 'âœï¸'}</button>
-                            <button className="btn btn-xs btn-ghost text-red-400" onClick={() => { if (!currentData) return; handleInstanceChange({ ...currentData, zones: (currentData.zones || []).filter(zz => zz.id !== z.id) }) }}>ðŸ—‘</button>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="fp-zone-presets">
-                        {ZONE_PRESETS.map(p => (<button key={p.label} className="fp-zone-preset-btn" style={{ borderColor: p.color, color: p.color }} onClick={() => { clearDrawModes(); setDrawZoneMode({ label: p.label, color: p.color }) }}>{p.label}</button>))}
-                      </div>
-                      {drawZoneMode && (
-                        <div className="fp-draw-hint mt-2" style={{ borderColor: drawZoneMode.color }}>
-                          <span style={{ color: drawZoneMode.color }}>âœï¸ <b>{drawZoneMode.label}</b></span>
-                          <button className="btn btn-xs btn-ghost" onClick={() => setDrawZoneMode(null)}>Annuler</button>
+                        <div className="flex gap-2">
+                          <button className="btn btn-xs btn-error flex-1" onClick={deleteInstance}>Confirmer</button>
+                          <button className="btn btn-xs btn-outline flex-1" onClick={() => setConfirmDelete(false)}>Annuler</button>
                         </div>
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
+              )}
 
-                {/* ZONES SPÃ‰CIALES (instance) */}
-                <div className="fp-section">
-                  <SectionHeader sKey="special_zones" title="Zones spÃ©ciales" icon="ðŸ”²" />
-                  {openSections.special_zones && (
-                    <div className="fp-section-body space-y-2">
-                      <button className={`btn btn-sm w-full ${drawNoGoMode ? 'btn-error' : 'btn-outline'}`} onClick={() => { setDrawNoGoMode(!drawNoGoMode); setDrawRoundOnlyMode(false); setDrawRectOnlyMode(false); setDrawZoneMode(null) }}>ðŸš« Zone interdite{drawNoGoMode ? ' (actif)' : ''}</button>
-                      <button className={`btn btn-sm w-full ${drawRoundOnlyMode ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setDrawRoundOnlyMode(!drawRoundOnlyMode); setDrawNoGoMode(false); setDrawRectOnlyMode(false); setDrawZoneMode(null) }}>ðŸ”µ Zone rondes{drawRoundOnlyMode ? ' (actif)' : ''}</button>
-                      <button className={`btn btn-sm w-full ${drawRectOnlyMode ? 'btn-success' : 'btn-outline'}`} onClick={() => { setDrawRectOnlyMode(!drawRectOnlyMode); setDrawNoGoMode(false); setDrawRoundOnlyMode(false); setDrawZoneMode(null) }}>ðŸŸ¢ Zone rect{drawRectOnlyMode ? ' (actif)' : ''}</button>
+              {/* INSTANCE — Plan */}
+              {editMode === 'instance' && instanceTab === 'plan' && (
+                <div className="fp-tab-content">
+                  <p className="fp-group-label">Tables</p>
+                  <div className="fp-btn-grid mb-2">
+                    <button onClick={() => addTable('fixed', 4)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#2ca' }}></span> Fixe (4)</button>
+                    <button onClick={() => addTable('rect', 6)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#39f' }}></span> Rect (6-8)</button>
+                    <button onClick={() => addTable('round', 10)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#f93' }}></span> Ronde (10)</button>
+                    <button onClick={() => addTable('sofa', 5)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#9c27b0' }}></span> Canape (5)</button>
+                    <button onClick={() => addTable('standing', 8)} className="btn btn-sm fp-add-btn"><span className="fp-table-dot" style={{ background: '#ff5722' }}></span> Debout (8)</button>
+                    <button className="btn btn-sm btn-outline" onClick={() => addFixture('rect')}>Mur</button>
+                    <button className="btn btn-sm btn-outline" onClick={() => addFixture('round')}>Colonne</button>
+                  </div>
+                  <div className="fp-divider" />
+                  <p className="fp-group-label">Zones nommees</p>
+                  {(currentData?.zones || []).length === 0 && <p className="fp-hint">Aucune zone.</p>}
+                  <div className="space-y-1 mb-2">
+                    {(currentData?.zones || []).map(z => (
+                      <div key={z.id} className="fp-zone-row">
+                        <span className="fp-zone-chip" style={{ background: z.color + '22', borderColor: z.color, color: z.color }}>{z.label}</span>
+                        <button className={`btn btn-xs ${drawZoneMode?.label === z.label ? 'btn-primary' : 'btn-outline'}`} onClick={() => { if (drawZoneMode?.label === z.label) clearDrawModes(); else { clearDrawModes(); setDrawZoneMode({ label: z.label, color: z.color || '#3b82f6' }) } }}>{drawZoneMode?.label === z.label ? 'Stop' : 'Dessin'}</button>
+                        <button className="btn btn-xs btn-ghost text-red-400" onClick={() => { if (!currentData) return; handleInstanceChange({ ...currentData, zones: (currentData.zones || []).filter(zz => zz.id !== z.id) }) }}>Suppr.</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="fp-zone-presets mb-1">
+                    {ZONE_PRESETS.map(p => (<button key={p.label} className="fp-zone-preset-btn" style={{ borderColor: p.color, color: p.color }} onClick={() => { clearDrawModes(); setDrawZoneMode({ label: p.label, color: p.color }) }}>{p.label}</button>))}
+                  </div>
+                  {drawZoneMode && (
+                    <div className="fp-draw-hint" style={{ borderColor: drawZoneMode.color }}>
+                      <span style={{ color: drawZoneMode.color }}>Dessin : <b>{drawZoneMode.label}</b></span>
+                      <button className="btn btn-xs btn-ghost" onClick={() => setDrawZoneMode(null)}>Annuler</button>
                     </div>
                   )}
-                </div>
-
-                {/* NUMÃ‰ROTATION (instance) */}
-                <div className="fp-section">
-                  <SectionHeader sKey="numbering" title="NumÃ©rotation" icon="ðŸ”¢" />
-                  {openSections.numbering && (
-                    <div className="fp-section-body space-y-3">
-                      {selectedTableIds.length > 0 ? (
-                        <div>
-                          <div className="fp-section-label">RenumÃ©roter ({selectedTableIds.length} table{selectedTableIds.length > 1 ? 's' : ''})</div>
-                          <div className="flex gap-2 mt-1">
-                            <input className="input input-sm w-24" value={renumberPrefix} onChange={(e) => setRenumberPrefix(e.target.value)} placeholder="PrÃ©fixe" />
-                            <input className="input input-sm w-16" type="number" value={renumberStart} onChange={(e) => setRenumberStart(parseInt(e.target.value) || 1)} />
-                            <button className="btn btn-sm btn-outline" onClick={renumberSelectedTables} disabled={!selectedInstance}>âœï¸</button>
-                          </div>
-                        </div>
-                      ) : <p className="text-xs text-gray-400">SÃ©lectionnez des tables sur le plan.</p>}
+                  <p className="fp-group-label mt-2">Zones speciales</p>
+                  <div className="space-y-1 mb-2">
+                    <button className={`btn btn-sm w-full ${drawNoGoMode ? 'btn-error' : 'btn-outline'}`} onClick={() => { setDrawNoGoMode(!drawNoGoMode); setDrawRoundOnlyMode(false); setDrawRectOnlyMode(false); setDrawZoneMode(null) }}>Zone interdite{drawNoGoMode ? ' (actif)' : ''}</button>
+                    <button className={`btn btn-sm w-full ${drawRoundOnlyMode ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setDrawRoundOnlyMode(!drawRoundOnlyMode); setDrawNoGoMode(false); setDrawRectOnlyMode(false); setDrawZoneMode(null) }}>Rondes seul.{drawRoundOnlyMode ? ' (actif)' : ''}</button>
+                    <button className={`btn btn-sm w-full ${drawRectOnlyMode ? 'btn-success' : 'btn-outline'}`} onClick={() => { setDrawRectOnlyMode(!drawRectOnlyMode); setDrawNoGoMode(false); setDrawRoundOnlyMode(false); setDrawZoneMode(null) }}>Rect seul.{drawRectOnlyMode ? ' (actif)' : ''}</button>
+                  </div>
+                  <div className="fp-divider" />
+                  <p className="fp-group-label">Numerotation</p>
+                  {selectedTableIds.length > 0 ? (
+                    <div className="flex gap-2 mb-2">
+                      <input className="input input-sm flex-1" value={renumberPrefix} onChange={(e) => setRenumberPrefix(e.target.value)} placeholder="Prefixe" />
+                      <input className="input input-sm w-16" type="number" value={renumberStart} onChange={(e) => setRenumberStart(parseInt(e.target.value) || 1)} />
+                      <button className="btn btn-sm btn-outline" onClick={renumberSelectedTables} disabled={!selectedInstance}>OK</button>
                     </div>
-                  )}
+                  ) : <p className="fp-hint mb-2">Selectionnez des tables pour les renuméroter.</p>}
+                  <div className="fp-divider" />
+                  <p className="fp-group-label">Actions</p>
+                  <div className="space-y-1 mb-2">
+                    <button className="btn btn-sm btn-success w-full" onClick={saveInstance} disabled={!selectedInstance}><Save className="w-4 h-4" /> Sauvegarder</button>
+                    <button className="btn btn-sm w-full" onClick={numberTables} disabled={!selectedInstance}>Numeroter</button>
+                    <button className="btn btn-sm w-full" onClick={exportComplete} disabled={!selectedInstance}><Download className="w-4 h-4" /> Exporter PDF</button>
+                    <button className="btn btn-sm btn-outline w-full" onClick={() => setResetViewTick(t => t + 1)}>Recentrer</button>
+                    <button className="btn btn-sm btn-outline w-full" onClick={resetInstanceAction} disabled={!selectedInstance}>Reinitialiser</button>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
+                    Afficher la grille
+                  </label>
                 </div>
+              )}
 
-                {/* AFFICHAGE (instance) */}
-                <div className="fp-section">
-                  <SectionHeader sKey="display" title="Affichage" icon="ðŸ‘" />
-                  {openSections.display && (
-                    <div className="fp-section-body">
-                      <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
-                        <span>Afficher la grille</span>
-                      </label>
-                    </div>
-                  )}
-                </div>
-
-              </>)}
             </div>
           </aside>
         )}
 
-        {/* â”€â”€ Zone canvas â”€â”€ */}
+        {/* Canvas */}
         <main className="fp-canvas-area">
           {uiAlerts.length > 0 && (
             <div className="fp-ui-alerts">
               <div className="flex items-center justify-between mb-1">
-                <span className="font-semibold text-yellow-800 text-sm">âš ï¸ Alertes de placement</span>
+                <span className="font-semibold text-yellow-800 text-sm">Alertes de placement</span>
                 <button className="btn btn-xs btn-outline" onClick={() => setUiAlerts([])}>Effacer</button>
               </div>
               <ul className="list-disc pl-4 text-xs text-yellow-900 space-y-0.5 max-h-24 overflow-auto">
@@ -754,16 +650,13 @@ export default function FloorPlanPage() {
               </ul>
             </div>
           )}
-
           <div className="fp-toast-stack">
             {toasts.map(t => (
               <div key={t.id} className={`fp-toast fp-toast-${t.type}`}>
-                {t.type === 'success' && 'âœ… '}{t.type === 'error' && 'âŒ '}{t.type === 'warning' && 'âš ï¸ '}{t.type === 'info' && 'â„¹ï¸ '}
                 {t.message}
               </div>
             ))}
           </div>
-
           {currentData ? (
             <FloorCanvas
               key={editMode === 'instance' ? (selectedInstance?.id || 'no-instance') : 'template'}
@@ -786,32 +679,32 @@ export default function FloorPlanPage() {
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
               <Layers className="w-12 h-12 opacity-30" />
-              <p className="text-lg font-medium">{editMode === 'instance' ? 'SÃ©lectionnez ou crÃ©ez un service' : 'Plan de base non disponible'}</p>
+              <p className="text-lg font-medium">{editMode === 'instance' ? 'Selectionnez ou creez un service' : 'Plan de base non disponible'}</p>
             </div>
           )}
         </main>
       </div>
 
-      {/* â”€â”€ Modal comparaison â”€â”€ */}
+      {/* Modal comparaison */}
       {showCompareModal && compareResult && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCompareModal(false)}>
           <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">ðŸ”Ž Comparaison placement â†” PDF</h3>
+            <h3 className="text-lg font-bold mb-4">Comparaison placement vs PDF</h3>
             <div className="flex gap-6 text-sm mb-4">
-              <span>ðŸ“‹ RÃ©servations : <b>{compareResult.counts?.reservations || 0}</b></span>
-              <span>ðŸª‘ AssignÃ©es : <b>{compareResult.counts?.assigned_tables || 0}</b></span>
-              <span>âš ï¸ Orphelines : <b>{compareResult.counts?.orphan_assignments || 0}</b></span>
+              <span>Reservations : <b>{compareResult.counts?.reservations || 0}</b></span>
+              <span>Assignees : <b>{compareResult.counts?.assigned_tables || 0}</b></span>
+              <span>Orphelines : <b>{compareResult.counts?.orphan_assignments || 0}</b></span>
             </div>
             {(compareResult.reservations || []).filter((r: any) => !r.coverage_ok || r.assigned_tables_count === 0).length > 0 && (
               <div>
-                <div className="font-semibold mb-2 text-sm">RÃ©servations problÃ©matiques</div>
+                <div className="font-semibold mb-2 text-sm">Reservations problematiques</div>
                 <table className="table w-full text-xs">
-                  <thead><tr><th>Heure</th><th>Client</th><th>Pax</th><th>AssignÃ©</th><th>Tables</th></tr></thead>
+                  <thead><tr><th>Heure</th><th>Client</th><th>Pax</th><th>Assigne</th><th>Tables</th></tr></thead>
                   <tbody>
                     {(compareResult.reservations || []).filter((r: any) => !r.coverage_ok || r.assigned_tables_count === 0).map((r: any) => (
                       <tr key={r.id} className={!r.coverage_ok ? 'bg-red-50' : 'bg-yellow-50'}>
                         <td>{r.arrival_time}</td><td className="font-medium">{r.client_name}</td><td>{r.pax}</td><td>{r.assigned_pax}</td>
-                        <td>{r.labels?.length ? r.labels.join(', ') : <span className="text-gray-400">â€”</span>}</td>
+                        <td>{r.labels?.length ? r.labels.join(', ') : <span className="text-gray-400">—</span>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -823,18 +716,18 @@ export default function FloorPlanPage() {
         </div>
       )}
 
-      {/* â”€â”€ Modal crÃ©ation service â”€â”€ */}
+      {/* Modal creation service */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCreateModal(false)}>
           <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">CrÃ©er un service</h3>
+            <h3 className="text-lg font-bold mb-4">Creer un service</h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Date du service</label>
                 <input type="date" className="input w-full" value={newInstanceDate} onChange={(e) => setNewInstanceDate(e.target.value)} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">PÃ©riode</label>
+                <label className="block text-sm font-medium mb-1">Periode</label>
                 <select className="input w-full" value={newInstanceLabel} onChange={(e) => setNewInstanceLabel(e.target.value)}>
                   <option value="lunch">Midi</option>
                   <option value="dinner">Soir</option>
@@ -843,7 +736,7 @@ export default function FloorPlanPage() {
               </div>
               <div className="flex gap-2 justify-end">
                 <button className="btn btn-outline" onClick={() => setShowCreateModal(false)}>Annuler</button>
-                <button className="btn btn-primary" onClick={createInstance}>CrÃ©er</button>
+                <button className="btn btn-primary" onClick={createInstance}>Creer</button>
               </div>
             </div>
           </div>
@@ -852,3 +745,4 @@ export default function FloorPlanPage() {
     </div>
   )
 }
+
