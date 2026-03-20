@@ -345,8 +345,8 @@ def delete_reservation(reservation_id: uuid.UUID, session: Session = Depends(get
     res = session.get(Reservation, reservation_id)
     if not res:
         raise HTTPException(404, "Reservation not found")
-    session.delete(res)
     session.exec(delete(ReservationItem).where(ReservationItem.reservation_id == res.id))
+    session.delete(res)
     session.commit()
     return {"ok": True}
 
