@@ -27,7 +27,7 @@ export default function App() {
             <History className="w-4 h-4"/> Passées
           </NavLink>
           <NavLink to="/incidents" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-            <AlertTriangle className="w-4 h-4"/> Incidents
+            <AlertTriangle className="w-4 h-4"/> Plaintes
           </NavLink>
           <NavLink to="/salle" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             Salle
