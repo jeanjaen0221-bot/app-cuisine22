@@ -28,6 +28,28 @@ export type Reservation = {
 
 export type ReservationCreate = Omit<Reservation, 'id' | 'created_at' | 'updated_at' | 'last_pdf_exported_at'>
 
+
+export type IncidentSeverity = 'Faible' | 'Moyen' | 'Élevé'
+
+export type IncidentReport = {
+  id: UUID
+  created_at: string
+  updated_at: string
+  date: string
+  heure: string
+  lieu?: string | null
+  employes?: string | null
+  client?: string | null
+  recit_brut?: string | null
+  contexte?: string | null
+  description_incident?: string | null
+  reaction_personnel?: string | null
+  consequences?: string | null
+  mesures_prises?: string | null
+  observations?: string | null
+  gravite: IncidentSeverity
+}
+
 export type MenuItem = {
   id: UUID
   name: string

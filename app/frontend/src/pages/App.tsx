@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink } from 'react-router-dom'
-import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart, Building2 } from 'lucide-react'
+import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart, Building2, AlertTriangle } from 'lucide-react'
 import NotesWidget from '../components/NotesWidget'
 import Home from './Home'
 import EditReservation from './EditReservation'
@@ -11,6 +11,8 @@ import OrdersListPage from './OrdersListPage'
 import OrderDetailPage from './OrderDetailPage'
 import SuppliersPage from './SuppliersPage'
 import FloorPlanPage from './FloorPlanPage'
+import IncidentsPage from './IncidentsPage'
+import EditIncident from './EditIncident'
 
 export default function App() {
   return (
@@ -23,6 +25,9 @@ export default function App() {
           </NavLink>
           <NavLink to="/past" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <History className="w-4 h-4"/> Passées
+          </NavLink>
+          <NavLink to="/incidents" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+            <AlertTriangle className="w-4 h-4"/> Incidents
           </NavLink>
           <NavLink to="/salle" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             Salle
@@ -48,9 +53,12 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/past" element={<PastReservations />} />
+          <Route path="/incidents" element={<IncidentsPage />} />
           <Route path="/salle" element={<FloorPlanPage />} />
           <Route path="/reservation/new" element={<EditReservation />} />
           <Route path="/reservation/:id" element={<EditReservation />} />
+          <Route path="/incident/new" element={<EditIncident />} />
+          <Route path="/incident/:id" element={<EditIncident />} />
           <Route path="/menu" element={<MenuPage />} />
           <Route path="/commande" element={<CommandePage />} />
           <Route path="/achats" element={<OrdersListPage />} />

@@ -298,6 +298,72 @@ class BillingInfoRead(SQLModel):
     updated_at: datetime
 
 
+class IncidentSeverity(str, Enum):
+    faible = "Faible"
+    moyen = "Moyen"
+    eleve = "Élevé"
+
+
+class IncidentReportBase(SQLModel):
+    date: date
+    heure: time
+    lieu: Optional[str] = None
+    employes: Optional[str] = None
+    client: Optional[str] = None
+    recit_brut: Optional[str] = None
+    contexte: Optional[str] = None
+    description_incident: Optional[str] = None
+    reaction_personnel: Optional[str] = None
+    consequences: Optional[str] = None
+    mesures_prises: Optional[str] = None
+    observations: Optional[str] = None
+    gravite: IncidentSeverity = IncidentSeverity.faible
+
+
+class IncidentReport(IncidentReportBase, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class IncidentReportCreateIn(SQLModel):
+    date: str
+    heure: str
+    lieu: Optional[str] = None
+    employes: Optional[str] = None
+    client: Optional[str] = None
+    recit_brut: Optional[str] = None
+    contexte: Optional[str] = None
+    description_incident: Optional[str] = None
+    reaction_personnel: Optional[str] = None
+    consequences: Optional[str] = None
+    mesures_prises: Optional[str] = None
+    observations: Optional[str] = None
+    gravite: Optional[IncidentSeverity] = None
+
+
+class IncidentReportUpdate(SQLModel):
+    date: Optional[str] = None
+    heure: Optional[str] = None
+    lieu: Optional[str] = None
+    employes: Optional[str] = None
+    client: Optional[str] = None
+    recit_brut: Optional[str] = None
+    contexte: Optional[str] = None
+    description_incident: Optional[str] = None
+    reaction_personnel: Optional[str] = None
+    consequences: Optional[str] = None
+    mesures_prises: Optional[str] = None
+    observations: Optional[str] = None
+    gravite: Optional[IncidentSeverity] = None
+
+
+class IncidentReportRead(IncidentReportBase):
+    id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
 # --- Suppliers & Purchasing ---
 class Supplier(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)

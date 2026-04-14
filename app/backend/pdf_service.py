@@ -8,7 +8,7 @@ def _reservation_filename_variant(reservation: Reservation, variant: str) -> str
 
 import os
 from datetime import date
-from typing import List
+from typing import List, Optional
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -18,7 +18,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.platypus.flowables import HRFlowable
 from reportlab.lib.units import cm
 
-from .models import Reservation, ReservationItem, BillingInfo
+from .models import Reservation, ReservationItem, BillingInfo, IncidentReport
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_DIR = os.getenv("PDF_DIR") or os.path.abspath(os.path.join(BASE_DIR, "../generated_pdfs"))
@@ -46,6 +46,62 @@ def _day_filename(d: date) -> str:
 def _invoice_filename(reservation: Reservation) -> str:
     safe_client = str(reservation.client_name).replace(" ", "_")
     return os.path.join(PDF_DIR, f"facture_{reservation.service_date}_{safe_client}_{reservation.id}.pdf")
+
+
+def _incident_filename(incident: IncidentReport) -> str:
+    safe_client = str(getattr(incident, "client", "") or "client").replace(" ", "_")
+    return os.path.join(PDF_DIR, f"incident_{incident.date}_{safe_client}_{incident.id}.pdf")
+
+
+def generate_incident_report_pdf(incident: IncidentReport) -> str:
+    filename = _incident_filename(incident)
+    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=54)
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="Section", fontSize=12, leading=14, spaceBefore=6, spaceAfter=4, textColor=colors.HexColor("#111111")))
+    styles.add(ParagraphStyle(name="Meta", fontSize=10, leading=13))
+    styles.add(ParagraphStyle(name="TitleBar", parent=styles['Title'], textColor=colors.white, backColor=colors.HexColor('#111827'), leading=22, spaceAfter=6))
+    story = []
+
+    title = f"Rapport d'incident – {getattr(incident, 'client', None) or 'Client'} – {_format_date_fr(incident.date)}"
+    story.append(Paragraph(title, styles['TitleBar']))
+    story.append(Spacer(1, 6))
+    story.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#60a5fa')))
+    story.append(Spacer(1, 10))
+
+    meta_data = [
+        [Paragraph("Date", styles['Meta']), Paragraph(str(incident.date), styles['Meta'])],
+        [Paragraph("Heure", styles['Meta']), Paragraph(str(incident.heure)[:5], styles['Meta'])],
+        [Paragraph("Lieu", styles['Meta']), Paragraph(str(getattr(incident, 'lieu', None) or '-'), styles['Meta'])],
+        [Paragraph("Employé(s)", styles['Meta']), Paragraph(str(getattr(incident, 'employes', None) or '-'), styles['Meta'])],
+        [Paragraph("Client", styles['Meta']), Paragraph(str(getattr(incident, 'client', None) or '-'), styles['Meta'])],
+        [Paragraph("Gravité", styles['Meta']), Paragraph(str(getattr(incident, 'gravite', None) or '-'), styles['Meta'])],
+    ]
+    meta_tbl = Table(meta_data, colWidths=[110, None])
+    meta_tbl.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('TEXTCOLOR', (0,0), (0,-1), colors.HexColor('#374151')),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f9fafb')),
+    ]))
+    story.append(meta_tbl)
+    story.append(Spacer(1, 12))
+
+    def section(label: str, value: Optional[str]):
+        story.append(Paragraph(f"<b>{label}</b>", styles['Section']))
+        story.append(Paragraph(str(value or "-"), styles['Meta']))
+        story.append(Spacer(1, 8))
+
+    section("Récit brut", getattr(incident, 'recit_brut', None))
+    section("Contexte", getattr(incident, 'contexte', None))
+    section("Description de l'incident", getattr(incident, 'description_incident', None))
+    section("Réaction du personnel", getattr(incident, 'reaction_personnel', None))
+    section("Conséquences", getattr(incident, 'consequences', None))
+    section("Mesures prises", getattr(incident, 'mesures_prises', None))
+    section("Observations", getattr(incident, 'observations', None))
+
+    doc.build(story)
+    return filename
 
 
 def _split_items(items: List[ReservationItem]):
