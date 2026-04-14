@@ -176,15 +176,26 @@ def _extract_json(text: str) -> Dict[str, Any]:
 
 @router.post("/ai-fill")
 def ai_fill(payload: Dict[str, Any]):
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise HTTPException(400, "OPENAI_API_KEY manquant côté serveur")
+    provider = (os.getenv("AI_PROVIDER") or "openai").strip().lower()
+    if provider not in ("openai", "groq"):
+        provider = "openai"
+
+    if provider == "groq":
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise HTTPException(400, "GROQ_API_KEY manquant côté serveur")
+        model = os.getenv("GROQ_MODEL") or "llama-3.1-70b-versatile"
+        url = os.getenv("GROQ_BASE_URL") or "https://api.groq.com/openai/v1/chat/completions"
+    else:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise HTTPException(400, "OPENAI_API_KEY manquant côté serveur")
+        model = os.getenv("OPENAI_MODEL") or "gpt-4o-mini"
+        url = os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1/chat/completions"
 
     recit = str(payload.get("recit_brut") or "").strip()
     if not recit:
         raise HTTPException(400, "recit_brut est requis")
-
-    model = os.getenv("OPENAI_MODEL") or "gpt-4o-mini"
 
     system = (
         "Tu es un assistant qui transforme un récit libre d'incident client en fiche structurée. "
@@ -202,7 +213,7 @@ def ai_fill(payload: Dict[str, Any]):
 
     try:
         resp = requests.post(
-            "https://api.openai.com/v1/chat/completions",
+            url,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "model": model,
@@ -215,10 +226,24 @@ def ai_fill(payload: Dict[str, Any]):
             timeout=60,
         )
     except Exception as e:
-        raise HTTPException(502, f"Erreur appel OpenAI: {e}")
+        raise HTTPException(502, f"Erreur appel IA ({provider}): {e}")
 
     if resp.status_code >= 400:
-        raise HTTPException(resp.status_code, f"OpenAI API error: {resp.text}")
+        msg = resp.text
+        try:
+            body = resp.json() or {}
+            err = body.get("error") or {}
+            code = err.get("code")
+            etype = err.get("type")
+            emsg = err.get("message")
+            if code or etype or emsg:
+                msg = f"{code or etype or 'error'}: {emsg or resp.text}"
+        except Exception:
+            pass
+
+        if provider == "openai" and ("insufficient_quota" in msg or "exceeded your current quota" in msg.lower()):
+            raise HTTPException(resp.status_code, "Quota OpenAI dépassé. Configure Groq (AI_PROVIDER=groq + GROQ_API_KEY) ou vérifie ton plan OpenAI.")
+        raise HTTPException(resp.status_code, f"IA API error ({provider}): {msg}")
 
     data = resp.json() or {}
     content = (
