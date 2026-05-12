@@ -24,6 +24,7 @@ from ..models import (
     BillingInfoCreate,
     BillingInfoRead,
     BillingInfoUpdate,
+    InvoiceSupplement,
 )
 from ..pdf_service import (
     generate_reservation_pdf,
@@ -509,5 +510,10 @@ def export_invoice_pdf(reservation_id: uuid.UUID, session: Session = Depends(get
     billing = session.get(BillingInfo, reservation_id)
     if not billing:
         raise HTTPException(404, "Billing not found")
-    path = generate_invoice_pdf(res, items, billing)
+    supplements = session.exec(
+        select(InvoiceSupplement)
+        .where(InvoiceSupplement.reservation_id == reservation_id)
+        .order_by(InvoiceSupplement.sort_order, InvoiceSupplement.created_at)
+    ).all()
+    path = generate_invoice_pdf(res, items, billing, supplements)
     return FileResponse(path, filename=os.path.basename(path), media_type="application/pdf")

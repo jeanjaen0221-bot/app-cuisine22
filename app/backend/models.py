@@ -298,6 +298,62 @@ class BillingInfoRead(SQLModel):
     updated_at: datetime
 
 
+# Supplement presets — reusable quick-add library
+class SupplementPreset(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    name: str
+    default_quantity: int = 1
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SupplementPresetCreate(SQLModel):
+    name: str
+    default_quantity: int = 1
+
+
+class SupplementPresetRead(SQLModel):
+    id: uuid.UUID
+    name: str
+    default_quantity: int
+    created_at: datetime
+
+
+class SupplementPresetUpdate(SQLModel):
+    name: Optional[str] = None
+    default_quantity: Optional[int] = None
+
+
+# Invoice supplements — per-reservation line items for the invoice
+class InvoiceSupplement(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    reservation_id: uuid.UUID = Field(foreign_key="reservation.id", index=True)
+    description: str
+    quantity: int = 1
+    sort_order: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InvoiceSupplementCreate(SQLModel):
+    description: str
+    quantity: int = 1
+    sort_order: int = 0
+
+
+class InvoiceSupplementRead(SQLModel):
+    id: uuid.UUID
+    reservation_id: uuid.UUID
+    description: str
+    quantity: int
+    sort_order: int
+    created_at: datetime
+
+
+class InvoiceSupplementUpdate(SQLModel):
+    description: Optional[str] = None
+    quantity: Optional[int] = None
+    sort_order: Optional[int] = None
+
+
 class IncidentSeverity(str, Enum):
     faible = "Faible"
     moyen = "Moyen"

@@ -18,7 +18,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.platypus.flowables import HRFlowable
 from reportlab.lib.units import cm
 
-from .models import Reservation, ReservationItem, BillingInfo, IncidentReport
+from .models import Reservation, ReservationItem, BillingInfo, IncidentReport, InvoiceSupplement
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_DIR = os.getenv("PDF_DIR") or os.path.abspath(os.path.join(BASE_DIR, "../generated_pdfs"))
@@ -1126,8 +1126,29 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
     return filename
 
 
-def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem], billing: BillingInfo) -> str:
+def _deduce_formula(items: List[ReservationItem]) -> str:
+    """Deduce the menu formula (2 or 3 services) from reservation items."""
+    def norm(s: str) -> str:
+        return s.lower().strip().replace("é", "e").replace("e", "e")
+    types = {norm(i.type) for i in items}
+    has_entree = bool(types & {"entree", "entrees"})
+    has_plat = bool(types & {"plat", "plats"})
+    has_dessert = bool(types & {"dessert", "desserts"})
+    if has_entree and has_plat and has_dessert:
+        return "3 services (Entrée - Plat - Dessert)"
+    if has_entree and has_plat:
+        return "2 services (Entrée - Plat)"
+    if has_plat and has_dessert:
+        return "2 services (Plat - Dessert)"
+    if has_plat:
+        return "1 service (Plat)"
+    return "-"
+
+
+def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem], billing: BillingInfo, supplements: Optional[List[InvoiceSupplement]] = None) -> str:
     filename = _invoice_filename(reservation)
+    if supplements is None:
+        supplements = []
 
     doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=48 + 5*cm, bottomMargin=48)
     styles = getSampleStyleSheet()
@@ -1175,46 +1196,51 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
     story.append(addr_tbl)
     story.append(Spacer(1, 16))
 
-    # Reservation meta
+    # Reservation summary (formula deduced, no dish list)
+    formula = _deduce_formula(items)
     meta_rows = [
-        [Paragraph("Date du service", styles['Meta']), Paragraph(_format_date_fr(reservation.service_date), styles['Meta'])],
-        [Paragraph("Heure d’arrivée", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],
-        [Paragraph("Couverts", styles['Meta']), Paragraph(str(reservation.pax), styles['Meta'])],
-        [Paragraph("Formule boisson", styles['Meta']), Paragraph(str(reservation.drink_formula or '-'), styles['Meta'])],
+        [Paragraph("<b>Date du service</b>", styles['Meta']), Paragraph(_format_date_fr(reservation.service_date), styles['Meta'])],
+        [Paragraph("<b>Heure d'arrivée</b>", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],
+        [Paragraph("<b>Nombre de pax</b>", styles['Meta']), Paragraph(str(reservation.pax), styles['Meta'])],
+        [Paragraph("<b>Formule repas</b>", styles['Meta']), Paragraph(formula, styles['Meta'])],
+        [Paragraph("<b>Formule boisson</b>", styles['Meta']), Paragraph(str(reservation.drink_formula or '-'), styles['Meta'])],
     ]
-    meta_tbl = Table(meta_rows, colWidths=[120, None])
+    meta_tbl = Table(meta_rows, colWidths=[160, None])
     meta_tbl.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f0f9ff')),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 6),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.white, colors.HexColor('#f9fafb')]),
     ]))
     story.append(meta_tbl)
     story.append(Spacer(1, 14))
 
-    # Items table listing (no prices or VAT)
-    data = [[
-        Paragraph('<b>Qté</b>', styles['Meta']),
-        Paragraph('<b>Description</b>', styles['Meta']),
-    ]]
-    for it in items:
-        desc = it.name
-        if getattr(it, 'comment', None):
-            safe_c = str(it.comment)
-            desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
-        data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
-    items_tbl = Table(data, colWidths=[50, None])
-    items_tbl.setStyle(TableStyle([
-        ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#111827')),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('ALIGN', (0,1), (0,-1), 'CENTER'),
-        ('LEFTPADDING', (0,0), (-1,-1), 6),
-        ('RIGHTPADDING', (0,0), (-1,-1), 6),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f9fafb')]),
-    ]))
-    story.append(items_tbl)
-    story.append(Spacer(1, 14))
+    # Supplements table (if any)
+    if supplements:
+        story.append(Paragraph('<b>Suppléments</b>', styles['H2']))
+        sup_data = [
+            [Paragraph('<b>Description</b>', styles['Meta']), Paragraph('<b>Qté</b>', styles['Meta'])],
+        ]
+        for s in supplements:
+            sup_data.append([Paragraph(str(s.description), styles['Meta']), Paragraph(str(s.quantity), styles['Meta'])])
+        sup_tbl = Table(sup_data, colWidths=[None, 60])
+        sup_tbl.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#111827')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('ALIGN', (1,1), (1,-1), 'CENTER'),
+            ('LEFTPADDING', (0,0), (-1,-1), 6),
+            ('RIGHTPADDING', (0,0), (-1,-1), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f9fafb')]),
+        ]))
+        story.append(sup_tbl)
+        story.append(Spacer(1, 14))
 
     # Notes / Payment terms
     if billing.payment_terms or billing.notes:

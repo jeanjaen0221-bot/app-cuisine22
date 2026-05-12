@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink } from 'react-router-dom'
-import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart, Building2, AlertTriangle } from 'lucide-react'
+import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart, Building2, AlertTriangle, Receipt } from 'lucide-react'
 import NotesWidget from '../components/NotesWidget'
 import Home from './Home'
 import EditReservation from './EditReservation'
@@ -13,6 +13,7 @@ import SuppliersPage from './SuppliersPage'
 import FloorPlanPage from './FloorPlanPage'
 import IncidentsPage from './IncidentsPage'
 import EditIncident from './EditIncident'
+import FacturationPage from './FacturationPage'
 
 export default function App() {
   return (
@@ -44,6 +45,9 @@ export default function App() {
           <NavLink to="/fournisseurs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <Building2 className="w-4 h-4"/> Fournisseurs
           </NavLink>
+          <NavLink to="/facturation" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+            <Receipt className="w-4 h-4"/> Facturation
+          </NavLink>
           <NavLink to="/settings" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <SettingsIcon className="w-4 h-4"/> Paramètres
           </NavLink>
@@ -65,6 +69,7 @@ export default function App() {
           <Route path="/achats/:id" element={<OrderDetailPage />} />
           <Route path="/fournisseurs" element={<SuppliersPage />} />
           <Route path="/settings" element={<ZenchefSettings />} />
+          <Route path="/facturation" element={<FacturationPage />} />
         </Routes>
         <NotesWidget />
       </main>
