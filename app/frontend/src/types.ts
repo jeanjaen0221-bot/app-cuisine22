@@ -2,7 +2,7 @@ export type UUID = string
 
 export type ReservationItem = {
   id?: UUID
-  type: 'entrée' | 'plat' | 'dessert' | string
+  type: 'entrée' | 'plat' | 'dessert' | 'supplément' | string
   name: string
   quantity: number
   comment?: string

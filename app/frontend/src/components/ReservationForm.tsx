@@ -19,6 +19,7 @@ import {
   Circle,
   X,
   ChevronDown,
+  Package,
 } from 'lucide-react';
 
 const TIME_PRESETS = ['12:00', '12:30', '13:00', '13:30', '19:30', '20:00']
@@ -335,8 +336,12 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     
     setErrs(errs);
     
-    // Vérifier les erreurs sur les articles (ignorer les lignes vides)
-    const effective = items.filter(it => (it.name || '').trim() !== '' || (it.quantity || 0) > 0);
+    // Vérifier les erreurs sur les articles (ignorer les lignes vides et les suppléments)
+    const _nt = (t: string) => t.toLowerCase().replace('é', 'e')
+    const effective = items.filter(it => {
+      const t = _nt(it.type || '')
+      return ((it.name || '').trim() !== '' || (it.quantity || 0) > 0) && t !== 'supplement' && t !== 'supplements'
+    });
     if (effective.length === 0) {
       setItemsError('Veuillez ajouter au moins un plat');
       return false;
@@ -468,7 +473,22 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
   }
 
   const activeAllergenOptions = allergens.map(k => allergenOptions.find(a => a.key === k) || { key: k, label: k })
-  const effectiveItems = items.filter(it => (it.name || '').trim() !== '' || (it.quantity || 0) > 0)
+
+  const _normType = (t: string) => t.toLowerCase().replace('é', 'e')
+  const supplementItems = useMemo(() => {
+    const result: { item: ReservationItem; idx: number }[] = []
+    items.forEach((it, idx) => {
+      const t = _normType(it.type || '')
+      if (t === 'supplement' || t === 'supplements') result.push({ item: it, idx })
+    })
+    return result
+  }, [items])
+
+  const effectiveItems = items.filter(it => {
+    const t = _normType(it.type || '')
+    return ((it.name || '').trim() !== '' || (it.quantity || 0) > 0) && t !== 'supplement' && t !== 'supplements'
+  })
+
   const completionChecks = [
     { label: 'Nom du client', ok: Boolean(client_name.trim()) },
     { label: 'Date de service', ok: Boolean(service_date) },
@@ -830,6 +850,75 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
               </div>
             </div>
 
+            {/* ══ Card 4 : Suppléments hors menu ══ */}
+            <div className="card">
+              <div className="card-header">
+                <h2 className="text-lg font-medium flex items-center gap-2">
+                  <Package className="w-4 h-4 text-gray-500" />
+                  Suppléments hors menu
+                </h2>
+                <span className="text-xs text-gray-400">(facultatif)</span>
+              </div>
+              <div className="card-body space-y-2">
+                {supplementItems.length === 0 && (
+                  <p className="text-sm text-gray-400 text-center py-3">Aucun supplément ajouté</p>
+                )}
+                {supplementItems.map(({ item, idx }) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input
+                      className="input flex-1 text-sm py-1"
+                      placeholder="Description du supplément"
+                      value={item.name}
+                      onChange={e => updateItem(idx, { name: e.target.value })}
+                    />
+                    <div className="flex items-center shrink-0">
+                      <button
+                        type="button"
+                        className="btn btn-outline rounded-r-none px-2 py-1 border-r-0"
+                        onClick={() => updateItem(idx, { quantity: Math.max(1, item.quantity - 1) })}
+                        aria-label="Diminuer"
+                      >
+                        <Minus className="w-3 h-3" />
+                      </button>
+                      <input
+                        type="text"
+                        className="input text-center rounded-none w-10 py-1 text-sm"
+                        value={String(item.quantity)}
+                        onChange={e => {
+                          const v = e.target.value
+                          if (/^\d*$/.test(v)) updateItem(idx, { quantity: v === '' ? 1 : parseInt(v, 10) })
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline rounded-l-none px-2 py-1 border-l-0"
+                        onClick={() => updateItem(idx, { quantity: item.quantity + 1 })}
+                        aria-label="Augmenter"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline text-red-500 border-red-200 hover:bg-red-50 px-1.5 shrink-0"
+                      onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}
+                      aria-label="Supprimer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline w-full text-gray-500"
+                  onClick={() => setItems(prev => [...prev, { type: 'supplément', name: '', quantity: 1 }])}
+                >
+                  <Plus className="w-4 h-4" />
+                  Ajouter un supplément
+                </button>
+              </div>
+            </div>
+
           </form>
         </div>
 
@@ -925,6 +1014,22 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
                     <PaxBadge label="E" count={totalsByType.entree} pax={pax} />
                     <PaxBadge label="P" count={totalsByType.plat} pax={pax} />
                     <PaxBadge label="D" count={totalsByType.dessert} pax={pax} />
+                  </div>
+                </div>
+              )}
+
+              {/* Suppléments hors menu */}
+              {supplementItems.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">Suppléments</p>
+                  <div className="space-y-1">
+                    {supplementItems.map(({ item, idx }) => (
+                      <div key={idx} className="flex items-center justify-between gap-2">
+                        <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-purple-100 text-purple-700">S</span>
+                        <span className="flex-1 text-gray-700 text-xs truncate">{item.name || <span className="italic text-gray-400">—</span>}</span>
+                        <span className="text-xs font-semibold text-gray-500">×{item.quantity}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

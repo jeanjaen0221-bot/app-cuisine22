@@ -110,7 +110,8 @@ def _split_items(items: List[ReservationItem]):
     entrees = [i for i in items if norm(i.type) in ["entree", "entrees"]]
     plats = [i for i in items if norm(i.type) in ["plat", "plats"]]
     desserts = [i for i in items if norm(i.type) in ["dessert", "desserts"]]
-    return entrees, plats, desserts
+    supplements = [i for i in items if norm(i.type) in ["supplement", "supplements"]]
+    return entrees, plats, desserts, supplements
 
 
 def _find_stamp_path() -> str | None:
@@ -309,6 +310,8 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
     section("Entrées :", entrees)
     section("Plats :", plats)
     section("Desserts :", desserts)
+    if supplements:
+        section("Suppléments hors menu :", supplements)
 
     story.append(Paragraph("<b>Formule boissons :</b>", styles['Section']))
     drink_text = reservation.drink_formula or "-"
@@ -451,7 +454,7 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
     styles.add(ParagraphStyle(name="Meta", fontSize=10, leading=13))
     styles.add(ParagraphStyle(name="TitleBar", parent=styles['Title'], textColor=colors.white, backColor=colors.HexColor('#111827'), leading=22, spaceAfter=6))
 
-    entrees, plats, desserts = _split_items(items)
+    entrees, plats, desserts, supplements = _split_items(items)
 
     def salle_page_story():
         s: list = []
@@ -508,6 +511,8 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
         section("Entrées :", entrees)
         section("Plats :", plats)
         section("Desserts :", desserts)
+        if supplements:
+            section("Suppléments hors menu :", supplements)
 
         # Boissons (présent pour salle)
         s.append(Paragraph("<b>Formule boissons :</b>", styles['Section']))
@@ -735,7 +740,7 @@ def generate_reservation_pdf_cuisine(reservation: Reservation, items: List[Reser
     styles.add(ParagraphStyle(name="Meta", fontSize=10, leading=13))
     styles.add(ParagraphStyle(name="TitleBar", parent=styles['Title'], textColor=colors.white, backColor=colors.HexColor('#111827'), leading=22, spaceAfter=6))
 
-    entrees, plats, desserts = _split_items(items)
+    entrees, plats, desserts, supplements = _split_items(items)
 
     def make_page_story():
         page_story: list = []
@@ -790,6 +795,8 @@ def generate_reservation_pdf_cuisine(reservation: Reservation, items: List[Reser
         section("Entrées :", entrees)
         section("Plats :", plats)
         section("Desserts :", desserts)
+        if supplements:
+            section("Suppléments hors menu :", supplements)
 
         page_story.append(Paragraph("<b>Allergènes :</b>", styles['Section']))
         alls = _parse_allergens(getattr(reservation, 'allergens', ''))
@@ -867,7 +874,7 @@ def generate_reservation_pdf_salle(reservation: Reservation, items: List[Reserva
     story.append(meta_tbl)
     story.append(Spacer(1, 14))
 
-    entrees, plats, desserts = _split_items(items)
+    entrees, plats, desserts, supplements = _split_items(items)
 
     def section(title: str, collection: List[ReservationItem]):
         story.append(Paragraph(f"<b>{title}</b>", styles['Section']))
@@ -900,6 +907,8 @@ def generate_reservation_pdf_salle(reservation: Reservation, items: List[Reserva
     section("Entrées :", entrees)
     section("Plats :", plats)
     section("Desserts :", desserts)
+    if supplements:
+        section("Suppléments hors menu :", supplements)
 
     # Drink formula (present in salle)
     story.append(Paragraph("<b>Formule boissons :</b>", styles['Section']))
@@ -1041,10 +1050,12 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
         story.append(meta_tbl)
         story.append(Spacer(1, 14))
 
-        entrees, plats, desserts = _split_items(items_by_res.get(str(res.id), []))
+        entrees, plats, desserts, supplements = _split_items(items_by_res.get(str(res.id), []))
         section_builder(story, "Entrées :", entrees)
         section_builder(story, "Plats :", plats)
         section_builder(story, "Desserts :", desserts)
+        if supplements:
+            section_builder(story, "Suppléments hors menu :", supplements)
 
         # Drink formula (same badge style as salle)
         story.append(Paragraph("<b>Formule boissons :</b>", styles['Section']))
@@ -1150,6 +1161,10 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
     if supplements is None:
         supplements = []
 
+    def _norm(s: str) -> str:
+        return s.lower().strip().replace("é", "e")
+    item_supplements = [i for i in items if _norm(i.type) in ["supplement", "supplements"]]
+
     doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=48 + 5*cm, bottomMargin=48)
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="H1", fontSize=18, leading=22, spaceAfter=10))
@@ -1219,12 +1234,14 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
     story.append(meta_tbl)
     story.append(Spacer(1, 14))
 
-    # Supplements table (if any)
-    if supplements:
+    # Supplements table: merge items type='supplément' (from fiche) + InvoiceSupplement records
+    if item_supplements or supplements:
         story.append(Paragraph('<b>Suppléments</b>', styles['H2']))
         sup_data = [
             [Paragraph('<b>Description</b>', styles['Meta']), Paragraph('<b>Qté</b>', styles['Meta'])],
         ]
+        for s in item_supplements:
+            sup_data.append([Paragraph(str(s.name), styles['Meta']), Paragraph(str(s.quantity), styles['Meta'])])
         for s in supplements:
             sup_data.append([Paragraph(str(s.description), styles['Meta']), Paragraph(str(s.quantity), styles['Meta'])])
         sup_tbl = Table(sup_data, colWidths=[None, 60])
