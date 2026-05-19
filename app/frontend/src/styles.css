@@ -2794,6 +2794,72 @@ img, video, canvas, svg { max-width: 100%; }
   border-color: rgba(185,28,28,.4);
 }
 
+/* ── Onglets Fiche / Facturation (EditReservation) ── */
+.res-tab-bar {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem 0;
+  border-bottom: 2px solid #e5e7eb;
+  background: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.res-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6b7280;
+  border: none;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+.res-tab-btn:hover { color: #374151; background: #f9fafb; }
+.res-tab-btn--active {
+  color: var(--primary, #6939a2);
+  border-bottom-color: var(--primary, #6939a2);
+  font-weight: 600;
+}
+
+/* ── BillingPanel layout ── */
+.billing-panel-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 120px);
+}
+.billing-panel-body {
+  flex: 1;
+  padding: 1.5rem;
+  max-width: 860px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+.billing-panel-footer {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(255,255,255,.95);
+  backdrop-filter: blur(4px);
+  border-top: 1px solid #e5e7eb;
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  z-index: 25;
+  box-shadow: 0 -2px 8px rgba(0,0,0,.06);
+}
+
 /* ── Icon-only button ── */
 .btn-icon {
   display: inline-flex;

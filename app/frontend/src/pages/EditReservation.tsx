@@ -1,21 +1,24 @@
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ReservationForm from '../components/ReservationForm'
+import BillingPanel from '../components/BillingPanel'
 import { useEffect, useState } from 'react'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
-import BillingModal from '../components/BillingModal'
-import { ArrowLeft, Copy, FileText, Receipt, Printer } from 'lucide-react'
+import { ArrowLeft, Copy, Receipt, Printer, FileText } from 'lucide-react'
 
 export default function EditReservation() {
   const { id } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const [data, setData] = useState<Reservation | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [billingOpen, setBillingOpen] = useState(false)
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
   const isExisting = !!id && id !== 'new' && uuidRegex.test(id)
+  const [tab, setTab] = useState<'fiche' | 'facturation'>(
+    searchParams.get('tab') === 'facturation' ? 'facturation' : 'fiche'
+  )
 
   useEffect(() => {
     // If not a valid UUID (including 'new' or missing/garbled like 'nov'), treat as new and prefill immediately
@@ -89,9 +92,6 @@ export default function EditReservation() {
           <button className="btn btn-sm btn-outline" onClick={() => fileDownload(`/api/reservations/${id}/pdf`)} title="Télécharger la fiche cuisine">
             <Printer className="w-4 h-4" /> Fiche PDF
           </button>
-          <button className="btn btn-sm btn-outline" onClick={() => fileDownload(`/api/reservations/${id}/invoice-pdf`)} title="Télécharger la facture">
-            <Receipt className="w-4 h-4" /> Facture
-          </button>
         </>
       )}
     </>
@@ -104,23 +104,42 @@ export default function EditReservation() {
           <div className="p-3 rounded-md bg-red-50 border border-red-200 text-red-700">{error}</div>
         </div>
       )}
+
+      {/* ── Onglets (uniquement pour une fiche existante) ── */}
+      {isExisting && (
+        <div className="res-tab-bar">
+          <button
+            className={`res-tab-btn ${tab === 'fiche' ? 'res-tab-btn--active' : ''}`}
+            onClick={() => setTab('fiche')}
+          >
+            <FileText className="w-4 h-4" /> Fiche
+          </button>
+          <button
+            className={`res-tab-btn ${tab === 'facturation' ? 'res-tab-btn--active' : ''}`}
+            onClick={() => setTab('facturation')}
+          >
+            <Receipt className="w-4 h-4" /> Facturation
+          </button>
+        </div>
+      )}
+
+      {/* ── Contenu selon l'onglet ── */}
       {(isExisting && (loading || !data)) ? (
         <div className="container pt-6">
           <div className="card"><div className="card-body text-gray-600">Chargement…</div></div>
         </div>
+      ) : tab === 'facturation' && isExisting && id ? (
+        <BillingPanel reservationId={id} reservation={data} />
       ) : (
         <div key={(data && (data as any).id) || (!isExisting ? 'new' : id)}>
           <ReservationForm
             initial={data || undefined}
             onSubmit={save}
             formId="reservation-form"
-            onOpenBilling={() => setBillingOpen(true)}
+            onOpenBilling={isExisting ? () => setTab('facturation') : undefined}
             navActions={navActions}
           />
         </div>
-      )}
-      {id && id !== 'new' && (
-        <BillingModal reservationId={id} open={billingOpen} onClose={() => setBillingOpen(false)} />
       )}
     </div>
   )
