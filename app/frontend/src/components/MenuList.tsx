@@ -113,7 +113,7 @@ export default function MenuList() {
             <span>Plats: <b>{counts.plat}</b></span>
             <span>Desserts: <b>{counts.dessert}</b></span>
           </div>
-          <button className="btn btn-sm btn-danger w-full sm:w-auto" onClick={clearAll}>Tout supprimer</button>
+          <button className="btn btn-sm btn-outline text-red-600 hover:bg-red-50 w-full sm:w-auto" onClick={clearAll}>Tout supprimer</button>
         </div>
       </div>
 
@@ -154,7 +154,7 @@ export default function MenuList() {
         <div className="controls-hint">Ajout rapide</div>
         <div className="add-stack add-row">
           <div className="add-top">
-            <input className="input input-large" placeholder="Nom du plat" value={name} onChange={e=>setName(e.target.value)} />
+            <input className="input input-large" placeholder="Nom du plat" value={name} onChange={e=>setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }} />
           </div>
           <div className="add-controls">
             <label className="filter-label" htmlFor="add-type">Type</label>

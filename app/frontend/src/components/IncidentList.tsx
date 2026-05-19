@@ -10,6 +10,16 @@ const formatDate = (dateString: string) => {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
+function GravityBadge({ value }: { value?: string }) {
+  const v = (value || '').toLowerCase()
+  const cls = v.includes('élevé') || v.includes('critique') || v === 'eleve'
+    ? 'gravity-badge is-high'
+    : v.includes('moyen')
+    ? 'gravity-badge is-medium'
+    : 'gravity-badge is-low'
+  return <span className={cls}>{value || '—'}</span>
+}
+
 export default function IncidentList() {
   const [rows, setRows] = useState<IncidentReport[]>([])
   const [q, setQ] = useState('')
@@ -72,23 +82,23 @@ export default function IncidentList() {
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="text-gray-600" style={{ padding: '0.75rem' }}>Aucun rapport</td></tr>
+                  <tr><td colSpan={6} className="p-4 text-center text-gray-500">Aucun rapport</td></tr>
                 ) : filtered.map(r => (
                   <tr key={r.id}>
-                    <td style={{ padding: '0.75rem' }}>{formatDate(r.date)}</td>
-                    <td style={{ padding: '0.75rem' }}>{(r.heure || '').slice(0,5)}</td>
-                    <td style={{ padding: '0.75rem' }}>{r.client || '—'}</td>
-                    <td style={{ padding: '0.75rem' }}>{r.lieu || '—'}</td>
-                    <td style={{ padding: '0.75rem' }}>{r.gravite || '—'}</td>
-                    <td style={{ padding: '0.75rem' }} className="text-right">
+                    <td>{formatDate(r.date)}</td>
+                    <td>{(r.heure || '').slice(0,5)}</td>
+                    <td className="font-medium">{r.client || '—'}</td>
+                    <td>{r.lieu || '—'}</td>
+                    <td><GravityBadge value={r.gravite} /></td>
+                    <td className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Link className="btn btn-sm btn-outline" to={`/incident/${r.id}`}>
+                        <Link className="btn btn-sm btn-primary" to={`/incident/${r.id}`}>
                           <Pencil className="w-4 h-4" /> Modifier
                         </Link>
-                        <button className="btn btn-sm btn-outline" onClick={() => window.open(`/api/incidents/${r.id}/pdf`, '_blank')}>
-                          <FileText className="w-4 h-4" /> PDF
+                        <button className="btn btn-sm btn-outline" title="Télécharger le PDF" onClick={() => window.open(`/api/incidents/${r.id}/pdf`, '_blank')}>
+                          <FileText className="w-4 h-4" />
                         </button>
-                        <button className="btn btn-sm btn-outline" onClick={() => del(r.id)}>
+                        <button className="btn btn-sm btn-outline res-delete-btn" title="Supprimer" onClick={() => del(r.id)}>
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
 import BillingModal from '../components/BillingModal'
-import { ArrowLeft, Copy, FileText, Receipt } from 'lucide-react'
+import { ArrowLeft, Copy, FileText, Receipt, Printer } from 'lucide-react'
 
 export default function EditReservation() {
   const { id } = useParams()
@@ -86,11 +86,11 @@ export default function EditReservation() {
           <button className="btn btn-sm btn-outline" onClick={duplicate}>
             <Copy className="w-4 h-4" /> Dupliquer
           </button>
-          <button className="btn btn-sm btn-outline" onClick={() => fileDownload(`/api/reservations/${id}/pdf`)}>
-            <FileText className="w-4 h-4" /> PDF
+          <button className="btn btn-sm btn-outline" onClick={() => fileDownload(`/api/reservations/${id}/pdf`)} title="Télécharger la fiche cuisine">
+            <Printer className="w-4 h-4" /> Fiche PDF
           </button>
-          <button className="btn btn-sm btn-outline" onClick={() => fileDownload(`/api/reservations/${id}/invoice-pdf`)}>
-            <FileText className="w-4 h-4" /> Facture PDF
+          <button className="btn btn-sm btn-outline" onClick={() => fileDownload(`/api/reservations/${id}/invoice-pdf`)} title="Télécharger la facture">
+            <Receipt className="w-4 h-4" /> Facture
           </button>
         </>
       )}

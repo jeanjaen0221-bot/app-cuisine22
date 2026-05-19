@@ -20,6 +20,7 @@ import {
   X,
   ChevronDown,
   Package,
+  Receipt,
 } from 'lucide-react';
 
 const TIME_PRESETS = ['12:00', '12:30', '13:00', '13:30', '19:30', '20:00']
@@ -89,6 +90,18 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
   const [items, setItems] = useState<ReservationItem[]>(initial?.items || [])
   const [openRow, setOpenRow] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        const form = document.getElementById(formId || 'reservation-form') as HTMLFormElement | null
+        form?.requestSubmit()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [formId])
   const [errs, setErrs] = useState<{client?:string,date?:string,pax?:string,time?:string}>({})
   const [itemsError, setItemsError] = useState<string | null>(null)
   const [allergenOptions, setAllergenOptions] = useState<AllergenOption[]>(DEFAULT_ALLERGENS)
@@ -1064,16 +1077,20 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
               </span>
             )}
             {initial?.id && onOpenBilling && (
-              <button type="button" className="btn btn-outline btn-sm" onClick={onOpenBilling}>Facturation</button>
+              <button type="button" className="btn btn-outline btn-sm flex items-center gap-1.5" onClick={onOpenBilling}>
+                <Receipt className="w-3.5 h-3.5" /> Facturation
+              </button>
             )}
             <button
               type="submit"
               form={formId || 'reservation-form'}
               className="btn btn-primary btn-sm disabled:opacity-60"
               disabled={submitting}
+              title="Sauvegarder (Ctrl+S)"
             >
               {submitting ? 'Sauvegarde…' : 'Sauvegarder'}
             </button>
+            <span className="hidden sm:inline text-xs text-gray-400 select-none">Ctrl+S</span>
           </div>
         </div>
       </div>

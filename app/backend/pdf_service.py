@@ -274,7 +274,7 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
     story.append(meta_tbl)
     story.append(Spacer(1, 14))
 
-    entrees, plats, desserts = _split_items(items)
+    entrees, plats, desserts, supplements = _split_items(items)
 
     def section(title: str, collection: List[ReservationItem]):
         story.append(Paragraph(f"<b>{title}</b>", styles['Section']))

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Trash2, Plus, Download, Save, ChevronRight, Receipt, Tag } from 'lucide-react'
+import { Trash2, Plus, Download, Save, ChevronRight, Receipt, Tag, Search } from 'lucide-react'
 import { api, fileDownload } from '../lib/api'
 import type { Reservation, ReservationItem } from '../types'
 
@@ -84,6 +84,17 @@ export default function FacturationPage() {
   const [loading, setLoading] = useState(false)
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's' && selectedId) {
+        e.preventDefault()
+        saveBilling()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedId, billing, billingExists])
 
   // Load reservations list
   useEffect(() => {
@@ -252,12 +263,15 @@ export default function FacturationPage() {
           <span className="font-semibold text-gray-800">Facturation</span>
         </div>
         <div className="p-3 border-b border-gray-100">
-          <input
-            className="input w-full"
-            placeholder="Rechercher client ou date…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              className="input w-full pl-8"
+              placeholder="Rechercher client ou date…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
         </div>
         <div className="facturation-list">
           {filtered.length === 0 && (
@@ -503,12 +517,13 @@ export default function FacturationPage() {
                 <div className="facturation-editor-footer">
                   {billingExists && (
                     <button className="btn btn-outline flex items-center gap-1.5" onClick={downloadPDF}>
-                      <Download className="w-4 h-4" /> Télécharger PDF
+                      <Receipt className="w-4 h-4" /> Télécharger la facture
                     </button>
                   )}
-                  <button className="btn btn-primary flex items-center gap-1.5" onClick={saveBilling} disabled={loading}>
-                    <Save className="w-4 h-4" /> Enregistrer la facture
+                  <button className="btn btn-primary flex items-center gap-1.5" onClick={saveBilling} disabled={loading} title="Enregistrer (Ctrl+S)">
+                    <Save className="w-4 h-4" /> Enregistrer
                   </button>
+                  <span className="text-xs text-gray-400 self-center select-none hidden sm:inline">Ctrl+S</span>
                 </div>
               </div>
             )}

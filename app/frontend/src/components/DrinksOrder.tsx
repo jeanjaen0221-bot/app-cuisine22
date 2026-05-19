@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
+import { List, Plus as PlusIcon, Upload, Layers, RefreshCw } from 'lucide-react'
 import type { Drink, DrinkStock, ReplenishItem, ReplenishOptions, ReplenishResponse } from '../types'
 
 export default function DrinksOrder() {
@@ -468,9 +469,10 @@ export default function DrinksOrder() {
           <span>
             Total: <b>{summary.total}</b>
           </span>
-          <button className="btn btn-sm btn-outline" onClick={resetAll}>
+          <button className="btn btn-sm btn-outline text-red-600 border-red-200 hover:bg-red-50" onClick={resetAll}>
             Tout remettre à 0
           </button>
+          <div className="w-px h-5 bg-gray-200" />
           <button className="btn btn-sm btn-primary" onClick={createOrderFromCounts} disabled={summary.lines === 0}>
             Créer commande
           </button>
@@ -480,20 +482,20 @@ export default function DrinksOrder() {
       <div className="card-body space-y-4">
         <div className="controls-panel">
           <div className="flex items-center gap-2 drinks-tabs-row">
-            <button className={`btn btn-sm ${activeTab === 'liste' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('liste')}>
-              Liste
+            <button className={`btn btn-sm ${activeTab === 'liste' ? 'btn-primary' : 'btn-outline'} inline-flex items-center gap-1.5`} onClick={() => setActiveTab('liste')}>
+              <List className="w-3.5 h-3.5" /> Liste
             </button>
-            <button className={`btn btn-sm ${activeTab === 'ajout' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('ajout')}>
-              Ajouter
+            <button className={`btn btn-sm ${activeTab === 'ajout' ? 'btn-primary' : 'btn-outline'} inline-flex items-center gap-1.5`} onClick={() => setActiveTab('ajout')}>
+              <PlusIcon className="w-3.5 h-3.5" /> Ajouter
             </button>
-            <button className={`btn btn-sm ${activeTab === 'import' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('import')}>
-              Importer
+            <button className={`btn btn-sm ${activeTab === 'import' ? 'btn-primary' : 'btn-outline'} inline-flex items-center gap-1.5`} onClick={() => setActiveTab('import')}>
+              <Upload className="w-3.5 h-3.5" /> Importer
             </button>
-            <button className={`btn btn-sm ${activeTab === 'mass' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('mass')}>
-              Modifier en masse
+            <button className={`btn btn-sm ${activeTab === 'mass' ? 'btn-primary' : 'btn-outline'} inline-flex items-center gap-1.5`} onClick={() => setActiveTab('mass')}>
+              <Layers className="w-3.5 h-3.5" /> Modifier en masse
             </button>
-            <button className={`btn btn-sm ${activeTab === 'reassort' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('reassort')}>
-              Réassort
+            <button className={`btn btn-sm ${activeTab === 'reassort' ? 'btn-primary' : 'btn-outline'} inline-flex items-center gap-1.5`} onClick={() => setActiveTab('reassort')}>
+              <RefreshCw className="w-3.5 h-3.5" /> Réassort
             </button>
           </div>
 
@@ -607,7 +609,7 @@ export default function DrinksOrder() {
             <>
               <div className="controls-hint">Ajout rapide</div>
               <div className="drinks-grid">
-                <input className="input" placeholder="Nom de la boisson" value={name} onChange={(e) => setName(e.target.value)} />
+                <input className="input" placeholder="Nom de la boisson" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); quickAdd() } }} />
                 <input className="input" list="drink-categories" placeholder="Catégorie (ex: vin, bière)" value={category} onChange={(e) => setCategory(e.target.value)} />
                 <input className="input" list="drink-units" placeholder="Unité (ex: bouteille, carton)" value={unit} onChange={(e) => setUnit(e.target.value)} />
                 <button className="btn btn-primary" onClick={quickAdd}>

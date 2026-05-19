@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Receipt } from 'lucide-react'
 import { api, fileDownload } from '../lib/api'
 
 export type BillingInfo = {
@@ -91,19 +92,26 @@ export default function BillingModal({ reservationId, open, onClose }: Props) {
     fileDownload(`/api/reservations/${reservationId}/invoice-pdf`)
   }
 
+  const modalRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save() }
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, form, exists])
+
   if (!open) return null
 
   return (
     <div className="modal-overlay">
-      <div className="card modal-card">
+      <div className="card modal-card" ref={modalRef}>
         <div className="card-header">
           <h3 className="text-lg font-semibold">Facturation</h3>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            {exists && (
-              <button className="btn btn-outline w-full sm:w-auto" onClick={downloadInvoice}>PDF Facture</button>
-            )}
-            <button className="btn w-full sm:w-auto" onClick={onClose}>Fermer</button>
-          </div>
+          <button className="btn btn-sm btn-outline" onClick={onClose}>Fermer</button>
         </div>
         <div className="card-body space-y-3">
           {error && <div className="p-2 rounded bg-red-50 text-red-700 border border-red-200 text-sm">{error}</div>}
@@ -160,8 +168,15 @@ export default function BillingModal({ reservationId, open, onClose }: Props) {
           </div>
         </div>
         <div className="card-footer flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2">
-          {exists && <button className="btn btn-outline w-full sm:w-auto" onClick={downloadInvoice}>PDF Facture</button>}
-          <button className="btn btn-primary w-full sm:w-auto" onClick={save} disabled={loading}>Enregistrer</button>
+          {exists && (
+            <button className="btn btn-outline w-full sm:w-auto flex items-center gap-1.5" onClick={downloadInvoice}>
+              <Receipt className="w-4 h-4" /> PDF Facture
+            </button>
+          )}
+          <button className="btn btn-primary w-full sm:w-auto" onClick={save} disabled={loading} title="Enregistrer (Ctrl+Entrée)">
+            Enregistrer
+          </button>
+          <span className="hidden sm:inline text-xs text-gray-400 self-center select-none">Ctrl+⏎</span>
         </div>
       </div>
     </div>

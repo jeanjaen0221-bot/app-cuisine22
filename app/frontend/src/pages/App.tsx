@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink } from 'react-router-dom'
-import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart, Building2, AlertTriangle, Receipt } from 'lucide-react'
+import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart, Building2, AlertTriangle, Receipt, LayoutGrid, Package } from 'lucide-react'
 import NotesWidget from '../components/NotesWidget'
 import Home from './Home'
 import EditReservation from './EditReservation'
@@ -19,7 +19,7 @@ export default function App() {
   return (
     <div className="app-layout app-theme app-theme-violet">
       <aside className="sidebar">
-        <div className="sidebar-header">FicheCuisineManager</div>
+        <div className="sidebar-header">Fiche Cuisine</div>
         <nav className="sidebar-nav">
           <NavLink to="/" end className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <HomeIcon className="w-4 h-4"/> Fiches
@@ -31,24 +31,25 @@ export default function App() {
             <AlertTriangle className="w-4 h-4"/> Plaintes
           </NavLink>
           <NavLink to="/salle" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-            Salle
+            <LayoutGrid className="w-4 h-4"/> Salle
           </NavLink>
           <NavLink to="/menu" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <UtensilsCrossed className="w-4 h-4"/> Base de plats
           </NavLink>
-          <NavLink to="/commande" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-            <ShoppingCart className="w-4 h-4"/> Commande
-          </NavLink>
-          <NavLink to="/achats" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-            <ShoppingCart className="w-4 h-4"/> Achats
-          </NavLink>
-          <NavLink to="/fournisseurs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-            <Building2 className="w-4 h-4"/> Fournisseurs
-          </NavLink>
           <NavLink to="/facturation" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <Receipt className="w-4 h-4"/> Facturation
           </NavLink>
-          <NavLink to="/settings" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+          <div className="sidebar-sep" />
+          <NavLink to="/commande" className={({isActive}) => `nav-link nav-link-secondary ${isActive ? 'active' : ''}`}>
+            <ShoppingCart className="w-4 h-4"/> Commande
+          </NavLink>
+          <NavLink to="/achats" className={({isActive}) => `nav-link nav-link-secondary ${isActive ? 'active' : ''}`}>
+            <Package className="w-4 h-4"/> Achats
+          </NavLink>
+          <NavLink to="/fournisseurs" className={({isActive}) => `nav-link nav-link-secondary ${isActive ? 'active' : ''}`}>
+            <Building2 className="w-4 h-4"/> Fournisseurs
+          </NavLink>
+          <NavLink to="/settings" className={({isActive}) => `nav-link nav-link-secondary ${isActive ? 'active' : ''}`}>
             <SettingsIcon className="w-4 h-4"/> Paramètres
           </NavLink>
         </nav>

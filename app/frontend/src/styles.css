@@ -2745,3 +2745,80 @@ img, video, canvas, svg { max-width: 100%; }
 .opacity-60 { opacity: 0.6; }
 .pointer-events-none { pointer-events: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+
+/* ── card-static: no hover transform ── */
+.app-theme.app-theme-violet .card-static:hover {
+  transform: none;
+  box-shadow: var(--shadow-s);
+  border-color: var(--border);
+}
+
+/* ── Gravity badges for incident severity ── */
+.gravity-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.gravity-badge.is-low  { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.gravity-badge.is-medium { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+.gravity-badge.is-high { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+
+/* ── Sidebar separator ── */
+.app-theme.app-theme-violet .sidebar-sep {
+  height: 1px;
+  background: rgba(255,255,255,.15);
+  margin: 0.5rem 0.75rem;
+}
+
+/* ── Secondary nav links (smaller, dimmer) ── */
+.app-theme.app-theme-violet .nav-link-secondary {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+.app-theme.app-theme-violet .nav-link-secondary:hover,
+.app-theme.app-theme-violet .nav-link-secondary.active {
+  opacity: 1;
+}
+
+/* ── Delete button on reservation cards (red tint) ── */
+.app-theme.app-theme-violet .res-delete-btn {
+  color: #b91c1c;
+  border-color: rgba(185,28,28,.25);
+}
+.app-theme.app-theme-violet .res-delete-btn:hover {
+  background: #fef2f2;
+  border-color: rgba(185,28,28,.4);
+}
+
+/* ── Icon-only button ── */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+  line-height: 1;
+}
+.btn-icon:hover { background: rgba(105,51,129,.08); }
+
+/* ── Reassort summary bar ── */
+.reassort-summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: rgba(105,51,129,.07);
+  border: 1px solid rgba(105,51,129,.16);
+  border-radius: 10px;
+  font-size: 0.875rem;
+  color: var(--accent, #422052);
+  flex-wrap: wrap;
+}

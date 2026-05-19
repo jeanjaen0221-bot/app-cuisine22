@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
-import { Plus, Printer, Pencil, Filter, Search, User, CalendarDays, Clock, Users, Wine, Trash2 } from 'lucide-react'
+import { Plus, Printer, Pencil, Search, User, CalendarDays, Clock, Users, Wine, Trash2, FileDown } from 'lucide-react'
 
 // Fonction pour formater la date au format français
 const formatDate = (dateString: string) => {
@@ -183,7 +183,7 @@ export default function ReservationList() {
 
   return (
     <div className="space-y-6">
-      <div className="card">
+      <div className="card card-static">
         <div className="card-body">
           <div className="flex flex-wrap gap-2">
             {months.map(m => (
@@ -199,20 +199,19 @@ export default function ReservationList() {
         </div>
       </div>
       {/* Barre de filtres */}
-      <div className="card">
+      <div className="card card-static">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <input className="input w-full sm:w-64" placeholder="Rechercher un client" value={q} onChange={e=>setQ(e.target.value)} />
+            <input className="input w-full sm:w-64" placeholder="Rechercher un client…" value={q} onChange={e=>setQ(e.target.value)} />
             <input type="date" className="input w-full sm:w-48" value={date} onChange={e=>setDate(e.target.value)} />
-            <button className="btn btn-sm btn-outline w-full sm:w-auto" onClick={load}><Filter className="h-4 w-4"/> Filtrer</button>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="flex items-center gap-1" title="Mode d'affichage">
               <button className={`btn btn-sm ${viewMode==='cards'?'btn-primary':'btn-outline'} w-full sm:w-auto`} onClick={()=>setViewMode('cards')}>Cartes</button>
               <button className={`btn btn-sm ${viewMode==='compact'?'btn-primary':'btn-outline'} w-full sm:w-auto`} onClick={()=>setViewMode('compact')}>Liste</button>
             </div>
-            <Link to={date ? `/reservation/new?date=${encodeURIComponent(date)}` : "/reservation/new"} className="btn btn-sm w-full sm:w-auto"><Plus className="h-4 w-4"/> Nouvelle fiche</Link>
-            <button className="btn btn-sm btn-outline w-full sm:w-auto" onClick={() => { if (!date) { alert('Sélectionnez une date'); return } fileDownload(`/api/reservations/day/${date}/pdf`) }}><Printer className="h-4 w-4"/> Export PDF du jour</button>
+            <Link to={date ? `/reservation/new?date=${encodeURIComponent(date)}` : "/reservation/new"} className="btn btn-sm btn-primary w-full sm:w-auto"><Plus className="h-4 w-4"/> Nouvelle fiche</Link>
+            <button className="btn btn-sm btn-outline w-full sm:w-auto" title="Exporter le PDF du jour" onClick={() => { if (!date) { alert('Sélectionnez une date'); return } fileDownload(`/api/reservations/day/${date}/pdf`) }}><Printer className="h-4 w-4"/> PDF du jour</button>
           </div>
         </div>
       </div>
@@ -246,8 +245,8 @@ export default function ReservationList() {
                     const firstNames = r.items.map(i => `${i.quantity}× ${i.name}`).slice(0, 6).join(', ')
                     const pdfOk = r.last_pdf_exported_at && new Date(r.last_pdf_exported_at) >= new Date(r.updated_at)
                     return (
-                      <tr key={r.id}>
-                        <td className="capitalize">{r.client_name}</td>
+                      <tr key={r.id} className="cursor-pointer" onClick={() => window.location.href=`/reservation/${r.id}`}>
+                        <td className="capitalize font-medium">{r.client_name}</td>
                         <td>{formatDate(r.service_date)}</td>
                         <td>{formatTime(r.arrival_time)}</td>
                         <td>{r.pax}</td>
@@ -260,13 +259,13 @@ export default function ReservationList() {
                             )}
                           </div>
                         </td>
-                        <td>
+                        <td onClick={e => e.stopPropagation()}>
                           {pdfOk && (
                             <div className="mb-1"><span className="pdf-badge ok" title={`Exporté le ${new Date(r.last_pdf_exported_at as string).toLocaleString('fr-FR')}`}>PDF à jour</span></div>
                           )}
                           <div className="flex items-center gap-2">
-                            <Link to={`/reservation/${r.id}`} className="btn btn-sm btn-outline"><Pencil className="w-4 h-4"/> Modifier</Link>
-                            <button onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)} className="btn btn-sm btn-outline"><Printer className="w-4 h-4"/> PDF</button>
+                            <Link to={`/reservation/${r.id}`} className="btn btn-sm btn-outline" onClick={e => e.stopPropagation()}><Pencil className="w-4 h-4"/> Modifier</Link>
+                            <button onClick={(e) => { e.stopPropagation(); fileDownload(`/api/reservations/${r.id}/pdf`) }} className="btn btn-sm btn-outline" title="Télécharger la fiche PDF"><Printer className="w-4 h-4"/></button>
                           </div>
                         </td>
                       </tr>
@@ -279,13 +278,20 @@ export default function ReservationList() {
         ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {rows.map(r => (
-            <div key={r.id} className="card card-hoverable reservation-card">
+            <div key={r.id} className="card card-hoverable reservation-card" style={{cursor:'pointer'}} onClick={() => window.location.href=`/reservation/${r.id}`}>
               <div className="card-header">
                 <h3 className="text-lg font-medium flex items-center gap-2 capitalize">
                   <User className="w-4 h-4 text-gray-600" />
                   {r.client_name}
                 </h3>
                 <div className="flex items-center gap-2">
+                  <button
+                    title="Télécharger la fiche PDF"
+                    className="btn btn-sm btn-outline p-1.5"
+                    onClick={e => { e.stopPropagation(); fileDownload(`/api/reservations/${r.id}/pdf`) }}
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                  </button>
                   {r.last_pdf_exported_at && new Date(r.last_pdf_exported_at) >= new Date(r.updated_at) && (
                     <span className="pdf-badge ok" title={`Exporté le ${new Date(r.last_pdf_exported_at).toLocaleString('fr-FR')}`}>PDF à jour</span>
                   )}
@@ -329,7 +335,7 @@ export default function ReservationList() {
                             {shown.map((txt, idx) => (<li className="menu-line" key={`e-${idx}`}>{txt}</li>))}
                           </ul>
                           { (more || isOpen) && (
-                            <button className="section-toggle" onClick={() => toggle(r.id, 'entries')}>
+                            <button className="section-toggle" onClick={e => { e.stopPropagation(); toggle(r.id, 'entries') }}>
                               {isOpen ? 'Réduire' : 'Voir tout'}
                             </button>
                           )}
@@ -352,7 +358,7 @@ export default function ReservationList() {
                             {shown.map((txt, idx) => (<li className="menu-line" key={`p-${idx}`}>{txt}</li>))}
                           </ul>
                           { (more || isOpen) && (
-                            <button className="section-toggle" onClick={() => toggle(r.id, 'mains')}>
+                            <button className="section-toggle" onClick={e => { e.stopPropagation(); toggle(r.id, 'mains') }}>
                               {isOpen ? 'Réduire' : 'Voir tout'}
                             </button>
                           )}
@@ -375,7 +381,7 @@ export default function ReservationList() {
                             {shown.map((txt, idx) => (<li className="menu-line" key={`d-${idx}`}>{txt}</li>))}
                           </ul>
                           { (more || isOpen) && (
-                            <button className="section-toggle" onClick={() => toggle(r.id, 'desserts')}>
+                            <button className="section-toggle" onClick={e => { e.stopPropagation(); toggle(r.id, 'desserts') }}>
                               {isOpen ? 'Réduire' : 'Voir tout'}
                             </button>
                           )}
@@ -408,7 +414,7 @@ export default function ReservationList() {
                               {shown.map((l, i) => (<li key={`n-${i}`} className="menu-line">{l}</li>))}
                             </ul>
                             {(lines.length > 5 || isOpen) && (
-                              <button className="section-toggle" onClick={() => toggle(r.id, 'notes')}>
+                              <button className="section-toggle" onClick={e => { e.stopPropagation(); toggle(r.id, 'notes') }}>
                                 {isOpen ? 'Réduire' : 'Voir tout'}
                               </button>
                             )}
@@ -446,11 +452,11 @@ export default function ReservationList() {
                 )}
                 </div>
               </div>
-              <div className="card-footer">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Link to={`/reservation/${r.id}`} className="btn btn-sm btn-outline w-full sm:w-auto"><Pencil className="w-4 h-4"/> Modifier</Link>
-                  <button onClick={() => fileDownload(`/api/reservations/${r.id}/pdf`)} className="btn btn-sm btn-outline w-full sm:w-auto"><Printer className="w-4 h-4"/> PDF</button>
-                  <button onClick={() => deleteReservation(r.id, r.client_name)} className="btn btn-sm btn-outline text-red-600 hover:bg-red-50 w-full sm:w-auto"><Trash2 className="w-4 h-4"/> Supprimer</button>
+              <div className="card-footer" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-2">
+                  <Link to={`/reservation/${r.id}`} className="btn btn-sm btn-primary" onClick={e => e.stopPropagation()}><Pencil className="w-4 h-4"/> Modifier</Link>
+                  <button onClick={e => { e.stopPropagation(); fileDownload(`/api/reservations/${r.id}/pdf`) }} className="btn btn-sm btn-outline" title="Télécharger la fiche PDF"><FileDown className="w-4 h-4"/> Fiche</button>
+                  <button onClick={e => { e.stopPropagation(); deleteReservation(r.id, r.client_name) }} className="btn btn-sm btn-outline res-delete-btn" title="Supprimer"><Trash2 className="w-4 h-4"/></button>
                 </div>
               </div>
             </div>
