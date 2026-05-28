@@ -182,6 +182,12 @@ export type FloorZone = {
   color?: string
 }
 
+export type LargeTableConfig = {
+  pax_threshold_right?: number
+  pax_threshold_vertical?: number
+  vertical_span_max?: number
+}
+
 export type FloorPlanData = {
   room?: { width: number; height: number; grid?: number }
   walls?: FloorRect[]
@@ -192,6 +198,7 @@ export type FloorPlanData = {
   fixtures?: ((FloorRect & { shape?: 'rect'; label?: string; locked?: boolean }) | (FloorCircle & { shape?: 'round'; label?: string; locked?: boolean }))[]
   tables: FloorTable[]
   max_dynamic_tables?: { rect?: number; round?: number }
+  large_table_config?: LargeTableConfig
   zones?: FloorZone[]
 }
 

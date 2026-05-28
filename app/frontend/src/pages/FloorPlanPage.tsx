@@ -528,6 +528,47 @@ export default function FloorPlanPage() {
                     </label>
                   </div>
                   <div className="fp-divider" />
+                  <p className="fp-group-label">Placement grands groupes</p>
+                  <p className="fp-hint">Seuils en pax pour orienter les grandes tables à droite ou verticalement.</p>
+                  <div className="space-y-2 mt-1">
+                    <label className="flex items-center justify-between text-sm">
+                      <span title="Groupes au-dessus de ce seuil → placés à droite (zone T)">Seuil droite (pax)</span>
+                      <input
+                        type="number" min="1" max="50" className="input input-sm w-16"
+                        value={baseTemplate?.data?.large_table_config?.pax_threshold_right ?? 10}
+                        onChange={(e) => {
+                          if (!baseTemplate) return
+                          const val = parseInt(e.target.value) || 10
+                          setBaseTemplate({ ...baseTemplate, data: { ...baseTemplate.data, large_table_config: { ...(baseTemplate.data?.large_table_config || {}), pax_threshold_right: val } } })
+                        }}
+                      />
+                    </label>
+                    <label className="flex items-center justify-between text-sm">
+                      <span title="Groupes au-dessus de ce seuil → table verticale (portrait) à droite">Seuil vertical (pax)</span>
+                      <input
+                        type="number" min="1" max="100" className="input input-sm w-16"
+                        value={baseTemplate?.data?.large_table_config?.pax_threshold_vertical ?? 20}
+                        onChange={(e) => {
+                          if (!baseTemplate) return
+                          const val = parseInt(e.target.value) || 20
+                          setBaseTemplate({ ...baseTemplate, data: { ...baseTemplate.data, large_table_config: { ...(baseTemplate.data?.large_table_config || {}), pax_threshold_vertical: val } } })
+                        }}
+                      />
+                    </label>
+                    <label className="flex items-center justify-between text-sm">
+                      <span title="Nombre de segments verticaux max (~6 pax/segment) — 7 ≈ 42 pax">Span max vertical</span>
+                      <input
+                        type="number" min="1" max="12" className="input input-sm w-16"
+                        value={baseTemplate?.data?.large_table_config?.vertical_span_max ?? 7}
+                        onChange={(e) => {
+                          if (!baseTemplate) return
+                          const val = parseInt(e.target.value) || 7
+                          setBaseTemplate({ ...baseTemplate, data: { ...baseTemplate.data, large_table_config: { ...(baseTemplate.data?.large_table_config || {}), vertical_span_max: val } } })
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <div className="fp-divider" />
                   <label className="flex items-center gap-2 text-sm cursor-pointer mb-3">
                     <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
                     Afficher la grille

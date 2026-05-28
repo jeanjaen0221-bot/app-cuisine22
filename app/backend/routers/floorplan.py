@@ -724,14 +724,43 @@ def _table_collides(plan: Dict[str, Any], t: Dict[str, Any], existing_tables: Op
         return False
 
 
-def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: float = 60, r: float = 50, require_rect_zone: bool = False, prefer_right: bool = False, prefer_center: bool = False, prefer_center_y: bool = False) -> Optional[Dict[str, float]]:
-    """Find spot for table. shape can be: rect, round, sofa, standing"""
+def _find_spot_for_table(plan: Dict[str, Any], shape: str, w: float = 120, h: float = 60, r: float = 50, require_rect_zone: bool = False, prefer_right: bool = False, prefer_center: bool = False, prefer_center_y: bool = False, prefer_vertical: bool = False) -> Optional[Dict[str, float]]:
+    """Find spot for table. shape can be: rect, round, sofa, standing.
+    prefer_vertical=True: portrait orientation (w narrow, h tall), placed on the right wall, no T-zone required.
+    """
     room = (plan.get("room") or {"width": 0, "height": 0})
     gw = int(room.get("grid") or 50)
     W = int(room.get("width") or 0)
     H = int(room.get("height") or 0)
     round_zones = plan.get("round_only_zones", [])  # Zones R (rondes uniquement)
     rect_zones = plan.get("rect_only_zones", [])    # Zones T (rectangulaires uniquement)
+
+    # ── Vertical placement (portrait orientation, right wall) ──────────────────
+    if prefer_vertical and shape == "rect":
+        # w stays narrow (≈120), h is tall. Scan from right edge, top to bottom.
+        margin = max(gw, 10)
+        step = max(1, gw // 2)
+        # x candidates: from right edge leftward
+        x_candidates = list(range(max(0, int(W - w - margin)), max(0, int(W // 2)), -step))
+        if not x_candidates:
+            x_candidates = [max(0, int(W - w - margin))]
+        # y candidates: prefer vertically centered, then top-to-bottom
+        best_y = max(0, int((H - h) / 2))
+        y_up = list(range(best_y, -1, -step))
+        y_down = list(range(best_y + step, max(0, int(H - h)), step))
+        y_candidates: list = []
+        for i in range(max(len(y_up), len(y_down))):
+            if i < len(y_up):
+                y_candidates.append(y_up[i])
+            if i < len(y_down):
+                y_candidates.append(y_down[i])
+        for xx in x_candidates:
+            for yy in y_candidates:
+                cand = {"x": float(xx), "y": float(yy), "w": float(w), "h": float(h)}
+                t = {"id": "_probe", **cand}
+                if not _table_collides(plan, t, existing_tables=plan.get("tables") or []):
+                    return cand
+        return None
     
     def is_in_round_only_zone(x: float, y: float) -> bool:
         """Vérifie si une position est dans une zone round-only (R)."""
@@ -885,6 +914,13 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
     existing_round_count = len(rounds)
     rect_dynamic_created = 0
     round_dynamic_created = 0
+
+    # ── Seuils configurables (plan_data.large_table_config) ──────────────────────
+    _cfg = plan_data.get("large_table_config") or {}
+    pax_threshold_right    = int(_cfg.get("pax_threshold_right", 10))
+    pax_threshold_vertical = int(_cfg.get("pax_threshold_vertical", 20))
+    vertical_span_max      = int(_cfg.get("vertical_span_max", 7))
+    _dbg_add("INFO", f"large_table_config: seuil_droite={pax_threshold_right} seuil_vertical={pax_threshold_vertical} span_max_v={vertical_span_max}")
 
     # Sort reservations largest first to minimize waste; tie-breaker by arrival time
     groups = sorted(reservations, key=lambda r: (-int(r.pax), r.arrival_time or dtime(0, 0)))
@@ -1091,13 +1127,35 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if str(r.id) in placed_small_ids:
             continue
         placed = False
-        # EARLY: For large groups (>=13 pax), first try ONE large dynamic rect (no splitting)
-        if int(r.pax) >= 13 and (rect_dynamic_created) < max_rect_dynamic:
+
+        # ── EARLY PASS : grands groupes → placement prioritaire droite/vertical ──
+        # > pax_threshold_vertical → table portrait (vertical) à droite du plan
+        if int(r.pax) > pax_threshold_vertical and rect_dynamic_created < max_rect_dynamic:
+            total = int(r.pax)
+            h_seg, gap = 60, 10
+            needed = min(vertical_span_max, math.ceil(total / 6))
+            h_total = needed * h_seg + (needed - 1) * gap
+            w_total = 120
+            cap = 6 * needed
+            if cap >= total:
+                spot = _find_spot_for_table(plan_data, "rect", w=w_total, h=h_total, prefer_vertical=True, prefer_right=True)
+                if spot:
+                    new_id = str(uuid.uuid4())
+                    new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed, "orientation": "vertical"}
+                    (plan_data.setdefault("tables", [])).append(new_tbl)
+                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": total})
+                    rect_dynamic_created += 1
+                    placed = True
+                    _dbg_add("DEBUG", f"assign dynamic-vertical (early) -> res={r.id} pax={r.pax} table={new_id} cap={cap} span={needed} h={h_total}")
+                else:
+                    _dbg_add("WARNING", f"No space for vertical table for {r.client_name} ({int(r.pax)}p), falling through to horizontal")
+
+        # > pax_threshold_right (mais ≤ pax_threshold_vertical) → grande table horizontale à droite (T zone)
+        if not placed and int(r.pax) > pax_threshold_right and rect_dynamic_created < max_rect_dynamic:
             total = int(r.pax)
             needed = min(4, math.ceil(total / 6))
             width = needed * 120 + (needed - 1) * 10
             cap = 6 * needed
-            # Alert if demand exceeds our max span capacity (24 pax)
             try:
                 if math.ceil(total / 6) > 4:
                     msg = f"Groupe {total}p dépasse la capacité rect dynamique max (24p, span 4)."
@@ -1105,7 +1163,6 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     alerts.append(msg)
             except Exception:
                 pass
-            # Quick feasibility hint: check any T zone wide enough
             try:
                 z_ok = any((float(z.get('w',0)) >= width and float(z.get('h',0)) >= 60) for z in (plan_data.get('rect_only_zones') or []))
                 if not z_ok:
@@ -1123,11 +1180,7 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": total})
                     rect_dynamic_created += 1
                     placed = True
-                    try:
-                        logger.debug("assign dynamic-large-rect (early) -> res=%s pax=%s table=%s cap=%s span=%s", r.id, r.pax, new_id, cap, needed)
-                        _dbg_add("DEBUG", f"assign dynamic-large-rect (early) -> res={r.id} pax={r.pax} table={new_id} span={needed}")
-                    except Exception:
-                        pass
+                    _dbg_add("DEBUG", f"assign dynamic-large-rect (early) -> res={r.id} pax={r.pax} table={new_id} cap={cap} span={needed}")
                 else:
                     _dbg_add("WARNING", f"No space for early large rect in T for {r.client_name} ({int(r.pax)}p)")
                     alerts.append(f"Pas d'espace pour grande rect (early) pour {r.client_name} ({int(r.pax)}p)")
@@ -1235,47 +1288,60 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
         if placed:
             continue
 
-        # 2b) For groups (>=9 pax), create ONE large dynamic rect table (max span of 4 widths)
-        # to avoid scattering across distant tables.
-        if int(r.pax) >= 9 and (rect_dynamic_created) < max_rect_dynamic:
+        # 2b) Fallback : grands groupes > seuil_droite → grande rect dynamique (horizontal T zone, ou vertical si > seuil_vertical)
+        if int(r.pax) > pax_threshold_right and rect_dynamic_created < max_rect_dynamic:
             total = int(r.pax)
-            needed = min(4, math.ceil(total / 6))
-            width = needed * 120 + (needed - 1) * 10
-            cap = 6 * needed
-            # Alert if demand exceeds our max span capacity (24 pax)
-            try:
-                if math.ceil(total / 6) > 4:
-                    msg = f"Groupe {total}p dépasse la capacité rect dynamique max (24p, span 4)."
-                    _dbg_add("WARNING", msg)
-                    alerts.append(msg)
-            except Exception:
-                pass
-            # Quick feasibility hint: check any T zone wide enough
-            try:
-                z_ok = any((float(z.get('w',0)) >= width and float(z.get('h',0)) >= 60) for z in (plan_data.get('rect_only_zones') or []))
-                if not z_ok:
-                    msg = f"Zone T trop étroite pour span {needed} (largeur requise {width}px)."
-                    _dbg_add("INFO", msg)
-                    alerts.append(msg)
-            except Exception:
-                pass
-            if cap >= total:
-                spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_right=True, prefer_center_y=True)
-                if spot:
-                    new_id = str(uuid.uuid4())
-                    new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
-                    (plan_data.setdefault("tables", [])).append(new_tbl)
-                    assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": total})
-                    rect_dynamic_created += 1
-                    placed = True
-                    try:
-                        logger.debug("assign dynamic-large-rect -> res=%s pax=%s table=%s cap=%s span=%s", r.id, r.pax, new_id, cap, needed)
+            # Vertical (portrait) si > seuil_vertical
+            if total > pax_threshold_vertical:
+                h_seg, gap = 60, 10
+                needed = min(vertical_span_max, math.ceil(total / 6))
+                h_total = needed * h_seg + (needed - 1) * gap
+                cap = 6 * needed
+                if cap >= total:
+                    spot = _find_spot_for_table(plan_data, "rect", w=120, h=h_total, prefer_vertical=True, prefer_right=True)
+                    if spot:
+                        new_id = str(uuid.uuid4())
+                        new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed, "orientation": "vertical"}
+                        (plan_data.setdefault("tables", [])).append(new_tbl)
+                        assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": total})
+                        rect_dynamic_created += 1
+                        placed = True
+                        _dbg_add("DEBUG", f"assign dynamic-vertical (fallback) -> res={r.id} pax={r.pax} table={new_id} cap={cap} span={needed}")
+                    else:
+                        _dbg_add("WARNING", f"No vertical spot for {r.client_name} ({total}p), trying horizontal")
+            # Horizontal (paysage) si ≤ seuil_vertical OU si vertical a échoué
+            if not placed:
+                needed = min(4, math.ceil(total / 6))
+                width = needed * 120 + (needed - 1) * 10
+                cap = 6 * needed
+                try:
+                    if math.ceil(total / 6) > 4:
+                        msg = f"Groupe {total}p dépasse la capacité rect dynamique max (24p, span 4)."
+                        _dbg_add("WARNING", msg)
+                        alerts.append(msg)
+                except Exception:
+                    pass
+                try:
+                    z_ok = any((float(z.get('w',0)) >= width and float(z.get('h',0)) >= 60) for z in (plan_data.get('rect_only_zones') or []))
+                    if not z_ok:
+                        msg = f"Zone T trop étroite pour span {needed} (largeur requise {width}px)."
+                        _dbg_add("INFO", msg)
+                        alerts.append(msg)
+                except Exception:
+                    pass
+                if cap >= total:
+                    spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_right=True, prefer_center_y=True)
+                    if spot:
+                        new_id = str(uuid.uuid4())
+                        new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
+                        (plan_data.setdefault("tables", [])).append(new_tbl)
+                        assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": total})
+                        rect_dynamic_created += 1
+                        placed = True
                         _dbg_add("DEBUG", f"assign dynamic-large-rect -> res={r.id} pax={r.pax} table={new_id} span={needed}")
-                    except Exception:
-                        pass
-                else:
-                    _dbg_add("WARNING", f"No space for large rect in T for {r.client_name} ({int(r.pax)}p)")
-                    alerts.append(f"Pas d'espace pour grande rect pour {r.client_name} ({int(r.pax)}p)")
+                    else:
+                        _dbg_add("WARNING", f"No space for large rect in T for {r.client_name} ({int(r.pax)}p)")
+                        alerts.append(f"Pas d'espace pour grande rect pour {r.client_name} ({int(r.pax)}p)")
         if placed:
             continue
 
@@ -1351,12 +1417,12 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
             _dbg_add("INFO", f"CREATING DYNAMIC TABLES for {r.client_name} ({r.pax} pax) - stock: rect {max_rect_dynamic-rect_dynamic_created}/{max_rect_dynamic}, round {max_round_dynamic-round_dynamic_created}/{max_round_dynamic}")
             remaining = int(r.pax)
             created_any = False
-            # Prefer one single 6+head rect (cap 8) for small groups (<=8); else create big rect cluster (span up to 4)
-            if remaining <= 8:
+            # Petits groupes (≤ seuil_droite) : rect simple centrée dans T
+            if remaining <= pax_threshold_right:
                 width = 120
                 cap = 8  # 6 + head
                 spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_center=True, prefer_center_y=True)
-                if spot and (rect_dynamic_created) < max_rect_dynamic and cap >= remaining:
+                if spot and rect_dynamic_created < max_rect_dynamic and cap >= remaining:
                     new_id = str(uuid.uuid4())
                     new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": 1}
                     (plan_data.setdefault("tables", [])).append(new_tbl)
@@ -1372,39 +1438,56 @@ def _auto_assign(plan_data: Dict[str, Any], reservations: List[Reservation]) -> 
                     _dbg_add("WARNING", f"No space for small rect (8) in center of T for {r.client_name} ({int(r.pax)}p)")
                     alerts.append(f"Pas d'espace pour petite rect (8) pour {r.client_name} ({int(r.pax)}p)")
             else:
-                # Try one big rect first (span up to 4 widths)
-                needed = min(4, math.ceil(remaining / 6))
-                width = needed * 120 + (needed - 1) * 10
-                cap = 6 * needed
-                # Alert if demand exceeds our max span capacity (24 pax)
-                try:
-                    if math.ceil(remaining / 6) > 4:
-                        msg = f"Groupe {remaining}p dépasse la capacité rect dynamique max (24p, span 4)."
-                        _dbg_add("WARNING", msg)
-                        alerts.append(msg)
-                except Exception:
-                    pass
-                # Quick feasibility hint: check any T zone wide enough
-                try:
-                    z_ok = any((float(z.get('w',0)) >= width and float(z.get('h',0)) >= 60) for z in (plan_data.get('rect_only_zones') or []))
-                    if not z_ok:
-                        msg = f"Zone T trop étroite pour span {needed} (largeur requise {width}px)."
-                        _dbg_add("INFO", msg)
-                        alerts.append(msg)
-                except Exception:
-                    pass
-                if cap >= remaining:
-                    spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_right=True, prefer_center_y=True)
-                    if spot and (rect_dynamic_created) < max_rect_dynamic:
-                        new_id = str(uuid.uuid4())
-                        new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
-                        (plan_data.setdefault("tables", [])).append(new_tbl)
-                        assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": remaining})
-                        remaining = 0
-                        rect_dynamic_created += 1
-                        created_any = True
-                        print(f"✓ Created large rect table {rect_dynamic_created}/{max_rect_dynamic} (span {needed})")
-                        _dbg_add("INFO", f"✓ Created large rect {rect_dynamic_created}/{max_rect_dynamic} span={needed}")
+                # Grands groupes : vertical portrait si > seuil_vertical
+                if remaining > pax_threshold_vertical and rect_dynamic_created < max_rect_dynamic:
+                    h_seg, gap = 60, 10
+                    needed_v = min(vertical_span_max, math.ceil(remaining / 6))
+                    h_total = needed_v * h_seg + (needed_v - 1) * gap
+                    cap_v = 6 * needed_v
+                    if cap_v >= remaining:
+                        spot = _find_spot_for_table(plan_data, "rect", w=120, h=h_total, prefer_vertical=True, prefer_right=True)
+                        if spot:
+                            new_id = str(uuid.uuid4())
+                            new_tbl = {"id": new_id, "kind": "rect", "capacity": cap_v, **spot, "dynamic": True, "span": needed_v, "orientation": "vertical"}
+                            (plan_data.setdefault("tables", [])).append(new_tbl)
+                            assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": remaining})
+                            remaining = 0
+                            rect_dynamic_created += 1
+                            created_any = True
+                            print(f"✓ Created vertical rect {rect_dynamic_created}/{max_rect_dynamic} (span {needed_v}, h={h_total})")
+                            _dbg_add("INFO", f"✓ Created vertical rect {rect_dynamic_created}/{max_rect_dynamic} span={needed_v} h={h_total}")
+                # Fallback horizontal (paysage) si vertical non applicable ou pas de place
+                if remaining > 0 and rect_dynamic_created < max_rect_dynamic:
+                    needed = min(4, math.ceil(remaining / 6))
+                    width = needed * 120 + (needed - 1) * 10
+                    cap = 6 * needed
+                    try:
+                        if math.ceil(remaining / 6) > 4:
+                            msg = f"Groupe {remaining}p dépasse la capacité rect dynamique max (24p, span 4)."
+                            _dbg_add("WARNING", msg)
+                            alerts.append(msg)
+                    except Exception:
+                        pass
+                    try:
+                        z_ok = any((float(z.get('w',0)) >= width and float(z.get('h',0)) >= 60) for z in (plan_data.get('rect_only_zones') or []))
+                        if not z_ok:
+                            msg = f"Zone T trop étroite pour span {needed} (largeur requise {width}px)."
+                            _dbg_add("INFO", msg)
+                            alerts.append(msg)
+                    except Exception:
+                        pass
+                    if cap >= remaining:
+                        spot = _find_spot_for_table(plan_data, "rect", w=width, h=60, require_rect_zone=True, prefer_right=True, prefer_center_y=True)
+                        if spot:
+                            new_id = str(uuid.uuid4())
+                            new_tbl = {"id": new_id, "kind": "rect", "capacity": cap, **spot, "dynamic": True, "span": needed}
+                            (plan_data.setdefault("tables", [])).append(new_tbl)
+                            assignments_by_table.setdefault(new_id, {"res_id": str(r.id), "name": (r.client_name or "").upper(), "pax": remaining})
+                            remaining = 0
+                            rect_dynamic_created += 1
+                            created_any = True
+                            print(f"✓ Created large rect table {rect_dynamic_created}/{max_rect_dynamic} (span {needed})")
+                            _dbg_add("INFO", f"✓ Created large rect {rect_dynamic_created}/{max_rect_dynamic} span={needed}")
             # If still remaining, try a single round 10 (still not split)
             if remaining > 0 and (round_dynamic_created) < max_round_dynamic:
                 spot = _find_spot_for_table(plan_data, "round", r=50)
