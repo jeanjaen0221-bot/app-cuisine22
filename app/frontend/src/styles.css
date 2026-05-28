@@ -1269,7 +1269,7 @@ body {
   font-weight: 500;
   border: 1px solid rgba(0,0,0,0.06);
 }
-.status-badge.is-draft { background: var(--gray-100); color: var(--gray-800); }
+.status-badge.is-draft { background: #FEF9C3; color: #854D0E; border-color: #FDE047; }
 .status-badge.is-confirmed { background: #DCFCE7; color: #065F46; }
 .status-badge.is-printed { background: #DBEAFE; color: #1E40AF; }
 
@@ -1937,7 +1937,7 @@ img, video, canvas, svg { max-width: 100%; }
 }
 .status-seg-btn:last-child { border-right: none; }
 .status-seg-btn:hover { background: var(--gray-50, #f9fafb); }
-.status-seg-btn.is-draft { background: var(--gray-100, #f3f4f6); color: var(--gray-800, #1f2937); font-weight: 600; }
+.status-seg-btn.is-draft { background: #FEF9C3; color: #854D0E; font-weight: 600; }
 .status-seg-btn.is-confirmed { background: #DCFCE7; color: #065F46; font-weight: 600; }
 .status-seg-btn.is-printed { background: #DBEAFE; color: #1E40AF; font-weight: 600; }
 

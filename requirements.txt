@@ -1,4 +1,4 @@
-fastapi==0.115.2
+﻿fastapi==0.115.2
 uvicorn[standard]==0.30.6
 sqlmodel==0.0.22
 SQLAlchemy==2.0.36
@@ -8,6 +8,10 @@ python-dotenv==1.0.1
 reportlab==4.2.5
 aiofiles==24.1.0
 psycopg2-binary==2.9.9
+requests==2.32.3
+python-multipart==0.0.9
 Pillow==10.4.0
-pdfminer.six==20231228
-pypdf==4.0.1
+tzdata==2024.1
+pdfplumber==0.11.4
+pypdf==3.17.4
+chardet==5.2.0

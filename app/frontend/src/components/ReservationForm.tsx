@@ -108,7 +108,8 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
   const [allergenQuery, setAllergenQuery] = useState('')
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dishTab, setDishTab] = useState<'entrée' | 'plat' | 'dessert'>('entrée')
-  const [notesOpen, setNotesOpen] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(Boolean(initial?.notes))
+  const [showAllAllergens, setShowAllAllergens] = useState(false)
 
   const clientNameRef = useRef<HTMLInputElement>(null)
 
@@ -680,7 +681,7 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
                   )}
 
                   <div className="allergens-grid">
-                    {filteredAllergens.map(a => {
+                    {(showAllAllergens ? filteredAllergens : filteredAllergens.slice(0, 8)).map(a => {
                       const active = allergens.includes(a.key)
                       const toggle = () => setAllergens(prev => active ? prev.filter(k => k !== a.key) : [...prev, a.key])
                       return (
@@ -704,6 +705,17 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
                       )
                     })}
                   </div>
+                  {filteredAllergens.length > 8 && (
+                    <button
+                      type="button"
+                      className="mt-2 text-xs text-violet-600 hover:text-violet-800 font-medium underline-offset-2 hover:underline"
+                      onClick={() => setShowAllAllergens(v => !v)}
+                    >
+                      {showAllAllergens
+                        ? 'Réduire'
+                        : `Voir tous les allergènes (${filteredAllergens.length - 8} de plus)`}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1071,9 +1083,9 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
           )}
           <div className="flex items-center gap-2 ml-auto shrink-0">
             {isDirty && !submitting && (
-              <span className="hidden sm:flex items-center gap-1 text-xs text-amber-600 font-medium">
+              <span className="flex items-center gap-1 text-xs text-amber-600 font-medium">
                 <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
-                Non sauvegardé
+                <span className="hidden sm:inline">Non sauvegardé</span>
               </span>
             )}
             {initial?.id && onOpenBilling && (

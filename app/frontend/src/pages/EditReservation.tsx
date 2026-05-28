@@ -13,6 +13,7 @@ export default function EditReservation() {
   const [searchParams] = useSearchParams()
   const [data, setData] = useState<Reservation | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [saveOk, setSaveOk] = useState(false)
   const [loading, setLoading] = useState(false)
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
   const isExisting = !!id && id !== 'new' && uuidRegex.test(id)
@@ -57,8 +58,10 @@ export default function EditReservation() {
     setError(null)
     try {
       if (id && id !== 'new') {
-        await api.put(`/api/reservations/${id}`, payload)
-        navigate('/')
+        const res = await api.put(`/api/reservations/${id}`, payload)
+        setData(res.data)
+        setSaveOk(true)
+        setTimeout(() => setSaveOk(false), 3000)
       } else {
         const res = await api.post('/api/reservations', payload)
         navigate(`/reservation/${res.data.id}`)
@@ -102,6 +105,13 @@ export default function EditReservation() {
       {error && (
         <div className="container pt-4">
           <div className="p-3 rounded-md bg-red-50 border border-red-200 text-red-700">{error}</div>
+        </div>
+      )}
+      {saveOk && (
+        <div className="container pt-4">
+          <div className="p-3 rounded-md bg-green-50 border border-green-200 text-green-700 flex items-center gap-2 text-sm font-medium">
+            ✓ Fiche sauvegardée
+          </div>
         </div>
       )}
 
