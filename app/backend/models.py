@@ -606,3 +606,26 @@ class FloorPlanInstanceUpdate(SQLModel):
     data: Optional[dict] = None
     assignments: Optional[dict] = None
     reservations: Optional[dict] = None
+
+
+class ReservationReminder(SQLModel, table=True):
+    """Stores snooze/mute state per reservation for the missing-dishes alert system."""
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    reservation_id: uuid.UUID = Field(foreign_key="reservation.id", unique=True, index=True)
+    snoozed_until: Optional[datetime] = None
+    muted: bool = False
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ReminderSnoozeIn(SQLModel):
+    hours: int = 24
+
+
+class ReminderRead(SQLModel):
+    reservation_id: uuid.UUID
+    client_name: str
+    service_date: date
+    pax: int
+    menu_formula: Optional[str] = None
+    snoozed_until: Optional[datetime] = None
+    muted: bool = False

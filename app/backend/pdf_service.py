@@ -1211,8 +1211,8 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
     story.append(addr_tbl)
     story.append(Spacer(1, 16))
 
-    # Reservation summary (formula deduced, no dish list)
-    formula = _deduce_formula(items)
+    # Reservation summary: use explicitly set formula if available, else deduce from items
+    formula = (reservation.menu_formula or '').strip() or _deduce_formula(items)
     meta_rows = [
         [Paragraph("<b>Date du service</b>", styles['Meta']), Paragraph(_format_date_fr(reservation.service_date), styles['Meta'])],
         [Paragraph("<b>Heure d'arrivée</b>", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],

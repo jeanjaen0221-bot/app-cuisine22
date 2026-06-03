@@ -134,6 +134,15 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     return { entree: t['entrée'], plat: t['plat'], dessert: t['dessert'] }
   }, [items])
 
+  const hasEffectiveDishes = useMemo(() =>
+    items.some(it => {
+      const t = (it.type || '').toLowerCase()
+      return (it.name || '').trim() !== '' && (it.quantity || 0) > 0
+        && t !== 'supplement' && t !== 'supplements'
+    }),
+    [items]
+  )
+
   const menuItemsByType = useMemo(() => ({
     'entrée': menuItems.filter(mi => mi.type === 'entrée'),
     'plat': menuItems.filter(mi => mi.type === 'plat'),
@@ -432,7 +441,7 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
         arrival_time: t,
         pax: Number(pax) || 1,
         drink_formula,
-        menu_formula,
+        menu_formula: hasEffectiveDishes ? '' : menu_formula,
         notes,
         status,
         allergens: allergens.join(','),
@@ -616,9 +625,14 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
                   <div className="form-group md:col-span-2">
                     <label className="label flex items-center gap-1.5">
                       <Receipt className="w-4 h-4 text-gray-500" /> Formule repas
-                      {menu_formula && (
+                      {hasEffectiveDishes && menu_formula && (
+                        <span className="ml-auto text-xs text-amber-500 font-normal">
+                          Les plats prévalent
+                        </span>
+                      )}
+                      {!hasEffectiveDishes && menu_formula && (
                         <span className="ml-auto text-xs text-gray-400 font-normal">
-                          (sélectionné — plats optionnels)
+                          Plats non requis
                         </span>
                       )}
                     </label>
@@ -627,8 +641,8 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
                         <button
                           key={f}
                           type="button"
-                          className={`menu-formula-chip${menu_formula === f ? ' is-active' : ''}`}
-                          onClick={() => setMenuFormula(prev => prev === f ? '' : f)}
+                          className={`menu-formula-chip${!hasEffectiveDishes && menu_formula === f ? ' is-active' : ''}${hasEffectiveDishes ? ' is-dimmed' : ''}`}
+                          onClick={() => !hasEffectiveDishes && setMenuFormula(prev => prev === f ? '' : f)}
                         >{f}</button>
                       ))}
                     </div>
@@ -1032,10 +1046,16 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
               </div>
 
               {/* Formule repas */}
-              {menu_formula && (
+              {(menu_formula || hasEffectiveDishes) && (
                 <div>
                   <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Formule repas</p>
-                  <span className="menu-formula-chip is-active">{menu_formula}</span>
+                  {hasEffectiveDishes
+                    ? <span className="menu-formula-chip is-active">{
+                        [totalsByType.entree > 0 && 'Entrée', totalsByType.plat > 0 && 'Plat', totalsByType.dessert > 0 && 'Dessert']
+                          .filter(Boolean).join(' · ') || 'En cours…'
+                      }</span>
+                    : <span className="menu-formula-chip is-active">{menu_formula}</span>
+                  }
                 </div>
               )}
 

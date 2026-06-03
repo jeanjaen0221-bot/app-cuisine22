@@ -1,5 +1,7 @@
 import { Routes, Route, NavLink } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
 import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart, Building2, AlertTriangle, Receipt, LayoutGrid, Package } from 'lucide-react'
+import { api } from '../lib/api'
 import NotesWidget from '../components/NotesWidget'
 import Home from './Home'
 import EditReservation from './EditReservation'
@@ -16,6 +18,20 @@ import EditIncident from './EditIncident'
 import FacturationPage from './FacturationPage'
 
 export default function App() {
+  const [reminderCount, setReminderCount] = useState(0)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    function fetchCount() {
+      api.get('/api/reminders/pending', { params: { days: 5 } })
+        .then(r => setReminderCount(Array.isArray(r.data) ? r.data.length : 0))
+        .catch(() => {})
+    }
+    fetchCount()
+    intervalRef.current = setInterval(fetchCount, 5 * 60 * 1000)
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+  }, [])
+
   return (
     <div className="app-layout app-theme app-theme-violet">
       <aside className="sidebar">
@@ -23,6 +39,9 @@ export default function App() {
         <nav className="sidebar-nav">
           <NavLink to="/" end className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <HomeIcon className="w-4 h-4"/> Fiches
+            {reminderCount > 0 && (
+              <span className="nav-reminder-badge">{reminderCount}</span>
+            )}
           </NavLink>
           <NavLink to="/past" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <History className="w-4 h-4"/> Passées

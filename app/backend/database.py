@@ -37,6 +37,7 @@ def init_db() -> None:
     ensure_floorplan_columns()
     ensure_floorplan_reservations_column()
     ensure_menu_formula_column()
+    ensure_reminder_table()
 
 
 def run_startup_migrations() -> None:
@@ -649,6 +650,39 @@ def ensure_allergens_column() -> None:
     except Exception:
         # Non-fatal; table may not exist yet in some flows
         pass
+
+def ensure_reminder_table() -> None:
+    """Ensure reservationreminder table exists. Idempotent (uses CREATE TABLE IF NOT EXISTS)."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                conn.exec_driver_sql("""
+                    CREATE TABLE IF NOT EXISTS reservationreminder (
+                        id TEXT PRIMARY KEY,
+                        reservation_id TEXT NOT NULL UNIQUE REFERENCES reservation(id),
+                        snoozed_until TEXT,
+                        muted INTEGER NOT NULL DEFAULT 0,
+                        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    );
+                """)
+                conn.exec_driver_sql(
+                    "CREATE INDEX IF NOT EXISTS ix_remider_res_id ON reservationreminder(reservation_id);"
+                )
+            elif backend == 'postgresql':
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS reservationreminder (
+                        id UUID PRIMARY KEY,
+                        reservation_id UUID NOT NULL UNIQUE REFERENCES reservation(id),
+                        snoozed_until TIMESTAMP,
+                        muted BOOLEAN NOT NULL DEFAULT FALSE,
+                        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_remider_res_id ON reservationreminder(reservation_id);
+                """))
+    except Exception:
+        pass
+
 
 def ensure_menu_formula_column() -> None:
     """Ensure reservation table has menu_formula column. Idempotent."""

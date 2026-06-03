@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response, FileResponse, StreamingResponse
 
 from .database import init_db, run_startup_migrations, session_context, backfill_allergen_icons
-from .routers import reservations, menu_items, zenchef, allergens, notes, drinks, suppliers, purchase_orders, floorplan, incidents, facturation
+from .routers import reservations, menu_items, zenchef, allergens, notes, drinks, suppliers, purchase_orders, floorplan, incidents, facturation, reminders
 
 load_dotenv()
 
@@ -37,6 +37,7 @@ app.include_router(purchase_orders.router)
 app.include_router(floorplan.router)
 app.include_router(incidents.router)
 app.include_router(facturation.router)
+app.include_router(reminders.router)
 
 # Ensure DB
 init_db()
