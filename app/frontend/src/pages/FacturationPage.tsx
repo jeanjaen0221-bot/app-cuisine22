@@ -155,7 +155,7 @@ export default function FacturationPage() {
                   {formatDate(res.service_date)} · {res.pax} pax
                 </div>
                 <div className="text-xs text-gray-400 mt-0.5 truncate">
-                  {deduceFormula(res.items)} · {res.drink_formula || '—'}
+                  {res.menu_formula || deduceFormula(res.items)} · {res.drink_formula || '—'}
                 </div>
                 {res.on_invoice && (
                   <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-xs bg-green-50 text-green-700 border border-green-200">

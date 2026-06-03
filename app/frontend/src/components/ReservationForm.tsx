@@ -36,6 +36,13 @@ const DRINKS = [
   'sans Formule',
 ]
 
+const MENU_FORMULAS = [
+  '1 service',
+  '2 services',
+  '3 services',
+  'À la carte',
+]
+
 type AllergenOption = { key: string; label: string; icon_url?: string; has_icon?: boolean }
 const DEFAULT_ALLERGENS: AllergenOption[] = [
   { key: 'gluten', label: 'Gluten' },
@@ -82,6 +89,7 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
   const [arrival_time, setTime] = useState(initial?.arrival_time || '')
   const [pax, setPax] = useState(initial?.pax || 2)
   const [drink_formula, setDrink] = useState(initial?.drink_formula || DRINKS[0])
+  const [menu_formula, setMenuFormula] = useState(initial?.menu_formula || '')
   const [notes, setNotes] = useState(initial?.notes || '')
   const [status, setStatus] = useState<Reservation['status']>(initial?.status || 'draft')
   const [finalVersion, setFinalVersion] = useState<boolean>(Boolean(initial?.final_version))
@@ -167,6 +175,7 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     if (arrival_time !== (initial.arrival_time || '')) return true
     if (pax !== (initial.pax || 2)) return true
     if (drink_formula !== (initial.drink_formula || DRINKS[0])) return true
+    if (menu_formula !== (initial.menu_formula || '')) return true
     if (notes !== (initial.notes || '')) return true
     if (status !== (initial.status || 'draft')) return true
     if (finalVersion !== Boolean(initial.final_version)) return true
@@ -174,7 +183,7 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     const initAllergens = initial.allergens ? String(initial.allergens).split(',').map(s => s.trim()).filter(Boolean) : []
     if (allergens.slice().sort().join(',') !== initAllergens.slice().sort().join(',')) return true
     return false
-  }, [client_name, service_date, arrival_time, pax, drink_formula, notes, status, finalVersion, onInvoice, allergens, initial])
+  }, [client_name, service_date, arrival_time, pax, drink_formula, menu_formula, notes, status, finalVersion, onInvoice, allergens, initial])
 
   // Fonction pour formater le texte sélectionné
   const formatText = (prefix: string, suffix: string, title: string, showColorPicker = false) => {
@@ -271,6 +280,7 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     setTime(initial.arrival_time || '');
     setPax(initial.pax || 2);
     setDrink(initial.drink_formula || DRINKS[0]);
+    setMenuFormula(initial.menu_formula || '');
     setNotes(initial.notes || '');
     setStatus(initial.status || 'draft');
     setItems(initial.items || []);
@@ -357,7 +367,11 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
       return ((it.name || '').trim() !== '' || (it.quantity || 0) > 0) && t !== 'supplement' && t !== 'supplements'
     });
     if (effective.length === 0) {
-      setItemsError('Veuillez ajouter au moins un plat');
+      if (menu_formula) {
+        setItemsError(null)
+        return Object.keys(errs).length === 0
+      }
+      setItemsError('Veuillez ajouter au moins un plat ou sélectionner une formule repas');
       return false;
     }
     // Pour chaque ligne non vide: exiger nom et quantité > 0
@@ -418,6 +432,7 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
         arrival_time: t,
         pax: Number(pax) || 1,
         drink_formula,
+        menu_formula,
         notes,
         status,
         allergens: allergens.join(','),
@@ -593,6 +608,28 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
                           className={`pax-preset-btn ${pax === n ? 'is-active' : ''}`}
                           onClick={() => setPax(n)}
                         >{n}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Formule repas — chips de sélection rapide ── */}
+                  <div className="form-group md:col-span-2">
+                    <label className="label flex items-center gap-1.5">
+                      <Receipt className="w-4 h-4 text-gray-500" /> Formule repas
+                      {menu_formula && (
+                        <span className="ml-auto text-xs text-gray-400 font-normal">
+                          (sélectionné — plats optionnels)
+                        </span>
+                      )}
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {MENU_FORMULAS.map(f => (
+                        <button
+                          key={f}
+                          type="button"
+                          className={`menu-formula-chip${menu_formula === f ? ' is-active' : ''}`}
+                          onClick={() => setMenuFormula(prev => prev === f ? '' : f)}
+                        >{f}</button>
                       ))}
                     </div>
                   </div>
@@ -993,6 +1030,14 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
                   <p className="font-medium text-gray-800 text-xs mt-0.5">{pax}</p>
                 </div>
               </div>
+
+              {/* Formule repas */}
+              {menu_formula && (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Formule repas</p>
+                  <span className="menu-formula-chip is-active">{menu_formula}</span>
+                </div>
+              )}
 
               {/* Boisson */}
               {drink_formula && (

@@ -198,7 +198,9 @@ export default function BillingPanel({ reservationId, reservation }: Props) {
     }
   }
 
-  const formula = reservation ? deduceFormula(reservation.items) : '—'
+  const formula = reservation
+    ? (reservation.menu_formula || deduceFormula(reservation.items))
+    : '—'
 
   return (
     <div className="billing-panel-layout">

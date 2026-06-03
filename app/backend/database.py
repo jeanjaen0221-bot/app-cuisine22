@@ -36,6 +36,7 @@ def init_db() -> None:
     ensure_drink_unique_index()
     ensure_floorplan_columns()
     ensure_floorplan_reservations_column()
+    ensure_menu_formula_column()
 
 
 def run_startup_migrations() -> None:
@@ -648,6 +649,39 @@ def ensure_allergens_column() -> None:
     except Exception:
         # Non-fatal; table may not exist yet in some flows
         pass
+
+def ensure_menu_formula_column() -> None:
+    """Ensure reservation table has menu_formula column. Idempotent."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                res = conn.exec_driver_sql("PRAGMA table_info(reservation);")
+                cols = [row[1] for row in res.fetchall()]
+                if 'menu_formula' not in cols:
+                    conn.exec_driver_sql("ALTER TABLE reservation ADD COLUMN menu_formula VARCHAR(200) DEFAULT '';")
+            elif backend == 'postgresql':
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='reservation' AND column_name='menu_formula'
+                      ) THEN
+                        ALTER TABLE reservation ADD COLUMN menu_formula VARCHAR(200) DEFAULT '';
+                      END IF;
+                    END$$;
+                    """
+                ))
+            else:
+                try:
+                    conn.execute(text("ALTER TABLE reservation ADD COLUMN menu_formula VARCHAR(200) DEFAULT ''"))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
 
 @contextmanager
 def session_context() -> Generator[Session, None, None]:

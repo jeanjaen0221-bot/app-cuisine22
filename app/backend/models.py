@@ -128,6 +128,7 @@ class ReservationBase(SQLModel):
     service_date: date
     arrival_time: time
     drink_formula: str
+    menu_formula: Optional[str] = ""  # "1 service" | "2 services" | "3 services" | "À la carte" | ""
     notes: Optional[str] = None
     status: ReservationStatus = ReservationStatus.draft
     final_version: bool = False
@@ -158,6 +159,7 @@ class ReservationCreateIn(SQLModel):
     service_date: str
     arrival_time: str
     drink_formula: str
+    menu_formula: Optional[str] = ""
     notes: Optional[str] = None
     status: ReservationStatus = ReservationStatus.draft
     final_version: bool = False
@@ -172,6 +174,7 @@ class ReservationUpdate(SQLModel):
     service_date: Optional[str] = None
     arrival_time: Optional[str] = None
     drink_formula: Optional[str] = None
+    menu_formula: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[ReservationStatus] = None
     final_version: Optional[bool] = None

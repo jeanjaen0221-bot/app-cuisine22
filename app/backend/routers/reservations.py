@@ -173,12 +173,15 @@ def create_reservation(payload: ReservationCreateIn, session: Session = Depends(
     # Sanitize/validate remaining fields
     client_name = str(data.get("client_name", "")).strip() or "Client"
     drink_formula = str(data.get("drink_formula", "")).strip() or ""
+    menu_formula = str(data.get("menu_formula", "") or "").strip()
     notes = str(data.get("notes", "")).strip()
     on_invoice = bool(data.get("on_invoice") or False)
     if len(client_name) > 200:
         client_name = client_name[:200]
     if len(drink_formula) > 200:
         drink_formula = drink_formula[:200]
+    if len(menu_formula) > 200:
+        menu_formula = menu_formula[:200]
     if len(notes) > 4000:
         notes = notes[:4000]
     pax = int(data.get("pax") or 1)
@@ -190,6 +193,7 @@ def create_reservation(payload: ReservationCreateIn, session: Session = Depends(
     data.update({
         "client_name": client_name,
         "drink_formula": drink_formula,
+        "menu_formula": menu_formula,
         "notes": notes,
         "pax": pax,
         "on_invoice": on_invoice,
@@ -272,6 +276,10 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
         update_data["drink_formula"] = (str(update_data["drink_formula"]) or "").strip()
         if len(update_data["drink_formula"]) > 200:
             update_data["drink_formula"] = update_data["drink_formula"][:200]
+    if "menu_formula" in update_data:
+        update_data["menu_formula"] = (str(update_data["menu_formula"] or "")).strip()
+        if len(update_data["menu_formula"]) > 200:
+            update_data["menu_formula"] = update_data["menu_formula"][:200]
     if "notes" in update_data:
         update_data["notes"] = (str(update_data["notes"]) or "").strip()
         if len(update_data["notes"]) > 4000:
@@ -360,7 +368,7 @@ def duplicate_reservation(reservation_id: uuid.UUID, session: Session = Depends(
     items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
 
     new_res = Reservation(**{k: getattr(res, k) for k in [
-        'client_name','pax','service_date','arrival_time','drink_formula','notes','status','final_version','allergens'
+        'client_name','pax','service_date','arrival_time','drink_formula','menu_formula','notes','status','final_version','allergens'
     ]})
     session.add(new_res)
     session.commit()

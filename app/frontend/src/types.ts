@@ -15,6 +15,7 @@ export type Reservation = {
   service_date: string
   arrival_time: string
   drink_formula: string
+  menu_formula?: string
   notes?: string
   status: 'draft' | 'confirmed' | 'printed'
   final_version: boolean
