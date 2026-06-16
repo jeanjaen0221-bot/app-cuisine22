@@ -38,6 +38,7 @@ def init_db() -> None:
     ensure_floorplan_reservations_column()
     ensure_menu_formula_column()
     ensure_reminder_table()
+    ensure_supplements_migrated()
 
 
 def run_startup_migrations() -> None:
@@ -713,6 +714,38 @@ def ensure_menu_formula_column() -> None:
                     conn.execute(text("ALTER TABLE reservation ADD COLUMN menu_formula VARCHAR(200) DEFAULT ''"))
                 except Exception:
                     pass
+    except Exception:
+        pass
+
+
+def ensure_supplements_migrated() -> None:
+    """One-time idempotent migration: copy InvoiceSupplement records to
+    ReservationItem(type='supplément') then remove them, so supplements
+    appear on the fiche and all PDFs."""
+    from .models import InvoiceSupplement, ReservationItem  # local import avoids circular
+    try:
+        with Session(engine) as session:
+            old_sups = session.exec(select(InvoiceSupplement)).all()
+            if not old_sups:
+                return
+            for sup in old_sups:
+                # Skip if an identical ReservationItem supplement already exists
+                existing = session.exec(
+                    select(ReservationItem)
+                    .where(ReservationItem.reservation_id == sup.reservation_id)
+                    .where(ReservationItem.type == "supplément")
+                    .where(ReservationItem.name == sup.description)
+                ).first()
+                if not existing:
+                    item = ReservationItem(
+                        reservation_id=sup.reservation_id,
+                        type="supplément",
+                        name=sup.description,
+                        quantity=sup.quantity,
+                    )
+                    session.add(item)
+                session.delete(sup)
+            session.commit()
     except Exception:
         pass
 

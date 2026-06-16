@@ -674,6 +674,8 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
         section("Entrées :", entrees)
         section("Plats :", plats)
         section("Desserts :", desserts)
+        if supplements:
+            section("Suppléments hors menu :", supplements)
 
         # Allergènes seulement (pas de boisson ni notes pour cuisine)
         s.append(Paragraph("<b>Allergènes :</b>", styles['Section']))
@@ -1242,8 +1244,6 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
         ]
         for s in item_supplements:
             sup_data.append([Paragraph(str(s.name), styles['Meta']), Paragraph(str(s.quantity), styles['Meta'])])
-        for s in supplements:
-            sup_data.append([Paragraph(str(s.description), styles['Meta']), Paragraph(str(s.quantity), styles['Meta'])])
         sup_tbl = Table(sup_data, colWidths=[None, 60])
         sup_tbl.setStyle(TableStyle([
             ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
