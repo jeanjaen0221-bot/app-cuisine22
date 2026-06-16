@@ -20,6 +20,18 @@ export default function EditReservation() {
   const [tab, setTab] = useState<'fiche' | 'facturation'>(
     searchParams.get('tab') === 'facturation' ? 'facturation' : 'fiche'
   )
+  const [tabRefreshing, setTabRefreshing] = useState(false)
+
+  function switchTab(newTab: 'fiche' | 'facturation') {
+    if (newTab === 'fiche' && tab === 'facturation' && isExisting && id) {
+      setTabRefreshing(true)
+      api.get(`/api/reservations/${id}`)
+        .then(r => { setData(r.data) })
+        .catch(() => {})
+        .finally(() => setTabRefreshing(false))
+    }
+    setTab(newTab)
+  }
 
   useEffect(() => {
     // If not a valid UUID (including 'new' or missing/garbled like 'nov'), treat as new and prefill immediately
@@ -120,13 +132,13 @@ export default function EditReservation() {
         <div className="res-tab-bar">
           <button
             className={`res-tab-btn ${tab === 'fiche' ? 'res-tab-btn--active' : ''}`}
-            onClick={() => setTab('fiche')}
+            onClick={() => switchTab('fiche')}
           >
             <FileText className="w-4 h-4" /> Fiche
           </button>
           <button
             className={`res-tab-btn ${tab === 'facturation' ? 'res-tab-btn--active' : ''}`}
-            onClick={() => setTab('facturation')}
+            onClick={() => switchTab('facturation')}
           >
             <Receipt className="w-4 h-4" /> Facturation
           </button>
@@ -134,7 +146,7 @@ export default function EditReservation() {
       )}
 
       {/* ── Contenu selon l'onglet ── */}
-      {(isExisting && (loading || !data)) ? (
+      {(isExisting && (loading || tabRefreshing || !data)) ? (
         <div className="container pt-6">
           <div className="card"><div className="card-body text-gray-600">Chargement…</div></div>
         </div>

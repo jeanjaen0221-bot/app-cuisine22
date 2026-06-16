@@ -334,6 +334,26 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
     # Atomic update with items replacement (stay on the same session)
     session.add(res)
     if payload.items is not None:
+        def _norm_type(t: str) -> str:
+            return (t or "").lower().replace("é", "e").strip()
+
+        # If the payload has no supplement items, preserve existing supplements
+        # (supplements are managed from the Facturation tab and must survive a fiche save)
+        payload_has_supplements = any(
+            _norm_type(it.type) in ("supplement", "supplements")
+            for it in payload.items
+        )
+        preserved_supplements: list = []
+        if not payload_has_supplements:
+            preserved_supplements = [
+                (s.name, s.quantity, s.comment)
+                for s in session.exec(
+                    select(ReservationItem)
+                    .where(ReservationItem.reservation_id == res.id)
+                    .where(ReservationItem.type == "supplément")
+                ).all()
+            ]
+
         session.exec(delete(ReservationItem).where(ReservationItem.reservation_id == res.id))
         for it in payload.items:
             nm = (it.name or "").strip()
@@ -341,6 +361,8 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
             if not nm or qty <= 0:
                 continue
             session.add(ReservationItem(type=it.type, name=nm, quantity=qty, comment=(it.comment or None), reservation_id=res.id))
+        for (nm, qty, comment) in preserved_supplements:
+            session.add(ReservationItem(type="supplément", name=nm, quantity=qty, comment=comment, reservation_id=res.id))
     session.commit()
 
     session.refresh(res)
