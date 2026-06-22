@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
-import { Search, Printer, Pencil } from 'lucide-react'
+import { Search, Printer, Pencil, Trash2 } from 'lucide-react'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 type AllergenMeta = { key: string; label: string; icon_url?: string }
 
@@ -22,7 +23,20 @@ export default function PastReservations() {
   const [rows, setRows] = useState<Reservation[]>([])
   const [q, setQ] = useState('')
   const [allergenMeta, setAllergenMeta] = useState<Record<string, AllergenMeta>>({})
+  const [toDelete, setToDelete] = useState<{ id: string; name: string } | null>(null)
   const navigate = useNavigate()
+
+  async function confirmDelete() {
+    if (!toDelete) return
+    try {
+      await api.delete(`/api/reservations/${toDelete.id}`)
+      setRows(prev => prev.filter(r => r.id !== toDelete.id))
+    } catch (err: any) {
+      alert(`Erreur lors de la suppression: ${err?.response?.data?.detail || err.message}`)
+    } finally {
+      setToDelete(null)
+    }
+  }
 
   async function load() {
     const params: any = {}
@@ -136,6 +150,11 @@ export default function PastReservations() {
                           title="Télécharger la fiche PDF"
                           onClick={e => { e.stopPropagation(); fileDownload(`/api/reservations/${r.id}/pdf`) }}
                         ><Printer className="h-3.5 w-3.5" /></button>
+                        <button
+                          className="btn btn-sm btn-outline res-delete-btn"
+                          title="Supprimer"
+                          onClick={e => { e.stopPropagation(); setToDelete({ id: r.id, name: r.client_name }) }}
+                        ><Trash2 className="h-3.5 w-3.5" /></button>
                       </div>
                     </td>
                   </tr>
@@ -145,6 +164,12 @@ export default function PastReservations() {
           </table>
         </div>
       </div>
+      <ConfirmDeleteModal
+        open={toDelete !== null}
+        clientName={toDelete?.name || ''}
+        onConfirm={confirmDelete}
+        onCancel={() => setToDelete(null)}
+      />
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
 import { Plus, Printer, Pencil, Search, User, CalendarDays, Clock, Users, Wine, Trash2, FileDown } from 'lucide-react'
+import ConfirmDeleteModal from './ConfirmDeleteModal'
 
 // Fonction pour formater la date au format français
 const formatDate = (dateString: string) => {
@@ -76,16 +77,22 @@ export default function ReservationList() {
   const [selectedMonth, setSelectedMonth] = useState<string>('')
   const [expanded, setExpanded] = useState<Record<string, { entries?: boolean; mains?: boolean; desserts?: boolean; notes?: boolean; allergens?: boolean }>>({})
   const [viewMode, setViewMode] = useState<'cards' | 'compact'>('cards')
+  const [toDelete, setToDelete] = useState<{ id: string; name: string } | null>(null)
 
   async function deleteReservation(id: string, clientName: string) {
-    if (!confirm(`Êtes-vous sûr de vouloir supprimer la réservation de ${clientName} ?`)) return
+    setToDelete({ id, name: clientName })
+  }
+
+  async function confirmDelete() {
+    if (!toDelete) return
     try {
-      await api.delete(`/api/reservations/${id}`)
-      setRows(prev => prev.filter(r => r.id !== id))
-      setAllRows(prev => prev.filter(r => r.id !== id))
-      alert('Réservation supprimée avec succès')
+      await api.delete(`/api/reservations/${toDelete.id}`)
+      setRows(prev => prev.filter(r => r.id !== toDelete.id))
+      setAllRows(prev => prev.filter(r => r.id !== toDelete.id))
     } catch (err: any) {
       alert(`Erreur lors de la suppression: ${err?.response?.data?.detail || err.message}`)
+    } finally {
+      setToDelete(null)
     }
   }
 
@@ -266,6 +273,7 @@ export default function ReservationList() {
                           <div className="flex items-center gap-2">
                             <Link to={`/reservation/${r.id}`} className="btn btn-sm btn-outline" onClick={e => e.stopPropagation()}><Pencil className="w-4 h-4"/> Modifier</Link>
                             <button onClick={(e) => { e.stopPropagation(); fileDownload(`/api/reservations/${r.id}/pdf`) }} className="btn btn-sm btn-outline" title="Télécharger la fiche PDF"><Printer className="w-4 h-4"/></button>
+                            <button onClick={(e) => { e.stopPropagation(); deleteReservation(r.id, r.client_name) }} className="btn btn-sm btn-outline res-delete-btn" title="Supprimer"><Trash2 className="w-4 h-4"/></button>
                           </div>
                         </td>
                       </tr>
@@ -464,6 +472,12 @@ export default function ReservationList() {
         </div>
         )
       )}
+      <ConfirmDeleteModal
+        open={toDelete !== null}
+        clientName={toDelete?.name || ''}
+        onConfirm={confirmDelete}
+        onCancel={() => setToDelete(null)}
+      />
     </div>
   )
 }
