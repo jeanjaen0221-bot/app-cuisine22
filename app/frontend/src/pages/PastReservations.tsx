@@ -68,6 +68,34 @@ const formatItemType = (raw?: string) => {
   return raw || 'Autre'
 }
 
+const isValidItem = (item?: Reservation['items'][number]) => {
+  if (!item) return false
+  const name = (item.name || '').trim()
+  const qty = item.quantity || 0
+  return Boolean(name) && qty > 0
+}
+
+const hasValidItems = (items: Reservation['items']) =>
+  Array.isArray(items) && items.some(isValidItem)
+
+const deduceMenuServices = (items: Reservation['items']) => {
+  if (!Array.isArray(items) || items.length === 0) return '—'
+  const types = new Set<string>()
+  items.forEach(item => {
+    if (!isValidItem(item)) return
+    const type = normalizeText(item.type || '')
+    if (!type || type.startsWith('supplement') || type.startsWith('boisson') || type.startsWith('drink')) return
+    if (type.startsWith('entree')) types.add('entree')
+    if (type.startsWith('plat')) types.add('plat')
+    if (type.startsWith('dessert')) types.add('dessert')
+  })
+  const count = types.size
+  if (count >= 3) return '3 services'
+  if (count === 2) return '2 services'
+  if (count === 1) return '1 service'
+  return '—'
+}
+
 const allergenFallback: Record<string, string> = {
   gl: 'Gluten', la: 'Lait', oe: 'Oeufs', ar: 'Arachide', so: 'Soja',
   fr: 'Fruits à coque', se: 'Sésame', su: 'Sulfites', po: 'Poisson',
@@ -107,13 +135,14 @@ export default function PastReservations() {
     setLoadError(null)
     try {
       const perPage = 200
-      const maxPages = 20
       const all: Reservation[] = []
-      for (let page = 1; page <= maxPages; page += 1) {
+      let page = 1
+      while (true) {
         const res = await api.get('/api/reservations/past', { params: { page, per_page: perPage } })
         const batch = Array.isArray(res.data) ? (res.data as Reservation[]) : []
         all.push(...batch)
         if (batch.length < perPage) break
+        page += 1
       }
       setRows(all)
     } catch (err: any) {
@@ -176,13 +205,20 @@ export default function PastReservations() {
     return rows.filter(r => r.client_name.toLowerCase().includes(s))
   }, [rows, q])
 
+  const analyticsRows = useMemo(() => {
+    return rows.filter(r =>
+      (r.status === 'confirmed' || r.status === 'printed')
+      && hasValidItems(r.items)
+    )
+  }, [rows])
+
   const periodRows = useMemo(() => {
-    return rows.filter(r => {
+    return analyticsRows.filter(r => {
       const d = parseDate(r.service_date)
       if (!d) return false
       return d >= periodRange.start && d <= periodRange.end
     })
-  }, [rows, periodRange])
+  }, [analyticsRows, periodRange])
 
   const periodTotals = useMemo(() => {
     let paxTotal = 0
@@ -198,6 +234,7 @@ export default function PastReservations() {
       else if (r.status === 'printed') statusCounts.printed += 1
       else statusCounts.draft += 1
       r.items?.forEach(item => {
+        if (!isValidItem(item)) return
         itemTotal += item.quantity || 0
       })
     })
@@ -264,8 +301,8 @@ export default function PastReservations() {
     const map = new Map<string, { name: string; type: string; qty: number }>()
     periodRows.forEach(r => {
       r.items?.forEach(item => {
+        if (!isValidItem(item)) return
         const name = (item.name || '').trim()
-        if (!name) return
         const type = formatItemType(item.type)
         const key = `${type}|${normalizeText(name)}`
         const current = map.get(key)
@@ -289,7 +326,7 @@ export default function PastReservations() {
   const topMenuFormulas = useMemo(() => {
     const map = new Map<string, { label: string; count: number }>()
     periodRows.forEach(r => {
-      const label = (r.menu_formula || '—').trim() || '—'
+      const label = deduceMenuServices(r.items)
       const key = normalizeText(label)
       map.set(key, { label, count: (map.get(key)?.count || 0) + 1 })
     })
