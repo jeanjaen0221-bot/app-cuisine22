@@ -204,11 +204,18 @@ def create_reservation(payload: ReservationCreateIn, session: Session = Depends(
     data["allergens"] = allergens
 
     # Server-side guard: per-type totals must not exceed pax
+    def _norm_item_type(t: str) -> str:
+        return (t or "").lower().replace("é", "e").replace("è", "e").strip()
     try:
-        totals = { 'entrée': 0, 'plat': 0, 'dessert': 0 }
+        totals = { 'entree': 0, 'plat': 0, 'dessert': 0 }
         for it in payload.items:
-            if it.type in totals:
-                totals[it.type] += int(it.quantity or 0)
+            nt = _norm_item_type(it.type)
+            if nt.startswith('entree'):
+                totals['entree'] += int(it.quantity or 0)
+            elif nt == 'plat':
+                totals['plat'] += int(it.quantity or 0)
+            elif nt == 'dessert':
+                totals['dessert'] += int(it.quantity or 0)
         offenders = [
             f"{k}={v}" for k, v in totals.items() if v > pax
         ]
@@ -310,18 +317,21 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
     except Exception:
         pass
     # Server-side guard: per-type totals must not exceed pax (using incoming items or existing ones)
+    def _norm_item_type_upd(t: str) -> str:
+        return (t or "").lower().replace("é", "e").replace("è", "e").strip()
     try:
         check_pax = update_data.get('pax', res.pax)
-        totals = { 'entrée': 0, 'plat': 0, 'dessert': 0 }
-        if payload.items is not None:
-            for it in payload.items:
-                if it.type in totals:
-                    totals[it.type] += int(it.quantity or 0)
-        else:
-            existing_items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
-            for it in existing_items:
-                if it.type in totals:
-                    totals[it.type] += int(it.quantity or 0)
+        totals = { 'entree': 0, 'plat': 0, 'dessert': 0 }
+        source_items = payload.items if payload.items is not None else \
+            session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
+        for it in source_items:
+            nt = _norm_item_type_upd(it.type)
+            if nt.startswith('entree'):
+                totals['entree'] += int(it.quantity or 0)
+            elif nt == 'plat':
+                totals['plat'] += int(it.quantity or 0)
+            elif nt == 'dessert':
+                totals['dessert'] += int(it.quantity or 0)
         offenders = [
             f"{k}={v}" for k, v in totals.items() if v > (check_pax or 0)
         ]
@@ -389,8 +399,8 @@ def duplicate_reservation(reservation_id: uuid.UUID, session: Session = Depends(
     items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
 
     new_res = Reservation(**{k: getattr(res, k) for k in [
-        'client_name','pax','service_date','arrival_time','drink_formula','menu_formula','notes','status','final_version','allergens'
-    ]})
+        'client_name','pax','service_date','arrival_time','drink_formula','menu_formula','notes','allergens'
+    ]}, status='draft', final_version=False)
     session.add(new_res)
     session.commit()
     session.refresh(new_res)

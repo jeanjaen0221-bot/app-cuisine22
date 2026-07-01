@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { Trash2, Plus, ChevronRight, Receipt, Tag, Search, CheckCircle2, Circle, ExternalLink } from 'lucide-react'
 import { api } from '../lib/api'
 import BillingPanel from '../components/BillingPanel'
-import type { Reservation, ReservationItem } from '../types'
+import type { Reservation } from '../types'
+import { deduceFormula } from '../lib/utils'
 
 // ---- Local types ----
 type Preset = {
@@ -16,18 +17,6 @@ type Preset = {
 type BillingStatus = { exists: boolean; loaded: boolean }
 
 // ---- Helpers ----
-function deduceFormula(items: ReservationItem[]): string {
-  const norm = (s: string) => s.toLowerCase().trim().replace(/é/g, 'e').replace(/è/g, 'e')
-  const types = new Set(items.map(i => norm(i.type)))
-  const hasEntree = types.has('entree') || types.has('entrees')
-  const hasPlat = types.has('plat') || types.has('plats')
-  const hasDessert = types.has('dessert') || types.has('desserts')
-  if (hasEntree && hasPlat && hasDessert) return '3 services (Entrée · Plat · Dessert)'
-  if (hasEntree && hasPlat) return '2 services (Entrée · Plat)'
-  if (hasPlat && hasDessert) return '2 services (Plat · Dessert)'
-  if (hasPlat) return '1 service (Plat)'
-  return '—'
-}
 
 function formatDate(d: string) {
   if (!d) return '—'

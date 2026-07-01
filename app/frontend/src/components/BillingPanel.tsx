@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Plus, Receipt, Save, Tag, Trash2 } from 'lucide-react'
 import { api, fileDownload } from '../lib/api'
 import type { Reservation, ReservationItem } from '../types'
+import { deduceFormula } from '../lib/utils'
 
 // ---- Types ----
 type BillingForm = {
@@ -47,18 +48,6 @@ const EMPTY_BILLING: BillingForm = {
   payment_terms: 'Paiement à 30 jours', notes: '',
 }
 
-function deduceFormula(items: ReservationItem[]): string {
-  const norm = (s: string) => s.toLowerCase().trim().replace(/é/g, 'e').replace(/è/g, 'e')
-  const types = new Set(items.map(i => norm(i.type)))
-  const hasEntree = types.has('entree') || types.has('entrees')
-  const hasPlat = types.has('plat') || types.has('plats')
-  const hasDessert = types.has('dessert') || types.has('desserts')
-  if (hasEntree && hasPlat && hasDessert) return '3 services (Entrée · Plat · Dessert)'
-  if (hasEntree && hasPlat) return '2 services (Entrée · Plat)'
-  if (hasPlat && hasDessert) return '2 services (Plat · Dessert)'
-  if (hasPlat) return '1 service (Plat)'
-  return '—'
-}
 
 function formatDate(d: string) {
   if (!d) return '—'

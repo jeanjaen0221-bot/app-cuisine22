@@ -3374,6 +3374,14 @@ img, video, canvas, svg { max-width: 100%; }
   font-weight: 600;
   color: var(--gray-700);
 }
+.analytics-top-qty--allergen {
+  font-weight: 600;
+  color: #b91c1c;
+  background: #fee2e2;
+  border-radius: 9999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.78rem;
+}
 
 .analytics-empty {
   text-align: center;

@@ -2,12 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
-<<<<<<< HEAD
 import { Plus, Printer, Pencil, Search, User, CalendarDays, Clock, Users, Wine, Trash2, FileDown, AlertTriangle } from 'lucide-react'
-=======
-import { Plus, Printer, Pencil, Search, User, CalendarDays, Clock, Users, Wine, Trash2, FileDown } from 'lucide-react'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
->>>>>>> 459d8bf7962466e80d23f6871a67609fa9a78676
 
 // Fonction pour formater la date au format français
 const formatDate = (dateString: string) => {
@@ -54,10 +50,11 @@ function drinkVariantOf(label?: string): string {
   return 'is-default'
 }
 
+const _normType = (t: string) => (t || '').toLowerCase().replace(/[éè]/g, 'e')
+
 function hasNoDishes(r: Reservation): boolean {
-  const norm = (t: string) => (t || '').toLowerCase().replace('é', 'e')
   const hasDish = (r.items || []).some(i => {
-    const t = norm(i.type || '')
+    const t = _normType(i.type || '')
     return (t.startsWith('entree') || t === 'plat' || t === 'dessert')
       && (i.quantity || 0) > 0 && (i.name || '').trim()
   })
@@ -260,9 +257,9 @@ export default function ReservationList() {
                 </thead>
                 <tbody>
                   {rows.map(r => {
-                    const e = r.items.filter(i => (i.type||'').toLowerCase().startsWith('entrée')).length
-                    const p = r.items.filter(i => (i.type||'').toLowerCase() === 'plat').length
-                    const d = r.items.filter(i => (i.type||'').toLowerCase() === 'dessert').length
+                    const e = r.items.filter(i => _normType(i.type).startsWith('entree') && (i.quantity||0)>0).length
+                    const p = r.items.filter(i => _normType(i.type) === 'plat' && (i.quantity||0)>0).length
+                    const d = r.items.filter(i => _normType(i.type) === 'dessert' && (i.quantity||0)>0).length
                     const firstNames = r.items.map(i => `${i.quantity}× ${i.name}`).slice(0, 6).join(', ')
                     const pdfOk = r.last_pdf_exported_at && new Date(r.last_pdf_exported_at) >= new Date(r.updated_at)
                     return (

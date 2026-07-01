@@ -135,12 +135,12 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     return { entree: t['entrée'], plat: t['plat'], dessert: t['dessert'] }
   }, [items])
 
-  const _normTypeEarly = (t: string) => (t || '').toLowerCase().replace('é', 'e')
+  const _normTypeEarly = (t: string) => (t || '').toLowerCase().replace(/[éè]/g, 'e')
   const hasEffectiveDishes = useMemo(() =>
     items.some(it => {
       const t = _normTypeEarly(it.type || '')
       return (it.name || '').trim() !== '' && (it.quantity || 0) > 0
-        && t !== 'supplement' && t !== 'supplements'
+        && (t.startsWith('entree') || t === 'plat' || t === 'dessert')
     }),
     [items]
   )
