@@ -3382,6 +3382,21 @@ img, video, canvas, svg { max-width: 100%; }
   padding: 0.05rem 0.5rem;
   font-size: 0.78rem;
 }
+.analytics-ca-total {
+  border-top: 1px solid var(--gray-200);
+  margin-top: 0.35rem;
+  padding-top: 0.5rem;
+  font-weight: 700;
+}
+.analytics-ca-total .analytics-top-name span {
+  font-weight: 700;
+  color: var(--gray-900);
+}
+.analytics-ca-total-qty {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--color-primary, #7c3aed);
+}
 
 .analytics-empty {
   text-align: center;

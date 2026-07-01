@@ -96,6 +96,17 @@ const deduceMenuServices = (items: Reservation['items']) => {
   return '—'
 }
 
+const PRIX = {
+  menu2: 34,
+  menu3: 40,
+  boisson_na: 10,
+  boisson_alcool: 20,
+  boisson_cava: 6,
+  boisson_champagne: 11,
+  boisson_sharing: 34,
+  privatisation: 600,
+}
+
 const allergenFallback: Record<string, string> = {
   gl: 'Gluten', la: 'Lait', oe: 'Oeufs', ar: 'Arachide', so: 'Soja',
   fr: 'Fruits à coque', se: 'Sésame', su: 'Sulfites', po: 'Poisson',
@@ -364,6 +375,54 @@ export default function PastReservations() {
     })
     return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 8)
   }, [periodRows, allergenMeta])
+
+  const revenueEstimate = useMemo(() => {
+    let menuCA = 0
+    let boissonCA = 0
+    let supplCA = 0
+    const privDetails: { name: string; qty: number; ca: number }[] = []
+
+    periodRows.forEach(r => {
+      const pax = r.pax || 0
+      const df = normalizeText(r.drink_formula || '')
+
+      // ── Menu ──
+      const services = deduceMenuServices(r.items)
+      if (services === '3 services') menuCA += PRIX.menu3 * pax
+      else if (services === '2 services') menuCA += PRIX.menu2 * pax
+
+      // ── Boisson ──
+      if (df.includes('sharing')) boissonCA += PRIX.boisson_sharing * pax
+      else if (df.includes('champagne')) boissonCA += PRIX.boisson_champagne * pax
+      else if (df.includes('cava')) boissonCA += PRIX.boisson_cava * pax
+      else if (df.includes('avec alcool') || df.includes('alcool')) boissonCA += PRIX.boisson_alcool * pax
+      else if (df.includes('sans alcool') || df.includes('na ') || df === 'na') boissonCA += PRIX.boisson_na * pax
+
+      // ── Privatisation (supplément) ──
+      r.items?.forEach(item => {
+        if (!isValidItem(item)) return
+        const t = normalizeText(item.type || '')
+        if (!t.startsWith('supplement')) return
+        const n = normalizeText(item.name || '')
+        if (n.includes('privatisation') || n.includes('privatization')) {
+          const ca = PRIX.privatisation * (item.quantity || 1)
+          supplCA += ca
+          privDetails.push({ name: item.name, qty: item.quantity || 1, ca })
+        }
+      })
+    })
+
+    return {
+      menuCA,
+      boissonCA,
+      supplCA,
+      total: menuCA + boissonCA + supplCA,
+      privDetails,
+    }
+  }, [periodRows])
+
+  const fmtEur = (n: number) =>
+    n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
 
   const activeCount = activeTab === 'list' ? filtered.length : periodRows.length
 
@@ -730,6 +789,43 @@ export default function PastReservations() {
                     )}
                   </div>
                 </div>
+
+                {revenueEstimate.total > 0 && (
+                  <div className="card analytics-chart">
+                    <div className="analytics-chart-header">
+                      <div>
+                        <h3 className="analytics-chart-title">CA estimé</h3>
+                        <p className="analytics-chart-subtitle">Calcul selon barème tarifaire</p>
+                      </div>
+                    </div>
+                    <div className="analytics-chart-body">
+                      <div className="analytics-top-list">
+                        {revenueEstimate.menuCA > 0 && (
+                          <div className="analytics-top-item">
+                            <div className="analytics-top-name"><span>Menus</span><span className="analytics-top-meta">2 serv. 34€ · 3 serv. 40€ · /pax</span></div>
+                            <span className="analytics-top-qty">{fmtEur(revenueEstimate.menuCA)}</span>
+                          </div>
+                        )}
+                        {revenueEstimate.boissonCA > 0 && (
+                          <div className="analytics-top-item">
+                            <div className="analytics-top-name"><span>Boissons</span><span className="analytics-top-meta">NA 10€ · alcool 20€ · cava 6€ · champ. 11€ · sharing 34€ · /pax</span></div>
+                            <span className="analytics-top-qty">{fmtEur(revenueEstimate.boissonCA)}</span>
+                          </div>
+                        )}
+                        {revenueEstimate.supplCA > 0 && (
+                          <div className="analytics-top-item">
+                            <div className="analytics-top-name"><span>Privatisations</span><span className="analytics-top-meta">600€ ×{revenueEstimate.privDetails.reduce((s,d)=>s+d.qty,0)}</span></div>
+                            <span className="analytics-top-qty">{fmtEur(revenueEstimate.supplCA)}</span>
+                          </div>
+                        )}
+                        <div className="analytics-top-item analytics-ca-total">
+                          <div className="analytics-top-name"><span>Total estimé</span></div>
+                          <span className="analytics-top-qty analytics-ca-total-qty">{fmtEur(revenueEstimate.total)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {topAllergens.length > 0 && (
                   <div className="card analytics-chart">
