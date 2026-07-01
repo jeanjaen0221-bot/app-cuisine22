@@ -105,6 +105,7 @@ const PRIX = {
   boisson_champagne: 11,
   boisson_sharing: 34,
   privatisation: 600,
+  brunch: 36,
 }
 
 const allergenFallback: Record<string, string> = {
@@ -398,7 +399,7 @@ export default function PastReservations() {
       else if (df.includes('avec alcool') || df.includes('alcool')) boissonCA += PRIX.boisson_alcool * pax
       else if (df.includes('sans alcool') || df.includes('na ') || df === 'na') boissonCA += PRIX.boisson_na * pax
 
-      // ── Privatisation (supplément) ──
+      // ── Suppléments tarifables ──
       r.items?.forEach(item => {
         if (!isValidItem(item)) return
         const t = normalizeText(item.type || '')
@@ -406,6 +407,10 @@ export default function PastReservations() {
         const n = normalizeText(item.name || '')
         if (n.includes('privatisation') || n.includes('privatization')) {
           const ca = PRIX.privatisation * (item.quantity || 1)
+          supplCA += ca
+          privDetails.push({ name: item.name, qty: item.quantity || 1, ca })
+        } else if (n.includes('brunch')) {
+          const ca = PRIX.brunch * pax * (item.quantity || 1)
           supplCA += ca
           privDetails.push({ name: item.name, qty: item.quantity || 1, ca })
         }
@@ -814,7 +819,7 @@ export default function PastReservations() {
                         )}
                         {revenueEstimate.supplCA > 0 && (
                           <div className="analytics-top-item">
-                            <div className="analytics-top-name"><span>Privatisations</span><span className="analytics-top-meta">600€ ×{revenueEstimate.privDetails.reduce((s,d)=>s+d.qty,0)}</span></div>
+                            <div className="analytics-top-name"><span>Privatisations &amp; Brunch</span><span className="analytics-top-meta">privatisation 600€ · brunch 36€/pax</span></div>
                             <span className="analytics-top-qty">{fmtEur(revenueEstimate.supplCA)}</span>
                           </div>
                         )}
