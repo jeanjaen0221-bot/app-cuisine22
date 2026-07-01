@@ -412,7 +412,7 @@ export default function PastReservations() {
           privCA += ca
           privDetails.push({ name: item.name, qty: item.quantity || 1, ca })
         } else if (n.includes('brunch')) {
-          const ca = PRIX.brunch * pax * (item.quantity || 1)
+          const ca = PRIX.brunch * (item.quantity || 1)
           brunchCA += ca
           brunchDetails.push({ name: item.name, qty: item.quantity || 1, ca })
         }
