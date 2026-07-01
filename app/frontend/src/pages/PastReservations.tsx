@@ -380,8 +380,10 @@ export default function PastReservations() {
   const revenueEstimate = useMemo(() => {
     let menuCA = 0
     let boissonCA = 0
-    let supplCA = 0
+    let privCA = 0
+    let brunchCA = 0
     const privDetails: { name: string; qty: number; ca: number }[] = []
+    const brunchDetails: { name: string; qty: number; ca: number }[] = []
 
     periodRows.forEach(r => {
       const pax = r.pax || 0
@@ -407,12 +409,12 @@ export default function PastReservations() {
         const n = normalizeText(item.name || '')
         if (n.includes('privatisation') || n.includes('privatization')) {
           const ca = PRIX.privatisation * (item.quantity || 1)
-          supplCA += ca
+          privCA += ca
           privDetails.push({ name: item.name, qty: item.quantity || 1, ca })
         } else if (n.includes('brunch')) {
           const ca = PRIX.brunch * pax * (item.quantity || 1)
-          supplCA += ca
-          privDetails.push({ name: item.name, qty: item.quantity || 1, ca })
+          brunchCA += ca
+          brunchDetails.push({ name: item.name, qty: item.quantity || 1, ca })
         }
       })
     })
@@ -420,9 +422,11 @@ export default function PastReservations() {
     return {
       menuCA,
       boissonCA,
-      supplCA,
-      total: menuCA + boissonCA + supplCA,
+      privCA,
+      brunchCA,
+      total: menuCA + boissonCA + privCA + brunchCA,
       privDetails,
+      brunchDetails,
     }
   }, [periodRows])
 
@@ -817,10 +821,16 @@ export default function PastReservations() {
                             <span className="analytics-top-qty">{fmtEur(revenueEstimate.boissonCA)}</span>
                           </div>
                         )}
-                        {revenueEstimate.supplCA > 0 && (
+                        {revenueEstimate.privCA > 0 && (
                           <div className="analytics-top-item">
-                            <div className="analytics-top-name"><span>Privatisations &amp; Brunch</span><span className="analytics-top-meta">privatisation 600€ · brunch 36€/pax</span></div>
-                            <span className="analytics-top-qty">{fmtEur(revenueEstimate.supplCA)}</span>
+                            <div className="analytics-top-name"><span>Privatisations</span><span className="analytics-top-meta">600€ forfait ×{revenueEstimate.privDetails.reduce((s,d)=>s+d.qty,0)}</span></div>
+                            <span className="analytics-top-qty">{fmtEur(revenueEstimate.privCA)}</span>
+                          </div>
+                        )}
+                        {revenueEstimate.brunchCA > 0 && (
+                          <div className="analytics-top-item">
+                            <div className="analytics-top-name"><span>Brunch</span><span className="analytics-top-meta">36€/pax ×{revenueEstimate.brunchDetails.reduce((s,d)=>s+d.qty,0)}</span></div>
+                            <span className="analytics-top-qty">{fmtEur(revenueEstimate.brunchCA)}</span>
                           </div>
                         )}
                         <div className="analytics-top-item analytics-ca-total">
