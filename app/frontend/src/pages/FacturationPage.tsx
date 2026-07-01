@@ -99,8 +99,9 @@ export default function FacturationPage() {
   }
 
   const filtered = reservations.filter(r =>
-    !search || r.client_name.toLowerCase().includes(search.toLowerCase()) ||
-    r.service_date.includes(search)
+    r.on_invoice &&
+    (!search || r.client_name.toLowerCase().includes(search.toLowerCase()) ||
+    r.service_date.includes(search))
   )
 
   return (
@@ -131,7 +132,7 @@ export default function FacturationPage() {
         </div>
         <div className="facturation-list">
           {filtered.length === 0 && (
-            <div className="p-4 text-gray-400 text-sm text-center">Aucune réservation</div>
+            <div className="p-4 text-gray-400 text-sm text-center">Aucune réservation avec facturation</div>
           )}
           {filtered.map(res => {
             const active = res.id === selectedId

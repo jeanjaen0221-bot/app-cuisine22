@@ -4,7 +4,8 @@ import BillingPanel from '../components/BillingPanel'
 import { useEffect, useState } from 'react'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
-import { ArrowLeft, Copy, Receipt, Printer, FileText } from 'lucide-react'
+import { ArrowLeft, Copy, Receipt, Printer, FileText, Trash2 } from 'lucide-react'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 export default function EditReservation() {
   const { id } = useParams()
@@ -15,6 +16,7 @@ export default function EditReservation() {
   const [error, setError] = useState<string | null>(null)
   const [saveOk, setSaveOk] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
   const isExisting = !!id && id !== 'new' && uuidRegex.test(id)
   const [tab, setTab] = useState<'fiche' | 'facturation'>(
@@ -83,6 +85,19 @@ export default function EditReservation() {
     }
   }
 
+  async function handleDelete() {
+    if (!id || id === 'new') return
+    setError(null)
+    try {
+      await api.delete(`/api/reservations/${id}`)
+      navigate('/')
+    } catch (e: any) {
+      setError(e?.userMessage || e?.response?.data?.detail || e?.message || 'Erreur lors de la suppression')
+    } finally {
+      setShowDeleteModal(false)
+    }
+  }
+
   async function duplicate() {
     if (!id || id === 'new') return
     setError(null)
@@ -106,6 +121,9 @@ export default function EditReservation() {
           </button>
           <button className="btn btn-sm btn-outline" onClick={() => fileDownload(`/api/reservations/${id}/pdf`)} title="Télécharger la fiche cuisine">
             <Printer className="w-4 h-4" /> Fiche PDF
+          </button>
+          <button className="btn btn-sm" style={{ backgroundColor: '#dc2626', color: '#fff', borderColor: '#dc2626' }} onClick={() => setShowDeleteModal(true)}>
+            <Trash2 className="w-4 h-4" /> Supprimer
           </button>
         </>
       )}
@@ -163,6 +181,12 @@ export default function EditReservation() {
           />
         </div>
       )}
+      <ConfirmDeleteModal
+        open={showDeleteModal}
+        clientName={data?.client_name || ''}
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteModal(false)}
+      />
     </div>
   )
 }
