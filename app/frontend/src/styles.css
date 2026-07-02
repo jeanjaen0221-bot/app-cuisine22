@@ -3105,6 +3105,37 @@ img, video, canvas, svg { max-width: 100%; }
 }
 .reminder-snooze-option:hover { background: #f9fafb; }
 
+/* ── Badge "Plats à définir" sur les cartes de réservation ── */
+.card-no-dishes-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.4;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* ── Bandeau avertissement dans la fiche ── */
+.no-dishes-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 1rem;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  color: #92400e;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
 /* ── Sidebar badge ── */
 .nav-reminder-badge {
   display: inline-flex;
@@ -3342,6 +3373,29 @@ img, video, canvas, svg { max-width: 100%; }
 .analytics-top-qty {
   font-weight: 600;
   color: var(--gray-700);
+}
+.analytics-top-qty--allergen {
+  font-weight: 600;
+  color: #b91c1c;
+  background: #fee2e2;
+  border-radius: 9999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.78rem;
+}
+.analytics-ca-total {
+  border-top: 1px solid var(--gray-200);
+  margin-top: 0.35rem;
+  padding-top: 0.5rem;
+  font-weight: 700;
+}
+.analytics-ca-total .analytics-top-name span {
+  font-weight: 700;
+  color: var(--gray-900);
+}
+.analytics-ca-total-qty {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--color-primary, #7c3aed);
 }
 
 .analytics-empty {

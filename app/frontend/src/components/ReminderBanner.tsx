@@ -65,22 +65,33 @@ export default function ReminderBanner({ days = 5, onCountChange }: Props) {
     load()
     if (intervalRef.current) clearInterval(intervalRef.current)
     intervalRef.current = setInterval(() => load(), 5 * 60 * 1000)
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+    function onVisible() {
+      if (document.visibilityState === 'visible') load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [load])
 
   async function snooze(reservationId: string, hours: number) {
     try {
       await api.post(`/api/reminders/${reservationId}/snooze`, { hours })
+    } catch {}
+    finally {
       setOpenSnooze(null)
       load()
-    } catch {}
+    }
   }
 
   async function mute(reservationId: string) {
     try {
       await api.post(`/api/reminders/${reservationId}/mute`)
-      load()
     } catch {}
+    finally {
+      load()
+    }
   }
 
   if (reminders.length === 0 && !loading) return null

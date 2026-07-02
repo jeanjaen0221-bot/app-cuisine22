@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fileDownload } from '../lib/api'
 import { Reservation } from '../types'
-import { Plus, Printer, Pencil, Search, User, CalendarDays, Clock, Users, Wine, Trash2, FileDown } from 'lucide-react'
+import { Plus, Printer, Pencil, Search, User, CalendarDays, Clock, Users, Wine, Trash2, FileDown, AlertTriangle } from 'lucide-react'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
 
 // Fonction pour formater la date au format français
@@ -48,6 +48,17 @@ function drinkVariantOf(label?: string): string {
   if (s.includes('sans alcool')) return 'is-na'
   if (s.includes('avec alcool')) return 'is-alcool'
   return 'is-default'
+}
+
+const _normType = (t: string) => (t || '').toLowerCase().replace(/[éè]/g, 'e')
+
+function hasNoDishes(r: Reservation): boolean {
+  const hasDish = (r.items || []).some(i => {
+    const t = _normType(i.type || '')
+    return (t.startsWith('entree') || t === 'plat' || t === 'dessert')
+      && (i.quantity || 0) > 0 && (i.name || '').trim()
+  })
+  return !hasDish && !(r as any).menu_formula
 }
 
 function DrinkBadge({ value }: { value?: string }) {
@@ -246,14 +257,21 @@ export default function ReservationList() {
                 </thead>
                 <tbody>
                   {rows.map(r => {
-                    const e = r.items.filter(i => (i.type||'').toLowerCase().startsWith('entrée')).length
-                    const p = r.items.filter(i => (i.type||'').toLowerCase() === 'plat').length
-                    const d = r.items.filter(i => (i.type||'').toLowerCase() === 'dessert').length
+                    const e = r.items.filter(i => _normType(i.type).startsWith('entree') && (i.quantity||0)>0).length
+                    const p = r.items.filter(i => _normType(i.type) === 'plat' && (i.quantity||0)>0).length
+                    const d = r.items.filter(i => _normType(i.type) === 'dessert' && (i.quantity||0)>0).length
                     const firstNames = r.items.map(i => `${i.quantity}× ${i.name}`).slice(0, 6).join(', ')
                     const pdfOk = r.last_pdf_exported_at && new Date(r.last_pdf_exported_at) >= new Date(r.updated_at)
                     return (
                       <tr key={r.id} className="cursor-pointer" onClick={() => window.location.href=`/reservation/${r.id}`}>
-                        <td className="capitalize font-medium">{r.client_name}</td>
+                        <td className="capitalize font-medium">
+                        {r.client_name}
+                        {hasNoDishes(r) && (
+                          <span className="card-no-dishes-badge ml-2" title="Aucun plat sélectionné">
+                            <AlertTriangle className="w-3 h-3" /> Plats à définir
+                          </span>
+                        )}
+                      </td>
                         <td>{formatDate(r.service_date)}</td>
                         <td>{formatTime(r.arrival_time)}</td>
                         <td>{r.pax}</td>
@@ -291,6 +309,11 @@ export default function ReservationList() {
                 <h3 className="text-lg font-medium flex items-center gap-2 capitalize">
                   <User className="w-4 h-4 text-gray-600" />
                   {r.client_name}
+                  {hasNoDishes(r) && (
+                    <span className="card-no-dishes-badge" title="Aucun plat sélectionné">
+                      <AlertTriangle className="w-3 h-3" /> Plats à définir
+                    </span>
+                  )}
                 </h3>
                 <div className="flex items-center gap-2">
                   <button

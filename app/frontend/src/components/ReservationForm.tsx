@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Package,
   Receipt,
+  AlertTriangle,
 } from 'lucide-react';
 
 const TIME_PRESETS = ['12:00', '12:30', '13:00', '13:30', '19:30', '20:00']
@@ -134,11 +135,12 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     return { entree: t['entrée'], plat: t['plat'], dessert: t['dessert'] }
   }, [items])
 
+  const _normTypeEarly = (t: string) => (t || '').toLowerCase().replace(/[éè]/g, 'e')
   const hasEffectiveDishes = useMemo(() =>
     items.some(it => {
-      const t = (it.type || '').toLowerCase()
+      const t = _normTypeEarly(it.type || '')
       return (it.name || '').trim() !== '' && (it.quantity || 0) > 0
-        && t !== 'supplement' && t !== 'supplements'
+        && (t.startsWith('entree') || t === 'plat' || t === 'dessert')
     }),
     [items]
   )
@@ -534,12 +536,20 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     { label: 'Au moins un plat', ok: effectiveItems.length > 0 },
   ]
 
+  const showNoDishesWarning = !!initial?.id && !hasEffectiveDishes && !menu_formula
+
   return (
     <div className="container py-6 pb-28">
       <div className="lg:grid lg:grid-cols-[2fr_1fr] lg:gap-6 lg:items-start">
 
         {/* ════════════════ LEFT — form ════════════════ */}
         <div className="space-y-5">
+          {showNoDishesWarning && (
+            <div className="no-dishes-warning">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>Aucun plat sélectionné et aucune formule repas choisie pour cette réservation.</span>
+            </div>
+          )}
           <form id={formId || 'reservation-form'} onSubmit={handleSubmit} className="space-y-5">
 
             {/* ── Card 1 : Informations ── */}

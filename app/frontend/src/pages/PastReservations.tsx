@@ -96,6 +96,18 @@ const deduceMenuServices = (items: Reservation['items']) => {
   return '—'
 }
 
+const PRIX = {
+  menu2: 34,
+  menu3: 40,
+  boisson_na: 10,
+  boisson_alcool: 20,
+  boisson_cava: 6,
+  boisson_champagne: 11,
+  boisson_sharing: 34,
+  privatisation: 600,
+  brunch: 36,
+}
+
 const allergenFallback: Record<string, string> = {
   gl: 'Gluten', la: 'Lait', oe: 'Oeufs', ar: 'Arachide', so: 'Soja',
   fr: 'Fruits à coque', se: 'Sésame', su: 'Sulfites', po: 'Poisson',
@@ -207,8 +219,7 @@ export default function PastReservations() {
 
   const analyticsRows = useMemo(() => {
     return rows.filter(r =>
-      (r.status === 'confirmed' || r.status === 'printed')
-      && hasValidItems(r.items)
+      r.status === 'confirmed' || r.status === 'printed' || r.status === 'draft'
     )
   }, [rows])
 
@@ -222,7 +233,8 @@ export default function PastReservations() {
 
   const periodTotals = useMemo(() => {
     let paxTotal = 0
-    let itemTotal = 0
+    let dishTotal = 0
+    let suppTotal = 0
     const clientSet = new Set<string>()
     const statusCounts = { draft: 0, confirmed: 0, printed: 0 }
 
@@ -235,13 +247,19 @@ export default function PastReservations() {
       else statusCounts.draft += 1
       r.items?.forEach(item => {
         if (!isValidItem(item)) return
-        itemTotal += item.quantity || 0
+        const t = normalizeText(item.type || '')
+        if (t.startsWith('supplement')) {
+          suppTotal += item.quantity || 0
+        } else {
+          dishTotal += item.quantity || 0
+        }
       })
     })
 
     return {
       paxTotal,
-      itemTotal,
+      dishTotal,
+      suppTotal,
       uniqueClients: clientSet.size,
       statusCounts,
     }
@@ -310,7 +328,7 @@ export default function PastReservations() {
         map.set(key, { name, type, qty })
       })
     })
-    return [...map.values()].sort((a, b) => b.qty - a.qty).slice(0, 6)
+    return [...map.values()].sort((a, b) => b.qty - a.qty).slice(0, 10)
   }, [periodRows])
 
   const topDrinkFormulas = useMemo(() => {
@@ -326,11 +344,11 @@ export default function PastReservations() {
   const topMenuFormulas = useMemo(() => {
     const map = new Map<string, { label: string; count: number }>()
     periodRows.forEach(r => {
-      const label = deduceMenuServices(r.items)
+      const label = (r.menu_formula || '').trim() || deduceMenuServices(r.items)
       const key = normalizeText(label)
       map.set(key, { label, count: (map.get(key)?.count || 0) + 1 })
     })
-    return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 4)
+    return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 6)
   }, [periodRows])
 
   const statusSegments = useMemo(() => {
@@ -339,11 +357,81 @@ export default function PastReservations() {
       { key: 'confirmed', label: 'Confirmée', value: periodTotals.statusCounts.confirmed, color: 'status-confirmed' },
       { key: 'printed', label: 'Imprimée', value: periodTotals.statusCounts.printed, color: 'status-printed' },
       { key: 'draft', label: 'Brouillon', value: periodTotals.statusCounts.draft, color: 'status-draft' },
-    ].map(segment => ({
-      ...segment,
-      percent: Math.round((segment.value / total) * 100),
-    }))
+    ]
+      .filter(segment => segment.value > 0)
+      .map(segment => ({
+        ...segment,
+        percent: Math.round((segment.value / total) * 100),
+      }))
   }, [periodTotals.statusCounts, periodRows.length])
+
+  const topAllergens = useMemo(() => {
+    const map = new Map<string, { key: string; label: string; count: number }>()
+    periodRows.forEach(r => {
+      const keys = r.allergens ? r.allergens.split(',').map(s => s.trim()).filter(Boolean) : []
+      keys.forEach(k => {
+        const label = allergenMeta[k]?.label || allergenFallback[k] || k
+        map.set(k, { key: k, label, count: (map.get(k)?.count || 0) + 1 })
+      })
+    })
+    return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 8)
+  }, [periodRows, allergenMeta])
+
+  const revenueEstimate = useMemo(() => {
+    let menuCA = 0
+    let boissonCA = 0
+    let privCA = 0
+    let brunchCA = 0
+    const privDetails: { name: string; qty: number; ca: number }[] = []
+    const brunchDetails: { name: string; qty: number; ca: number }[] = []
+
+    periodRows.forEach(r => {
+      const pax = r.pax || 0
+      const df = normalizeText(r.drink_formula || '')
+
+      // ── Menu ──
+      const services = deduceMenuServices(r.items)
+      if (services === '3 services') menuCA += PRIX.menu3 * pax
+      else if (services === '2 services') menuCA += PRIX.menu2 * pax
+
+      // ── Boisson ──
+      if (df.includes('sharing')) boissonCA += PRIX.boisson_sharing * pax
+      else if (df.includes('champagne')) boissonCA += PRIX.boisson_champagne * pax
+      else if (df.includes('cava')) boissonCA += PRIX.boisson_cava * pax
+      else if (df.includes('avec alcool') || df.includes('alcool')) boissonCA += PRIX.boisson_alcool * pax
+      else if (df.includes('sans alcool') || df.includes('na ') || df === 'na') boissonCA += PRIX.boisson_na * pax
+
+      // ── Suppléments tarifables ──
+      r.items?.forEach(item => {
+        if (!isValidItem(item)) return
+        const t = normalizeText(item.type || '')
+        if (!t.startsWith('supplement')) return
+        const n = normalizeText(item.name || '')
+        if (n.includes('privatisation') || n.includes('privatization')) {
+          const ca = PRIX.privatisation * (item.quantity || 1)
+          privCA += ca
+          privDetails.push({ name: item.name, qty: item.quantity || 1, ca })
+        } else if (n.includes('brunch')) {
+          const ca = PRIX.brunch * (item.quantity || 1)
+          brunchCA += ca
+          brunchDetails.push({ name: item.name, qty: item.quantity || 1, ca })
+        }
+      })
+    })
+
+    return {
+      menuCA,
+      boissonCA,
+      privCA,
+      brunchCA,
+      total: menuCA + boissonCA + privCA + brunchCA,
+      privDetails,
+      brunchDetails,
+    }
+  }, [periodRows])
+
+  const fmtEur = (n: number) =>
+    n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
 
   const activeCount = activeTab === 'list' ? filtered.length : periodRows.length
 
@@ -549,11 +637,19 @@ export default function PastReservations() {
                   </div>
                 </div>
                 <div className="analytics-kpi">
-                  <div className="analytics-kpi-label">Articles servis</div>
+                  <div className="analytics-kpi-label">Plats servis</div>
                   <div className="analytics-kpi-value">
-                    <Package className="w-4 h-4" /> {periodTotals.itemTotal}
+                    <Package className="w-4 h-4" /> {periodTotals.dishTotal}
                   </div>
                 </div>
+                {periodTotals.suppTotal > 0 && (
+                  <div className="analytics-kpi">
+                    <div className="analytics-kpi-label">Suppléments</div>
+                    <div className="analytics-kpi-value">
+                      {periodTotals.suppTotal}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="analytics-grid">
@@ -682,22 +778,92 @@ export default function PastReservations() {
                   <div className="analytics-chart-header">
                     <div>
                       <h3 className="analytics-chart-title">Formules menu</h3>
-                      <p className="analytics-chart-subtitle">Top formules</p>
+                      <p className="analytics-chart-subtitle">Top formules choisies</p>
                     </div>
                   </div>
                   <div className="analytics-chart-body">
-                    <div className="analytics-top-list">
-                      {topMenuFormulas.map(item => (
-                        <div key={item.label} className="analytics-top-item">
-                          <div className="analytics-top-name">
-                            <span>{item.label}</span>
+                    {topMenuFormulas.length === 0 ? (
+                      <div className="analytics-empty">Aucune formule saisie.</div>
+                    ) : (
+                      <div className="analytics-top-list">
+                        {topMenuFormulas.map(item => (
+                          <div key={item.label} className="analytics-top-item">
+                            <div className="analytics-top-name">
+                              <span>{item.label}</span>
+                            </div>
+                            <span className="analytics-top-qty">{item.count}</span>
                           </div>
-                          <span className="analytics-top-qty">{item.count}</span>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                {revenueEstimate.total > 0 && (
+                  <div className="card analytics-chart">
+                    <div className="analytics-chart-header">
+                      <div>
+                        <h3 className="analytics-chart-title">CA estimé</h3>
+                        <p className="analytics-chart-subtitle">Calcul selon barème tarifaire</p>
+                      </div>
+                    </div>
+                    <div className="analytics-chart-body">
+                      <div className="analytics-top-list">
+                        {revenueEstimate.menuCA > 0 && (
+                          <div className="analytics-top-item">
+                            <div className="analytics-top-name"><span>Menus</span><span className="analytics-top-meta">2 serv. 34€ · 3 serv. 40€ · /pax</span></div>
+                            <span className="analytics-top-qty">{fmtEur(revenueEstimate.menuCA)}</span>
+                          </div>
+                        )}
+                        {revenueEstimate.boissonCA > 0 && (
+                          <div className="analytics-top-item">
+                            <div className="analytics-top-name"><span>Boissons</span><span className="analytics-top-meta">NA 10€ · alcool 20€ · cava 6€ · champ. 11€ · sharing 34€ · /pax</span></div>
+                            <span className="analytics-top-qty">{fmtEur(revenueEstimate.boissonCA)}</span>
+                          </div>
+                        )}
+                        {revenueEstimate.privCA > 0 && (
+                          <div className="analytics-top-item">
+                            <div className="analytics-top-name"><span>Privatisations</span><span className="analytics-top-meta">600€ forfait ×{revenueEstimate.privDetails.reduce((s,d)=>s+d.qty,0)}</span></div>
+                            <span className="analytics-top-qty">{fmtEur(revenueEstimate.privCA)}</span>
+                          </div>
+                        )}
+                        {revenueEstimate.brunchCA > 0 && (
+                          <div className="analytics-top-item">
+                            <div className="analytics-top-name"><span>Brunch</span><span className="analytics-top-meta">36€/pax ×{revenueEstimate.brunchDetails.reduce((s,d)=>s+d.qty,0)}</span></div>
+                            <span className="analytics-top-qty">{fmtEur(revenueEstimate.brunchCA)}</span>
+                          </div>
+                        )}
+                        <div className="analytics-top-item analytics-ca-total">
+                          <div className="analytics-top-name"><span>Total estimé</span></div>
+                          <span className="analytics-top-qty analytics-ca-total-qty">{fmtEur(revenueEstimate.total)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {topAllergens.length > 0 && (
+                  <div className="card analytics-chart">
+                    <div className="analytics-chart-header">
+                      <div>
+                        <h3 className="analytics-chart-title">Allergènes fréquents</h3>
+                        <p className="analytics-chart-subtitle">Réservations concernées</p>
+                      </div>
+                    </div>
+                    <div className="analytics-chart-body">
+                      <div className="analytics-top-list">
+                        {topAllergens.map(item => (
+                          <div key={item.key} className="analytics-top-item">
+                            <div className="analytics-top-name">
+                              <span>{item.label}</span>
+                            </div>
+                            <span className="analytics-top-qty analytics-top-qty--allergen">{item.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}
