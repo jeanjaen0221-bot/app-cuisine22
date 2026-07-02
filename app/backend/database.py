@@ -38,6 +38,7 @@ def init_db() -> None:
     ensure_floorplan_reservations_column()
     ensure_menu_formula_column()
     ensure_reminder_table()
+    ensure_billing_po_reference_column()
     ensure_supplements_migrated()
 
 
@@ -714,6 +715,69 @@ def ensure_menu_formula_column() -> None:
                     conn.execute(text("ALTER TABLE reservation ADD COLUMN menu_formula VARCHAR(200) DEFAULT ''"))
                 except Exception:
                     pass
+    except Exception:
+        pass
+
+
+def ensure_billing_po_reference_column() -> None:
+    """Ensure billinginfo has po_reference column; rename from peppol_reference if present."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == 'sqlite':
+                res = conn.exec_driver_sql("PRAGMA table_info(billinginfo);")
+                cols = [row[1] for row in res.fetchall()]
+                if 'po_reference' not in cols:
+                    if 'peppol_reference' in cols:
+                        try:
+                            conn.exec_driver_sql(
+                                "ALTER TABLE billinginfo RENAME COLUMN peppol_reference TO po_reference;"
+                            )
+                        except Exception:
+                            try:
+                                conn.exec_driver_sql(
+                                    "ALTER TABLE billinginfo ADD COLUMN po_reference TEXT;"
+                                )
+                                conn.exec_driver_sql(
+                                    "UPDATE billinginfo SET po_reference = peppol_reference "
+                                    "WHERE po_reference IS NULL;"
+                                )
+                            except Exception:
+                                pass
+                    else:
+                        conn.exec_driver_sql("ALTER TABLE billinginfo ADD COLUMN po_reference TEXT;")
+            elif backend == 'postgresql':
+                conn.execute(text(
+                    """
+                    DO $$
+                    BEGIN
+                      IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='billinginfo' AND column_name='peppol_reference'
+                      ) AND NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='billinginfo' AND column_name='po_reference'
+                      ) THEN
+                        ALTER TABLE billinginfo RENAME COLUMN peppol_reference TO po_reference;
+                      ELSIF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='billinginfo' AND column_name='po_reference'
+                      ) THEN
+                        ALTER TABLE billinginfo ADD COLUMN po_reference TEXT;
+                      END IF;
+                    END$$;
+                    """
+                ))
+            else:
+                try:
+                    conn.execute(text(
+                        "ALTER TABLE billinginfo RENAME COLUMN peppol_reference TO po_reference"
+                    ))
+                except Exception:
+                    try:
+                        conn.execute(text("ALTER TABLE billinginfo ADD COLUMN po_reference TEXT"))
+                    except Exception:
+                        pass
     except Exception:
         pass
 
