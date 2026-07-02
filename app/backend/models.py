@@ -248,6 +248,7 @@ class BillingInfo(SQLModel, table=True):
     city: str
     country: str = "Belgique"
     vat_number: Optional[str] = None
+    po_reference: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     payment_terms: Optional[str] = None
@@ -264,6 +265,7 @@ class BillingInfoCreate(SQLModel):
     city: str
     country: Optional[str] = None
     vat_number: Optional[str] = None
+    po_reference: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     payment_terms: Optional[str] = None
@@ -278,6 +280,7 @@ class BillingInfoUpdate(SQLModel):
     city: Optional[str] = None
     country: Optional[str] = None
     vat_number: Optional[str] = None
+    po_reference: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     payment_terms: Optional[str] = None
@@ -293,6 +296,7 @@ class BillingInfoRead(SQLModel):
     city: str
     country: str
     vat_number: Optional[str] = None
+    po_reference: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     payment_terms: Optional[str] = None

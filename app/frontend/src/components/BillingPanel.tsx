@@ -12,6 +12,7 @@ type BillingForm = {
   city: string
   country: string
   vat_number: string
+  po_reference: string
   email: string
   phone: string
   payment_terms: string
@@ -43,7 +44,7 @@ type Props = {
 const EMPTY_BILLING: BillingForm = {
   company_name: '', address_line1: '', address_line2: '',
   zip_code: '', city: '', country: 'Belgique',
-  vat_number: '', email: '', phone: '',
+  vat_number: '', po_reference: '', email: '', phone: '',
   payment_terms: 'Paiement à 30 jours', notes: '',
 }
 
@@ -100,6 +101,7 @@ export default function BillingPanel({ reservationId, reservation }: Props) {
           city: b.city || '',
           country: b.country || 'Belgique',
           vat_number: b.vat_number || '',
+          po_reference: b.po_reference || '',
           email: b.email || '',
           phone: b.phone || '',
           payment_terms: b.payment_terms || 'Paiement à 30 jours',
@@ -148,6 +150,7 @@ export default function BillingPanel({ reservationId, reservation }: Props) {
         city: billing.city.trim(),
         country: billing.country.trim() || undefined,
         vat_number: billing.vat_number.trim() || undefined,
+        po_reference: billing.po_reference.trim() || undefined,
         email: billing.email.trim() || undefined,
         phone: billing.phone.trim() || undefined,
         payment_terms: billing.payment_terms.trim() || undefined,
@@ -283,6 +286,15 @@ export default function BillingPanel({ reservationId, reservation }: Props) {
                 <label className="label">N° TVA</label>
                 <input className="input w-full" value={billing.vat_number}
                   onChange={e => setB('vat_number', e.target.value)} placeholder="BE…" />
+              </div>
+              <div>
+                <label className="label">Référence PO</label>
+                <input
+                  className="input w-full"
+                  value={billing.po_reference}
+                  onChange={e => setB('po_reference', e.target.value)}
+                  placeholder="PO-2024-001"
+                />
               </div>
               <div>
                 <label className="label">Email</label>

@@ -11,6 +11,7 @@ export type BillingInfo = {
   city: string
   country?: string
   vat_number?: string
+  po_reference?: string
   email?: string
   phone?: string
   payment_terms?: string
@@ -38,6 +39,7 @@ export default function BillingModal({ reservationId, open, onClose }: Props) {
     city: '',
     country: 'Belgique',
     vat_number: '',
+    po_reference: '',
     email: '',
     phone: '',
     payment_terms: 'Paiement à 30 jours',
@@ -71,6 +73,7 @@ export default function BillingModal({ reservationId, open, onClose }: Props) {
         city: form.city.trim(),
         country: (form.country||'').trim() || undefined,
         vat_number: (form.vat_number||'').trim() || undefined,
+        po_reference: (form.po_reference||'').trim() || undefined,
         email: (form.email||'').trim() || undefined,
         phone: (form.phone||'').trim() || undefined,
         payment_terms: (form.payment_terms||'').trim() || undefined,
@@ -147,6 +150,15 @@ export default function BillingModal({ reservationId, open, onClose }: Props) {
               <div>
                 <label className="label">N° TVA</label>
                 <input className="input w-full" value={form.vat_number||''} onChange={e=>set('vat_number', e.target.value)} placeholder="BE..., FR..., etc."/>
+              </div>
+              <div>
+                <label className="label">Référence PO</label>
+                <input
+                  className="input w-full"
+                  value={form.po_reference||''}
+                  onChange={e=>set('po_reference', e.target.value)}
+                  placeholder="PO-2024-001"
+                />
               </div>
               <div>
                 <label className="label">Email</label>

@@ -1198,6 +1198,8 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
         bill_to_lines.append(billing.country)
     if billing.vat_number:
         bill_to_lines.append(f"TVA: {billing.vat_number}")
+    if getattr(billing, 'po_reference', None):
+        bill_to_lines.append(f"Référence PO: {billing.po_reference}")
     if billing.email:
         bill_to_lines.append(f"Email: {billing.email}")
     if billing.phone:
