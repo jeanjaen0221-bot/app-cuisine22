@@ -40,6 +40,34 @@ def init_db() -> None:
     ensure_reminder_table()
     ensure_billing_po_reference_column()
     ensure_supplements_migrated()
+    ensure_rooftop_reservation_columns()
+
+
+def ensure_rooftop_reservation_columns() -> None:
+    """Add Rooftop booking fields to existing reservation databases safely."""
+    columns = {
+        "is_rooftop": "BOOLEAN DEFAULT FALSE",
+        "company": "TEXT",
+        "contact": "TEXT",
+        "payment_method": "TEXT",
+        "special_requests": "TEXT",
+        "occasion": "TEXT",
+    }
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == "sqlite":
+                existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(reservation);").fetchall()}
+                for name, definition in columns.items():
+                    if name not in existing:
+                        conn.exec_driver_sql(f"ALTER TABLE reservation ADD COLUMN {name} {definition};")
+            elif backend == "postgresql":
+                for name, definition in columns.items():
+                    conn.execute(text(f"ALTER TABLE reservation ADD COLUMN IF NOT EXISTS {name} {definition};"))
+    except Exception:
+        # Existing reservation functionality must remain available if a legacy
+        # database cannot be migrated at startup.
+        pass
 
 
 def run_startup_migrations() -> None:

@@ -134,6 +134,14 @@ class ReservationBase(SQLModel):
     final_version: bool = False
     on_invoice: bool = False
     allergens: Optional[str] = ""  # CSV: e.g. "gluten,arachides,soja"
+    # Rooftop booking details. Kept on the reservation record so a booking can
+    # still flow to the kitchen, billing and floor-plan tools when required.
+    is_rooftop: bool = False
+    company: Optional[str] = None
+    contact: Optional[str] = None
+    payment_method: Optional[str] = None
+    special_requests: Optional[str] = None
+    occasion: Optional[str] = None
 
 
 class Reservation(ReservationBase, table=True):
@@ -165,6 +173,12 @@ class ReservationCreateIn(SQLModel):
     final_version: bool = False
     on_invoice: bool = False
     allergens: Optional[str] = ""
+    is_rooftop: bool = False
+    company: Optional[str] = None
+    contact: Optional[str] = None
+    payment_method: Optional[str] = None
+    special_requests: Optional[str] = None
+    occasion: Optional[str] = None
     items: List[ReservationItemCreate] = Field(default_factory=list)
 
 
@@ -180,6 +194,12 @@ class ReservationUpdate(SQLModel):
     final_version: Optional[bool] = None
     on_invoice: Optional[bool] = None
     allergens: Optional[str] = None
+    is_rooftop: Optional[bool] = None
+    company: Optional[str] = None
+    contact: Optional[str] = None
+    payment_method: Optional[str] = None
+    special_requests: Optional[str] = None
+    occasion: Optional[str] = None
     items: Optional[List[ReservationItemCreate]] = None
 
 
@@ -201,6 +221,25 @@ class Setting(SQLModel, table=True):
 class ProcessedRequest(SQLModel, table=True):
     key: str = Field(primary_key=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class User(SQLModel, table=True):
+    """Application account. Passwords are stored as PBKDF2 hashes only."""
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    email: str = Field(index=True, sa_column_kwargs={"unique": True})
+    password_hash: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_login_at: Optional[datetime] = None
+
+
+class UserCredentials(SQLModel):
+    email: str
+    password: str
+
+
+class UserRead(SQLModel):
+    id: uuid.UUID
+    email: str
 
 
 # Store allergens metadata and icon bytes in DB (in addition to file assets for compatibility)

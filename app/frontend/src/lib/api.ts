@@ -4,23 +4,34 @@ export const api = axios.create({
   baseURL: '',
 })
 
+const ACCESS_TOKEN_KEY = 'fiche-cuisine.access-token'
+
+export function setAccessToken(token: string | null) {
+  if (token) localStorage.setItem(ACCESS_TOKEN_KEY, token)
+  else localStorage.removeItem(ACCESS_TOKEN_KEY)
+}
+
+export function getAccessToken() {
+  return localStorage.getItem(ACCESS_TOKEN_KEY)
+}
+
 let _salleDebug = false
 export function setSalleDebug(v: boolean) { _salleDebug = v }
 
-export function fileDownload(data: Blob | string, filename?: string) {
+export async function fileDownload(data: Blob | string, filename?: string) {
   const link = document.createElement('a')
   if (data instanceof Blob) {
     link.href = URL.createObjectURL(data)
     link.download = filename || 'download.pdf'
   } else {
-    link.href = data
-    link.target = '_blank'
-    link.download = filename || ''
+    const response = await api.get(data, { responseType: 'blob' })
+    link.href = URL.createObjectURL(new Blob([response.data]))
+    link.download = filename || 'download'
   }
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-  if (data instanceof Blob) {
+  if (data instanceof Blob || typeof data === 'string') {
     setTimeout(() => URL.revokeObjectURL(link.href), 100)
   }
 }
@@ -31,6 +42,8 @@ api.interceptors.request.use((config) => {
     console.debug('API request', config.method?.toUpperCase(), config.url, config.params || config.data)
     // Ensure headers object exists with a compatible type
     if (!config.headers) (config as any).headers = {} as AxiosRequestHeaders
+    const token = getAccessToken()
+    if (token) (config.headers as any).Authorization = `Bearer ${token}`
     if (_salleDebug) {
       ;(config.headers as any)['X-Salle-Debug'] = '1'
     } else {
@@ -55,6 +68,10 @@ api.interceptors.response.use(
       console.error('API error', status, url, error?.response?.data || error?.message)
     } catch {}
     ;(error as any).userMessage = typeof detail === 'string' ? detail : JSON.stringify(detail)
+    if (status === 401 && !String(url || '').startsWith('/api/auth/')) {
+      setAccessToken(null)
+      window.dispatchEvent(new Event('auth:expired'))
+    }
     return Promise.reject(error)
   }
 )

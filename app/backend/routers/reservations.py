@@ -60,6 +60,22 @@ def list_reservations(
     return out
 
 
+@router.get("/rooftop", response_model=List[ReservationRead])
+def list_rooftop_reservations(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    session: Session = Depends(get_session),
+):
+    """Weekly planner feed for bookings created in the Rooftop workspace."""
+    stmt = select(Reservation).where(Reservation.is_rooftop == True)
+    if date_from:
+        stmt = stmt.where(Reservation.service_date >= date_from)
+    if date_to:
+        stmt = stmt.where(Reservation.service_date <= date_to)
+    rows = session.exec(stmt.order_by(Reservation.service_date.asc(), Reservation.arrival_time.asc())).all()
+    return [ReservationRead(**row.model_dump(), items=[]) for row in rows]
+
+
 @router.get("/upcoming", response_model=List[ReservationRead])
 def list_upcoming_reservations(
     q: Optional[str] = None,
@@ -197,6 +213,10 @@ def create_reservation(payload: ReservationCreateIn, session: Session = Depends(
         "pax": pax,
         "on_invoice": on_invoice,
     })
+    for field, maximum in (("company", 200), ("contact", 300), ("payment_method", 100), ("occasion", 200), ("special_requests", 4000)):
+        value = data.get(field)
+        if value is not None:
+            data[field] = str(value).strip()[:maximum] or None
     # Allergens sanitize
     allergens = str(data.get("allergens", "") or "").strip()
     if len(allergens) > 1024:

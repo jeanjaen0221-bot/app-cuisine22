@@ -10,7 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response, FileResponse, StreamingResponse
 
 from .database import init_db, run_startup_migrations, session_context, backfill_allergen_icons
-from .routers import reservations, menu_items, zenchef, allergens, notes, drinks, suppliers, purchase_orders, floorplan, incidents, facturation, reminders
+from .security import decode_access_token
+from .routers import auth, reservations, menu_items, zenchef, allergens, notes, drinks, suppliers, purchase_orders, floorplan, incidents, facturation, reminders
 
 load_dotenv()
 
@@ -19,13 +20,29 @@ app = FastAPI(title="FicheCuisineManager")
 # CORS for local dev
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def require_api_authentication(request: Request, call_next):
+    """Protect every business API route; authentication endpoints stay public."""
+    path = request.url.path
+    if path.startswith("/api/") and not path.startswith("/api/auth/"):
+        scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+        if scheme.lower() != "bearer" or not token:
+            return JSONResponse(status_code=401, content={"detail": "Authentification requise."})
+        try:
+            request.state.user_id = decode_access_token(token)
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    return await call_next(request)
+
 # Routers
+app.include_router(auth.router)
 app.include_router(menu_items.router)
 app.include_router(reservations.router)
 app.include_router(zenchef.router)

@@ -21,6 +21,12 @@ export type Reservation = {
   final_version: boolean
   on_invoice: boolean
   allergens?: string
+  is_rooftop?: boolean
+  company?: string | null
+  contact?: string | null
+  payment_method?: string | null
+  special_requests?: string | null
+  occasion?: string | null
   created_at: string
   updated_at: string
   last_pdf_exported_at?: string | null

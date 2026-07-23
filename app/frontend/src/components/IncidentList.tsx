@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, fileDownload } from '../lib/api'
 import { IncidentReport } from '../types'
 import { Plus, Pencil, Trash2, FileText, Search } from 'lucide-react'
 
@@ -95,7 +95,7 @@ export default function IncidentList() {
                         <Link className="btn btn-sm btn-primary" to={`/incident/${r.id}`}>
                           <Pencil className="w-4 h-4" /> Modifier
                         </Link>
-                        <button className="btn btn-sm btn-outline" title="Télécharger le PDF" onClick={() => window.open(`/api/incidents/${r.id}/pdf`, '_blank')}>
+                        <button className="btn btn-sm btn-outline" title="Télécharger le PDF" onClick={() => void fileDownload(`/api/incidents/${r.id}/pdf`, `plainte-${r.id}.pdf`)}>
                           <FileText className="w-4 h-4" />
                         </button>
                         <button className="btn btn-sm btn-outline res-delete-btn" title="Supprimer" onClick={() => del(r.id)}>

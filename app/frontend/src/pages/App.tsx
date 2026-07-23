@@ -1,6 +1,8 @@
 import { Routes, Route, NavLink } from 'react-router-dom'
-import { useState } from 'react'
-import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart, Building2, AlertTriangle, Receipt, LayoutGrid, Package } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Home as HomeIcon, UtensilsCrossed, Settings as SettingsIcon, History, ShoppingCart, Building2, AlertTriangle, Receipt, LayoutGrid, Package, LogOut, Sun } from 'lucide-react'
+import { api, getAccessToken, setAccessToken } from '../lib/api'
+import LoginPage from './LoginPage'
 import NotesWidget from '../components/NotesWidget'
 import Home from './Home'
 import EditReservation from './EditReservation'
@@ -15,9 +17,33 @@ import FloorPlanPage from './FloorPlanPage'
 import IncidentsPage from './IncidentsPage'
 import EditIncident from './EditIncident'
 import FacturationPage from './FacturationPage'
+import RooftopReservationsPage from './RooftopReservationsPage'
 
 export default function App() {
   const [reminderCount, setReminderCount] = useState(0)
+  const [ready, setReady] = useState(false)
+  const [setupRequired, setSetupRequired] = useState(false)
+  const [authenticated, setAuthenticated] = useState(false)
+
+  useEffect(() => {
+    const initialise = async () => {
+      try {
+        const status = await api.get('/api/auth/status')
+        setSetupRequired(status.data.setup_required)
+        if (!status.data.setup_required && getAccessToken()) {
+          await api.get('/api/auth/me')
+          setAuthenticated(true)
+        }
+      } finally { setReady(true) }
+    }
+    initialise()
+    const expired = () => setAuthenticated(false)
+    window.addEventListener('auth:expired', expired)
+    return () => window.removeEventListener('auth:expired', expired)
+  }, [])
+
+  if (!ready) return <main className="auth-page">Chargement…</main>
+  if (!authenticated) return <LoginPage setupRequired={setupRequired} onAuthenticated={(token) => { setAccessToken(token); setAuthenticated(true); setSetupRequired(false) }} />
 
   return (
     <div className="app-layout app-theme app-theme-violet">
@@ -32,6 +58,9 @@ export default function App() {
           </NavLink>
           <NavLink to="/past" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <History className="w-4 h-4"/> Passées
+          </NavLink>
+          <NavLink to="/rooftop" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+            <Sun className="w-4 h-4"/> Rooftop
           </NavLink>
           <NavLink to="/incidents" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <AlertTriangle className="w-4 h-4"/> Plaintes
@@ -58,12 +87,16 @@ export default function App() {
           <NavLink to="/settings" className={({isActive}) => `nav-link nav-link-secondary ${isActive ? 'active' : ''}`}>
             <SettingsIcon className="w-4 h-4"/> Paramètres
           </NavLink>
+          <button className="nav-link nav-link-secondary nav-logout" onClick={() => { setAccessToken(null); setAuthenticated(false) }}>
+            <LogOut className="w-4 h-4"/> Déconnexion
+          </button>
         </nav>
       </aside>
       <main className="content">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/past" element={<PastReservations />} />
+          <Route path="/rooftop" element={<RooftopReservationsPage />} />
           <Route path="/incidents" element={<IncidentsPage />} />
           <Route path="/salle" element={<FloorPlanPage />} />
           <Route path="/reservation/new" element={<EditReservation />} />
