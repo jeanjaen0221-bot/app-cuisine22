@@ -41,6 +41,25 @@ def init_db() -> None:
     ensure_billing_po_reference_column()
     ensure_supplements_migrated()
     ensure_rooftop_reservation_columns()
+    ensure_user_access_columns()
+
+
+def ensure_user_access_columns() -> None:
+    """Give existing account(s) administrator access during the RBAC rollout."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == "sqlite":
+                existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(user);").fetchall()}
+                if "role" not in existing:
+                    conn.exec_driver_sql("ALTER TABLE user ADD COLUMN role TEXT DEFAULT 'admin';")
+                if "permissions" not in existing:
+                    conn.exec_driver_sql("ALTER TABLE user ADD COLUMN permissions TEXT DEFAULT '';")
+            elif backend == "postgresql":
+                conn.execute(text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'admin';"))
+                conn.execute(text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS permissions TEXT DEFAULT '';"))
+    except Exception:
+        pass
 
 
 def ensure_rooftop_reservation_columns() -> None:

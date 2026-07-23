@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response, FileResponse, StreamingResponse
 
 from .database import init_db, run_startup_migrations, session_context, backfill_allergen_icons
+from .models import User
 from .security import decode_access_token
 from .routers import auth, reservations, menu_items, zenchef, allergens, notes, drinks, suppliers, purchase_orders, floorplan, incidents, facturation, reminders
 
@@ -39,6 +40,24 @@ async def require_api_authentication(request: Request, call_next):
             request.state.user_id = decode_access_token(token)
         except HTTPException as exc:
             return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+        with session_context() as session:
+            user = session.get(User, uuid.UUID(request.state.user_id))
+            if user is None:
+                return JSONResponse(status_code=401, content={"detail": "Session invalide ou expirée."})
+            required_permission = next((permission for prefix, permission in {
+                "/api/reservations/rooftop": "rooftop", "/api/reservations": "reservations", "/api/reminders": "reservations",
+                "/api/floorplan": "floorplan", "/api/menu-items": "menu",
+                "/api/drinks": "orders", "/api/purchase-orders": "orders",
+                "/api/suppliers": "suppliers", "/api/facturation": "billing",
+                "/api/incidents": "incidents", "/api/zenchef": "settings",
+                "/api/allergens": "settings", "/api/notes": "dashboard",
+                "/api/auth/users": "users",
+            }.items() if path.startswith(prefix)), None)
+            permissions = {item for item in (user.permissions or "").split(",") if item}
+            # Accounts created before roles existed are the original owner
+            # account; keep its access even if a legacy migration returned NULL.
+            if (user.role or "admin") != "admin" and (required_permission is None or required_permission not in permissions):
+                return JSONResponse(status_code=403, content={"detail": "Vous n’avez pas accès à cette section."})
     return await call_next(request)
 
 # Routers

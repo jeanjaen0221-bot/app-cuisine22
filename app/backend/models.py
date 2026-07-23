@@ -228,6 +228,8 @@ class User(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     email: str = Field(index=True, sa_column_kwargs={"unique": True})
     password_hash: str
+    role: str = "admin"  # admins retain full access; members use permissions below
+    permissions: str = ""  # comma-separated permission keys, kept portable across DBs
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_login_at: Optional[datetime] = None
 
@@ -237,9 +239,22 @@ class UserCredentials(SQLModel):
     password: str
 
 
+class UserCreate(UserCredentials):
+    role: str = "member"
+    permissions: List[str] = Field(default_factory=list)
+
+
+class UserUpdate(SQLModel):
+    role: Optional[str] = None
+    permissions: Optional[List[str]] = None
+    password: Optional[str] = None
+
+
 class UserRead(SQLModel):
     id: uuid.UUID
     email: str
+    role: str
+    permissions: List[str] = Field(default_factory=list)
 
 
 # Store allergens metadata and icon bytes in DB (in addition to file assets for compatibility)

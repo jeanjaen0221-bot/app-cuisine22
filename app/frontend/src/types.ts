@@ -1,5 +1,7 @@
 export type UUID = string
 
+export type AppUser = { id: UUID, email: string, role: 'admin' | 'member', permissions: string[] }
+
 export type ReservationItem = {
   id?: UUID
   type: 'entrée' | 'plat' | 'dessert' | 'supplément' | string
