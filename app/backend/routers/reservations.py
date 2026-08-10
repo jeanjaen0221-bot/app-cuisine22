@@ -186,10 +186,12 @@ def create_reservation(payload: ReservationCreateIn, session: Session = Depends(
         except Exception:
             raise HTTPException(422, "Invalid arrival_time")
     # Sanitize/validate remaining fields
-    client_name = str(data.get("client_name", "")).strip() or "Client"
-    drink_formula = str(data.get("drink_formula", "")).strip() or ""
-    menu_formula = str(data.get("menu_formula", "") or "").strip()
-    notes = str(data.get("notes", "")).strip()
+    # str(None) is "None": always coalesce before converting, or the literal
+    # word ends up stored and printed on the fiche.
+    client_name = str(data.get("client_name") or "").strip() or "Client"
+    drink_formula = str(data.get("drink_formula") or "").strip()
+    menu_formula = str(data.get("menu_formula") or "").strip()
+    notes = str(data.get("notes") or "").strip()
     on_invoice = bool(data.get("on_invoice") or False)
     if len(client_name) > 200:
         client_name = client_name[:200]
@@ -294,28 +296,20 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
         except Exception:
             del update_data["arrival_time"]
     # Sanitize/validate updates
+    # str(None) is "None": always coalesce before converting, or the literal
+    # word ends up stored and printed on the fiche.
     if "client_name" in update_data:
-        update_data["client_name"] = (str(update_data["client_name"]) or "").strip() or res.client_name
-        if len(update_data["client_name"]) > 200:
-            update_data["client_name"] = update_data["client_name"][:200]
+        update_data["client_name"] = (str(update_data["client_name"] or "").strip() or res.client_name)[:200]
     if "drink_formula" in update_data:
-        update_data["drink_formula"] = (str(update_data["drink_formula"]) or "").strip()
-        if len(update_data["drink_formula"]) > 200:
-            update_data["drink_formula"] = update_data["drink_formula"][:200]
+        update_data["drink_formula"] = str(update_data["drink_formula"] or "").strip()[:200]
     if "menu_formula" in update_data:
-        update_data["menu_formula"] = (str(update_data["menu_formula"] or "")).strip()
-        if len(update_data["menu_formula"]) > 200:
-            update_data["menu_formula"] = update_data["menu_formula"][:200]
+        update_data["menu_formula"] = str(update_data["menu_formula"] or "").strip()[:200]
     if "notes" in update_data:
-        update_data["notes"] = (str(update_data["notes"]) or "").strip()
-        if len(update_data["notes"]) > 4000:
-            update_data["notes"] = update_data["notes"][:4000]
+        update_data["notes"] = str(update_data["notes"] or "").strip()[:4000]
     if "on_invoice" in update_data and update_data["on_invoice"] is not None:
-        update_data["on_invoice"] = bool(update_data["on_invoice"]) 
+        update_data["on_invoice"] = bool(update_data["on_invoice"])
     if "allergens" in update_data:
-        update_data["allergens"] = (str(update_data["allergens"]) or "").strip()
-        if len(update_data["allergens"]) > 1024:
-            update_data["allergens"] = update_data["allergens"][:1024]
+        update_data["allergens"] = str(update_data["allergens"] or "").strip()[:1024]
     if "pax" in update_data and update_data["pax"] is not None:
         p = int(update_data["pax"])
         if p < 1:
@@ -357,6 +351,8 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
         ]
         if offenders:
             raise HTTPException(422, f"Le total par type dépasse le nombre de couverts ({check_pax}): " + ", ".join(offenders))
+    except HTTPException:
+        raise
     except Exception:
         # if any unexpected error during guard, fail safe to proceed
         pass
@@ -418,9 +414,27 @@ def duplicate_reservation(reservation_id: uuid.UUID, session: Session = Depends(
         raise HTTPException(404, "Reservation not found")
     items = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
 
+    # The slot (date, time, name, pax) is unique: suffix the copy's name so the
+    # duplicate can coexist with the original.
+    base_name = res.client_name
+    for attempt in range(1, 50):
+        suffix = " (copie)" if attempt == 1 else f" (copie {attempt})"
+        candidate = (base_name[: 200 - len(suffix)] + suffix)
+        exists = session.exec(
+            select(Reservation)
+            .where(Reservation.service_date == res.service_date)
+            .where(Reservation.arrival_time == res.arrival_time)
+            .where(Reservation.client_name == candidate)
+            .where(Reservation.pax == res.pax)
+        ).first()
+        if not exists:
+            break
+    else:
+        raise HTTPException(409, "Impossible de dupliquer: trop de copies existantes.")
+
     new_res = Reservation(**{k: getattr(res, k) for k in [
-        'client_name','pax','service_date','arrival_time','drink_formula','menu_formula','notes','allergens'
-    ]}, status='draft', final_version=False)
+        'pax','service_date','arrival_time','drink_formula','menu_formula','notes','allergens'
+    ]}, client_name=candidate, status='draft', final_version=False)
     session.add(new_res)
     session.commit()
     session.refresh(new_res)

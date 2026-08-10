@@ -2,6 +2,34 @@
 from __future__ import annotations
 # ---- Numbering helpers ----
 
+def _numbering_kind(t: Dict[str, Any]) -> str:
+    """Family a table is numbered and drawn as.
+
+    Numbering follows the *kind*, never the lock state: locking a rectangle
+    keeps it out of the auto-assign pool but it is still a rectangle, so it
+    must keep a T label. Deriving this in one place stops the numbering and the
+    PDF renderer from disagreeing — a mismatch used to blank the label.
+    """
+    kind = str(t.get("kind") or "").lower()
+    if kind in ("fixed", "rect", "round", "sofa", "standing"):
+        return kind
+    # Legacy plans: a table with no kind was drawn as a rectangle, and a locked
+    # one was numbered alongside the fixed tables.
+    return "fixed" if t.get("locked") is True else "rect"
+
+
+def _label_sort_key(label: str) -> Tuple[int, int, str]:
+    """Natural order for table labels: 1 < 2 < 10, and T2 < T10."""
+    s = str(label or "")
+    families = {"": 0, "T": 1, "R": 2, "C": 3, "D": 4}
+    prefix = s[:1].upper() if s[:1].isalpha() else ""
+    digits = s[1:] if prefix else s
+    try:
+        return (families.get(prefix, 5), int(digits), s)
+    except ValueError:
+        return (families.get(prefix, 5), 10**6, s)
+
+
 def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumbers: int = 20, max_rnumbers: int = 20, persist: bool = True) -> Tuple[Dict[str, Any], Dict[str, str]]:
     """Assign labels:
     - Fixed tables: 1..N
@@ -13,12 +41,13 @@ def _assign_table_numbers(plan: Dict[str, Any], max_numbers: int = 20, max_tnumb
     Returns (updated_plan, id_to_label).
     """
     tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
-    # Separate pools
-    fixed = [t for t in tables if (t.get("kind") == "fixed" or t.get("locked") is True)]
-    rects = [t for t in tables if (t.get("kind") == "rect" and not t.get("locked"))]
-    rounds = [t for t in tables if (t.get("kind") == "round")]
-    sofas = [t for t in tables if (t.get("kind") == "sofa")]
-    standings = [t for t in tables if (t.get("kind") == "standing")]
+    # Separate pools — each table belongs to exactly one family, so a table can
+    # never consume a number in one sequence and be labelled from another.
+    fixed = [t for t in tables if _numbering_kind(t) == "fixed"]
+    rects = [t for t in tables if _numbering_kind(t) == "rect"]
+    rounds = [t for t in tables if _numbering_kind(t) == "round"]
+    sofas = [t for t in tables if _numbering_kind(t) == "sofa"]
+    standings = [t for t in tables if _numbering_kind(t) == "standing"]
     # Sort: gauche→droite (x ASC), puis bas→haut (y DESC)
     def key_table(t):
         x = float(t.get("x") or 0)
@@ -139,7 +168,9 @@ def _draw_plan_page(c: pdfcanvas.Canvas, plan: Dict[str, Any], id_to_label: Dict
     c.setStrokeColor(colors.black)
     tables: List[Dict[str, Any]] = list(plan.get("tables") or [])
     for t in tables:
-        kind = (t.get("kind") or "rect")
+        # Same resolution as the numbering, so the sanitizer below can never
+        # reject a label that _assign_table_numbers just produced.
+        kind = _numbering_kind(t)
         # Prefer computed numbering over any existing text label
         raw_lbl = id_to_label.get(str(t.get("id")) or "", "") or t.get("label")
         lbl = str(raw_lbl or "")
@@ -254,33 +285,7 @@ def _draw_table_list_page(c: pdfcanvas.Canvas, id_to_label: Dict[str, str], plan
         kind = str(t.get("kind") or "")
         rows.append((lbl, cap, kind))
     # Sort by label natural (numbers first, then T, R, C, D)
-    def sort_key(r: Tuple[str, int, str]):
-        lbl = r[0]
-        if lbl.startswith("T"):
-            try:
-                return (1, int(lbl[1:]))
-            except Exception:
-                return (1, 9999)
-        elif lbl.startswith("R"):
-            try:
-                return (2, int(lbl[1:]))
-            except Exception:
-                return (2, 9999)
-        elif lbl.startswith("C"):
-            try:
-                return (3, int(lbl[1:]))
-            except Exception:
-                return (3, 9999)
-        elif lbl.startswith("D"):
-            try:
-                return (4, int(lbl[1:]))
-            except Exception:
-                return (4, 9999)
-        try:
-            return (0, int(lbl))
-        except Exception:
-            return (0, 9999)
-    rows.sort(key=sort_key)
+    rows.sort(key=lambda r: _label_sort_key(r[0]))
     # 2 columns list
     col_x = [margin, page_w / 2.0]
     col = 0
@@ -373,7 +378,7 @@ def _draw_reservations_page(
     for i, r in enumerate(rows):
         t = getattr(r, "arrival_time", None)
         tstr = str(t)[:5] if t else ""
-        lst_raw = ", ".join(sorted(lab_by_res.get(str(r.id), []), key=lambda s: (s.startswith('R'), s)))
+        lst_raw = ", ".join(sorted(lab_by_res.get(str(r.id), []), key=_label_sort_key))
 
         client_lines = _wrap_text((r.client_name or "").upper(), col_client_w, "Helvetica", 9)
         tables_lines = _wrap_text(lst_raw, col_tables_w, "Helvetica", 9)
@@ -549,6 +554,42 @@ def get_debug_log(after: Optional[int] = None, limit: int = 200):
 
 # ---- Helpers ----
 
+def _persist_json(row: Any, *fields: str) -> None:
+    """Mark JSON columns dirty before committing.
+
+    `row.data = plan` is a no-op for SQLAlchemy whenever `plan` is the very
+    object already held by the attribute — which is exactly what happens when a
+    helper mutates the plan in place. Without this the write is silently
+    dropped and `session.refresh()` then restores the pre-edit value, so the
+    endpoint even returns the stale plan it just claimed to update.
+    """
+    from sqlalchemy.orm.attributes import flag_modified
+    for field in fields:
+        try:
+            flag_modified(row, field)
+        except Exception:
+            pass
+
+
+def _parse_arrival_time(value: Any, default: dtime = dtime(12, 0)) -> dtime:
+    """Best-effort HH:MM / HH:MM:SS parsing; never raises.
+
+    Reservations come from PDF parsing, so a missing or malformed time must
+    downgrade to a default rather than fail the whole service assignment.
+    """
+    if isinstance(value, dtime):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return default
+    if len(text) == 5:
+        text = f"{text}:00"
+    try:
+        return dtime.fromisoformat(text[:8])
+    except ValueError:
+        return default
+
+
 def _get_or_create_base(session: Session) -> FloorPlanBase:
     row = session.exec(select(FloorPlanBase).order_by(FloorPlanBase.created_at.asc())).first()
     if row:
@@ -583,7 +624,9 @@ def _load_reservations(session: Session, service_date: date, service_label: Opti
                 client_name=item.get("client_name", ""),
                 pax=item.get("pax", 2),
                 service_date=service_date,
-                arrival_time=item.get("arrival_time", "12:00"),
+                # Keep a real time object so this path sorts and formats the
+                # same way as reservations loaded from the database.
+                arrival_time=_parse_arrival_time(item.get("arrival_time")),
                 drink_formula=item.get("drink_formula", ""),
                 notes=item.get("notes", ""),
                 status=item.get("status", "confirmed"),
@@ -606,22 +649,13 @@ def _load_reservations(session: Session, service_date: date, service_label: Opti
 
 def _capacity_for_table(tbl: Dict[str, Any]) -> int:
     cap = int(tbl.get("capacity") or 0)
-    kind = (tbl.get("kind") or "").lower()
-    if cap <= 0:
-        # fallback defaults
-        if kind == "rect":
-            cap = 6
-        elif kind == "round":
-            cap = 10
-        elif kind == "fixed" or (tbl.get("locked") is True):
-            cap = 4
-        elif kind == "sofa":
-            cap = 5
-        elif kind == "standing":
-            cap = 8
-        else:
-            cap = 2
-    return cap
+    if cap > 0:
+        return cap
+    # Fallback defaults, keyed on the same family as the numbering and the
+    # canvas. Lock state must not change the assumed capacity: a locked
+    # rectangle still seats 6, and showing 6 in the editor while the engine
+    # counted 4 silently under-filled the room.
+    return {"rect": 6, "round": 10, "fixed": 4, "sofa": 5, "standing": 8}.get(_numbering_kind(tbl), 2)
 
 
 def _fit_text(c: pdfcanvas.Canvas, text: str, max_w: float, font_name: str, font_size: float) -> str:
@@ -1611,10 +1645,11 @@ def number_base_tables(session: Session = Depends(get_session)):
     plan = row.data or {}
     plan, _ = _assign_table_numbers(plan, max_numbers=20, max_tnumbers=20, persist=True)
     row.data = plan
+    _persist_json(row, "data")
     session.add(row)
     session.commit()
     session.refresh(row)
-    tables = plan.get("tables") or []
+    tables = row.data.get("tables") or []
     used = sum(1 for t in tables if t.get("label"))
     logger.info("POST /base/number-tables -> labeled=%d", used)
     _dbg_add("INFO", f"POST /base/number-tables -> labeled={used}")
@@ -1628,6 +1663,7 @@ def renumber_base_tables(payload: RenumberTablesPayload, session: Session = Depe
     plan = row.data or {}
     plan = _apply_manual_renumber(plan, payload)
     row.data = plan
+    _persist_json(row, "data")
     session.add(row)
     session.commit()
     session.refresh(row)
@@ -1849,10 +1885,11 @@ def number_instance_tables(instance_id: uuid.UUID, session: Session = Depends(ge
     
     plan, _ = _assign_table_numbers(plan, max_numbers=20, max_tnumbers=20, persist=True)
     row.data = plan
+    _persist_json(row, "data")
     session.add(row)
     session.commit()
     session.refresh(row)
-    tables = plan.get("tables") or []
+    tables = row.data.get("tables") or []
     used = sum(1 for t in tables if t.get("label"))
     logger.info("POST /instances/%s/number-tables -> labeled=%d", instance_id, used)
     _dbg_add("INFO", f"POST /instances/{instance_id}/number-tables -> labeled={used}")
@@ -1868,6 +1905,7 @@ def renumber_instance_tables(instance_id: uuid.UUID, payload: RenumberTablesPayl
     plan = row.data or {}
     plan = _apply_manual_renumber(plan, payload)
     row.data = plan
+    _persist_json(row, "data")
     session.add(row)
     session.commit()
     session.refresh(row)
@@ -1930,12 +1968,7 @@ def reset_instance(instance_id: uuid.UUID, session: Session = Depends(get_sessio
     # Clear assignments
     row.assignments = {"tables": {}}
     # Persist JSON mutations
-    try:
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(row, "data")
-        flag_modified(row, "assignments")
-    except Exception:
-        pass
+    _persist_json(row, "data", "assignments")
     session.add(row)
     session.commit()
     session.refresh(row)
@@ -1992,7 +2025,7 @@ def compare_instance(instance_id: uuid.UUID, session: Session = Depends(get_sess
     items = []
     for r in reservations:
         rid = str(r.id)
-        labs = sorted([x for x in labels_by_res.get(rid, []) if x], key=lambda s: (s.startswith('R'), s))
+        labs = sorted([x for x in labels_by_res.get(rid, []) if x], key=_label_sort_key)
         assigned_pax = int(assigned_pax_by_res.get(rid, 0))
         items.append({
             "id": rid,
@@ -2114,8 +2147,8 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
         res = SimpleNamespace(
             id=res_id,
             client_name=item.get("client_name", "Client"),
-            pax=int(item.get("pax", 0)),
-            arrival_time=dtime.fromisoformat(item.get("arrival_time", "12:00") + (":00" if len(item.get("arrival_time", "12:00")) == 5 else ""))
+            pax=int(item.get("pax", 0) or 0),
+            arrival_time=_parse_arrival_time(item.get("arrival_time")),
         )
         reservations.append(res)
     
@@ -2166,9 +2199,7 @@ def auto_assign(instance_id: uuid.UUID, session: Session = Depends(get_session))
             _dbg_add("INFO", f"  NEW TABLE: {t.get('id')} {t.get('kind')} {t.get('capacity')}pax @({t.get('x')},{t.get('y')})")
     
     # CRITICAL: Force SQLAlchemy to detect JSON dict changes
-    from sqlalchemy.orm.attributes import flag_modified
-    flag_modified(row, "data")
-    flag_modified(row, "assignments")
+    _persist_json(row, "data", "assignments", "reservations")
     session.add(row)
     session.commit()
     session.refresh(row)
@@ -2308,16 +2339,30 @@ def import_reservations_pdf(
         stmt = stmt.where(FloorPlanInstance.service_label == service_label)
     instance = session.exec(stmt).first()
     
-    if instance:
-        # Stocker les réservations parsées dans l'instance
-        instance.reservations = {"items": out}
-        instance.updated_at = datetime.utcnow()
-        session.add(instance)
-        session.commit()
-        logger.info("POST /import-pdf -> stored %d reservations in instance %s", len(out), instance.id)
-        _dbg_add("INFO", f"POST /import-pdf -> stored in instance {instance.id}")
-    else:
+    if not instance:
+        # Reporting success here would be a lie: the parsed reservations would
+        # be dropped and the user told the import worked.
         logger.warning("POST /import-pdf -> no instance found for %s/%s, reservations not stored", service_date, service_label)
-        _dbg_add("WARNING", f"POST /import-pdf -> no instance found, create one first")
-    
-    return {"parsed": out, "message": f"Parsed {len(out)} reservations from PDF (stored in instance)"}
+        _dbg_add("WARNING", "POST /import-pdf -> no instance found, create one first")
+        raise HTTPException(
+            404,
+            f"Aucun service trouvé pour le {service_date}"
+            + (f" ({service_label})" if service_label else "")
+            + ". Créez d'abord le service, puis relancez l'import.",
+        )
+
+    # Stocker les réservations parsées dans l'instance
+    instance.reservations = {"items": out}
+    instance.updated_at = datetime.utcnow()
+    _persist_json(instance, "reservations")
+    session.add(instance)
+    session.commit()
+    logger.info("POST /import-pdf -> stored %d reservations in instance %s", len(out), instance.id)
+    _dbg_add("INFO", f"POST /import-pdf -> stored in instance {instance.id}")
+
+    return {
+        "parsed": out,
+        "stored": True,
+        "instance_id": str(instance.id),
+        "message": f"Parsed {len(out)} reservations from PDF (stored in instance)",
+    }

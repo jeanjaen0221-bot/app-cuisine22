@@ -478,6 +478,20 @@ body {
   transform: translateY(-2px);
 }
 
+.empty-state {
+  max-width: 32rem;
+  margin: 3rem auto;
+  padding: 2rem;
+  text-align: center;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.empty-state h2 { margin: 0 0 .5rem; font-size: 1.25rem; }
+.empty-state p { margin: 0 0 1rem; color: var(--gray-700); }
+
 .card-header {
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--border-color);
