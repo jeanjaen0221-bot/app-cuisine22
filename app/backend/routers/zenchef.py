@@ -107,6 +107,13 @@ def sync_reservations(body: Dict[str, Any], request: Request, session: Session =
         big = [r for r in reservations if (r.get("numberOfPeople") or 0) > 10]
         for r in big:
             d_str, t_str = parse_start_time(r.get("startTime", ""))
+            # The reservation columns are DATE/TIME: store typed values, not the
+            # raw strings, so the rows read back correctly on every backend.
+            try:
+                service_date = dt.date.fromisoformat(d_str)
+                arrival_time = dt.time.fromisoformat(t_str if len(t_str) > 5 else f"{t_str}:00")
+            except ValueError:
+                continue
             pax = int(r.get("numberOfPeople") or 0)
             if pax < 1:
                 pax = 1
@@ -121,8 +128,8 @@ def sync_reservations(body: Dict[str, Any], request: Request, session: Session =
             # De-dup criterion: same date, time, name, pax
             exists = session.exec(
                 select(Reservation).where(
-                    (Reservation.service_date == d_str)
-                    & (Reservation.arrival_time == t_str)
+                    (Reservation.service_date == service_date)
+                    & (Reservation.arrival_time == arrival_time)
                     & (Reservation.client_name == client_name)
                     & (Reservation.pax == pax)
                 )
@@ -133,8 +140,8 @@ def sync_reservations(body: Dict[str, Any], request: Request, session: Session =
             res = Reservation(
                 client_name=client_name,
                 pax=pax,
-                service_date=d_str,
-                arrival_time=t_str,
+                service_date=service_date,
+                arrival_time=arrival_time,
                 drink_formula="Sans alcool",
                 notes="Import Zenchef",
                 status="confirmed",

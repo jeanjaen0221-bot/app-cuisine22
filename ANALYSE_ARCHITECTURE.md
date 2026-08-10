@@ -1,20 +1,28 @@
 # ANALYSE COMPLÈTE DE L'ARCHITECTURE - Restaurant Albert Brussels
 
 ## Date d'analyse
-3 février 2026 - 23:25
+10 août 2026 — révision complète après audit et correctifs.
+
+> Cette révision remplace l'analyse du 3 février 2026, dont la section « Problèmes
+> identifiés » était devenue entièrement obsolète (dépendances signalées comme
+> manquantes qui étaient présentes, endpoint `/templates` qui n'est plus appelé,
+> fonction morte déjà supprimée). Voir §6 pour l'état réel.
 
 ---
 
 ## 1. CONTEXTE MÉTIER
 
 ### Restaurant Albert Brussels
-- **Type**: Restaurant avec service de brunch/déjeuner et dîner
+- **Type**: Restaurant avec service de brunch/déjeuner et dîner, plus un espace Rooftop
 - **Problématique**: Gestion optimale du plan de salle pour maximiser l'occupation
 - **Contraintes**:
-  - Tables fixes agençables (4 pax chacune, combinables jusqu'à 28 pax)
+  - Tables fixes agençables (4 pax chacune, stock de chaises limité — 28 par défaut)
   - Tables rectangulaires (6 pax de base, extensibles à 8 avec rallonge)
   - Tables rondes (10 pax, dernier recours car moins pratiques)
-  - PDF de réservations reçu dans un format fixe spécifique
+  - PDF de réservations reçu dans un format tabulaire fixe
+
+L'application couvre aujourd'hui bien plus que le plan de salle : fiches cuisine,
+facturation, plaintes clients, commandes boissons, fournisseurs et gestion des comptes.
 
 ---
 
@@ -22,480 +30,497 @@
 
 ### 2.1 Stack Technologique
 
-**Backend (Python)**
-- FastAPI 0.115.2
-- SQLModel 0.0.22 / SQLAlchemy 2.0.36
-- Pydantic 2.9.2
+**Backend (Python 3.11+)**
+- FastAPI 0.115.2 / uvicorn 0.30.6
+- SQLModel 0.0.22 / SQLAlchemy 2.0.36 / Pydantic 2.9.2
+- PyJWT 2.10.1 (jetons de session)
 - ReportLab 4.2.5 (génération PDF)
-- pdfminer.six (extraction texte PDF) - **MANQUANT dans requirements.txt**
-- pypdf (manipulation PDF) - **MANQUANT dans requirements.txt**
+- pdfplumber 0.11.4 (extraction de tableaux PDF — **et non pdfminer**)
+- pypdf 3.17.4 (fusion / annotation de PDF existants)
+- Pillow 10.4.0 (normalisation des icônes allergènes)
 - PostgreSQL (production) / SQLite (dev)
 
 **Frontend (React + TypeScript)**
-- React 18.3.1
-- React Router DOM 6.26.2
-- Axios 1.7.7
-- Lucide React 0.441.0 (icônes)
-- TailwindCSS 3.4.14
-- Vite 7.1.12
+- React 18.3.1 / React Router DOM 6.26.2
+- Axios 1.7.7, Lucide React 0.441.0
+- TailwindCSS 3.4.14 + `styles.css` (~3 100 lignes de CSS applicatif)
+- Vite 7.1.12, TypeScript 5.6 (mode `strict`)
 
 **Déploiement**
-- Railway (production PostgreSQL)
-- Procfile pour uvicorn
-- Support multi-environnement (SQLite/PostgreSQL)
+- Railway (PostgreSQL) via `nixpacks.toml`, ou Docker via le `Dockerfile` racine
+- Le `Dockerfile` racine construit le frontend puis sert le tout depuis FastAPI
+- Migrations idempotentes appliquées automatiquement au démarrage
 
-### 2.2 Structure Base de Données
+> ⚠️ Il existe **deux** fichiers de dépendances (`requirements.txt` à la racine et
+> `app/backend/requirements.txt`) et **deux** `Procfile`/`Dockerfile`. Ils doivent
+> rester synchronisés : une désynchronisation avait fait disparaître PyJWT du
+> fichier racine, ce qui faisait planter au démarrage tout déploiement basé dessus.
 
-**Tables principales**:
-1. `floorplanbase` - Plans maîtres (templates)
-   - `id`, `name`, `data` (JSON), `created_at`, `updated_at`
-   
-2. `floorplaninstance` - Instances de service spécifiques
-   - `id`, `service_date`, `service_label` (lunch/dinner)
-   - `template_id` (FK vers floorplanbase)
-   - `data` (JSON - plan modifié pour ce service)
-   - `assignments` (JSON - attribution table→réservation)
-   - `reservations` (JSON - réservations parsées du PDF)
-   - Contrainte UNIQUE sur (service_date, service_label)
+### 2.2 Volumétrie du code
 
-3. `reservation` - Réservations principales (système distinct)
-   - `id`, `client_name`, `pax`, `service_date`, `arrival_time`
-   - `drink_formula`, `notes`, `status`, `allergens`
-   - `final_version`, `on_invoice`, `last_pdf_exported_at`
-   - Contrainte UNIQUE sur (service_date, arrival_time, client_name, pax)
+| Fichier | Lignes |
+|---|---|
+| `backend/routers/floorplan.py` | 2 323 |
+| `backend/pdf_service.py` | 1 274 |
+| `backend/database.py` | 872 |
+| `backend/models.py` | 689 |
+| `backend/routers/reservations.py` | 587 |
+| `frontend/src/components/FloorCanvas.tsx` | 1 796 |
+| `frontend/src/components/ReservationForm.tsx` | 1 291 |
+| `frontend/src/pages/FloorPlanPage.tsx` | 789 |
 
-**Note importante**: Le système floorplan est **complètement indépendant** de la table reservation principale. Les réservations pour le plan de salle sont stockées dans `floorplaninstance.reservations` (JSON).
+`floorplan.py` et `FloorCanvas.tsx` concentrent l'essentiel de la complexité et
+mériteraient d'être découpés (voir §7).
+
+### 2.3 Structure Base de Données
+
+**Authentification & accès**
+1. `user` — `id`, `email` (unique), `password_hash`, `role`, `permissions` (CSV), `created_at`, `last_login_at`
+
+**Réservations & cuisine**
+2. `reservation` — `client_name`, `pax`, `service_date`, `arrival_time`, `drink_formula`,
+   `menu_formula`, `notes`, `status`, `allergens`, `final_version`, `on_invoice`,
+   `last_pdf_exported_at`, plus les champs Rooftop (`is_rooftop`, `company`, `contact`,
+   `payment_method`, `special_requests`, `occasion`)
+   - UNIQUE (`service_date`, `arrival_time`, `client_name`, `pax`)
+   - CHECK `pax >= 1`, index (`service_date`, `arrival_time`)
+3. `reservationitem` — lignes de la fiche (`type` = entrée/plat/dessert/**supplément**, `name`, `quantity`, `comment`)
+4. `reservationreminder` — état snooze/mute des rappels « plats manquants »
+5. `menuitem` — base de plats réutilisables
+
+**Facturation**
+6. `billinginfo` — 1:1 avec la réservation (PK = `reservation_id`)
+7. `supplementpreset` — bibliothèque de suppléments réutilisables
+8. `invoicesupplement` — **table héritée**, vidée au démarrage vers `reservationitem`
+
+**Boissons & achats**
+9. `drink`, `drinkstock`, `drinkvendor`, `supplier`, `purchaseorder`, `purchaseorderitem`
+
+**Plan de salle**
+10. `floorplanbase` — plan maître (`data` JSON)
+11. `floorplaninstance` — instance de service : `service_date`, `service_label`,
+    `template_id` (FK), `data`, `assignments`, `reservations` (JSON)
+    - UNIQUE (`service_date`, `service_label`)
+
+**Divers**
+12. `incidentreport`, `note`, `allergen` (avec `icon_bytes`), `setting`, `processedrequest`
+
+**Note importante**: le système floorplan reste **indépendant** de la table
+`reservation`. L'import PDF ne crée jamais de réservation ; les données parsées
+vivent dans `floorplaninstance.reservations`.
 
 ---
 
-## 3. LOGIQUE MÉTIER DÉTAILLÉE
+## 3. AUTHENTIFICATION & CONTRÔLE D'ACCÈS
 
-### 3.1 Workflow Complet
+Ajouté après l'analyse initiale, ce module n'y figurait pas.
+
+### 3.1 Mécanisme
+- Mots de passe : PBKDF2-HMAC-SHA256, **600 000 itérations**, sel de 16 octets,
+  comparaison en temps constant. Minimum 12 caractères.
+- Sessions : JWT HS256, TTL 8 h (`AUTH_TOKEN_TTL_HOURS`), signé avec `JWT_SECRET`.
+- Premier démarrage : `/api/auth/status` signale `setup_required`, et `/api/auth/setup`
+  crée le compte propriétaire (refusé si un compte existe déjà).
+
+> ⚠️ **`JWT_SECRET` est obligatoire en production.** À défaut, un secret aléatoire
+> est généré par processus : les sessions sautent à chaque redémarrage et échouent
+> de façon erratique avec plusieurs workers uvicorn. Un avertissement est désormais
+> affiché au démarrage.
+
+### 3.2 Autorisation
+Un middleware HTTP protège **toute** route `/api/` sauf `/api/auth/*`, qui est géré
+par le routeur lui-même (`setup`/`login` publics, `require_admin` sur la gestion des
+comptes). Les comptes `admin` passent partout ; les comptes `member` doivent posséder
+l'une des permissions acceptées par la règle qui couvre la requête.
+
+Les règles sont une **liste ordonnée** de `(motif d'URL, permissions acceptées,
+méthodes couvertes)` — `API_PERMISSION_RULES` dans `main.py`. La première règle dont
+le motif **et** la méthode correspondent l'emporte, donc les entrées les plus
+spécifiques viennent en premier. Une URL que personne ne couvre est refusée aux
+membres : une nouvelle route est fermée par défaut, jamais ouverte par oubli.
+
+| Permission | Périmètre |
+|---|---|
+| `dashboard` | `/api/notes` (widget de notes) |
+| `reservations` | `/api/reservations`, `/api/reminders`, lecture des suppléments |
+| `rooftop` | `/api/reservations/rooftop` |
+| `floorplan` | `/api/floorplan` |
+| `menu` | `/api/menu-items` |
+| `orders` | `/api/drinks`, `/api/purchase-orders` |
+| `suppliers` | `/api/suppliers` |
+| `billing` | `/api/supplement-presets`, `/api/reservations/{id}/{billing,supplements,invoice-pdf}`, plus la **lecture seule** de la liste des réservations |
+| `incidents` | `/api/incidents` |
+| `settings` | `/api/zenchef`, `/api/allergens` |
+| `users` | réservé aux admins (`require_admin`) |
+
+Deux recouvrements sont volontaires, parce que l'interface les impose :
+
+- **`billing` lit `/api/reservations`** (en `GET` seulement) : la page Facturation
+  liste les réservations pour choisir laquelle facturer. Les écritures sur les fiches
+  lui restent interdites.
+- **`reservations` lit `/api/supplement-presets` et les suppléments** : `BillingPanel`
+  est embarqué dans l'écran de fiche autant que dans la page Facturation. L'édition de
+  la bibliothèque de presets reste réservée à `billing`.
+
+> ⚠️ Attention en ajoutant un routeur : **la permission se déduit de l'URL, pas du
+> nom du fichier.** Le routeur `facturation.py` publie ses routes sous
+> `/api/supplement-presets` et `/api/reservations/…`, et non sous `/api/facturation`.
+> C'est précisément ce décalage qui avait rendu la permission `billing` totalement
+> inopérante (voir §6.1).
+
+Côté frontend, **chaque route React applique le même contrôle** que la barre
+latérale : masquer un lien de navigation n'est pas un contrôle d'accès, puisque
+l'URL reste saisissable. Une page « Accès refusé » est affichée sinon.
+
+---
+
+## 4. LOGIQUE MÉTIER — PLAN DE SALLE
+
+### 4.1 Workflow Complet
 
 ```
 1. CRÉATION PLAN DE BASE
-   - Définir dimensions salle (room.width, room.height, room.grid)
-   - Placer murs (walls), colonnes (columns)
-   - Définir zones interdites (no_go)
-   - Ajouter fixtures/décorations
-   - Placer tables fixes, rectangulaires, rondes
-   - Définir zones spécialisées:
-     * round_only_zones (tables rondes uniquement)
-     * rect_only_zones (tables rectangulaires uniquement)
+   - Dimensions salle (room.width, room.height, room.grid)
+   - Murs (walls), colonnes (columns), zones interdites (no_go)
+   - Fixtures / décorations
+   - Tables fixes, rectangulaires, rondes
+   - Zones spécialisées: round_only_zones (R), rect_only_zones (T)
+   - Réglages: fixed_chair_stock, max_dynamic_tables, large_table_config
 
 2. IMPORT PDF RÉSERVATIONS
-   - Parser le PDF avec format Albert Brussels spécifique
-   - Extraire: heure, pax, nom client
-   - Nettoyer les données (téléphones, statuts, sources)
-   - Générer IDs déterministes (MD5 basé sur contenu)
-   - Stocker dans floorplaninstance.reservations
+   - Extraction des tableaux avec pdfplumber (extract_tables)
+   - Détection des colonnes heure / pax / nom par position
+   - Nettoyage des noms (téléphones, statuts, sources)
+   - IDs déterministes (MD5 du contenu) pour la stabilité import/export
+   - Stockage dans floorplaninstance.reservations
 
 3. AUTO-ATTRIBUTION DES TABLES
-   - Trier réservations par pax DESC, arrival_time ASC
-   - Pour chaque réservation, essayer dans l'ordre:
-     a) Table fixe single (best-fit)
-     b) Table rect single (6-8 pax avec extension)
-     c) Combo 2 tables rect
-     d) Pack tables fixes (pour groupes 28 pax)
-     e) Pack tables rect (multi-tables)
-     f) Pack tables rondes
-     g) Table ronde single (dernier recours, flaggé last_resort)
-     h) Création dynamique de nouvelles tables
-   - Stocker dans floorplaninstance.assignments
+   - Calcul du taux de charge → choix du mode de placement
+   - Pré-passe des petits groupes sur la zone fixe
+   - Placement par priorités (voir 4.2)
+   - Création dynamique de tables si nécessaire
+   - Stockage dans floorplaninstance.assignments + liste d'alertes
 
 4. NUMÉROTATION
-   - Tables fixes: 1, 2, 3... 20
-   - Tables rect: T1, T2, T3... T20
-   - Tables rondes: R1, R2, R3... R20
-   - Ordre: column-major (x asc, y desc) = top-left, count DOWN
+   - Tables fixes : 1, 2, 3… N
+   - Tables rectangulaires : T1, T2, T3… TN
+   - Tables rondes : R1, R2, R3… RN
+   - Canapés : C1… CN — Mange-debout : D1… DN
+   - Ordre : column-major (x croissant, y décroissant)
 
 5. EXPORT PDF
-   - PDF annoté: PDF original + numéros tables + plan + listes
-   - PDF complet: liste service + plan numéroté + liste tables
+   - PDF annoté : PDF original + numéros de table (pypdf)
+   - PDF complet : liste service + plan numéroté + liste des tables (ReportLab)
 ```
 
-### 3.2 Algorithme Auto-Assign (Détaillé)
+### 4.2 Algorithme Auto-Assign
 
-**Fonction**: `_auto_assign(plan_data, reservations)`
+**Fonction**: `_auto_assign(plan_data, reservations)` (`floorplan.py`)
 
-**Étapes**:
-1. Partitionner tables: fixed, rects, rounds
-2. Créer pools disponibles (dictionnaires par ID)
-3. Trier réservations: pax DESC, arrival_time ASC (grosses tables d'abord)
-4. Pour chaque réservation:
-   ```python
-   # Priorité 1: Table fixe best-fit
-   if fixed_table with capacity >= pax:
-       assign(fixed_table)
-   
-   # Priorité 2: Table rect single avec extension
-   elif rect_table where (cap + 2 up to 8) >= pax:
-       assign(rect_table)
-   
-   # Priorité 3: Combo 2 tables rect
-   elif 2_rect_tables where sum(cap_extended) >= pax:
-       assign(both_tables)
-   
-   # Priorité 4: Pack multiple fixed tables
-   elif pack_fixed_tables(greedy) >= pax:
-       assign(all_tables_in_pack)
-   
-   # Priorité 5: Pack multiple rect tables
-   elif pack_rect_tables(greedy, allow_ext) >= pax:
-       assign(all_tables_in_pack)
-   
-   # Priorité 6: Pack multiple round tables
-   elif pack_round_tables(greedy) >= pax:
-       assign(all_tables_in_pack)
-   
-   # Priorité 7: Table ronde single (last_resort=True)
-   elif round_table with capacity >= pax:
-       assign(round_table, last_resort=True)
-   
-   # Priorité 8: Création dynamique
-   else:
-       while remaining_pax > 0:
-           spot = find_spot_for_table(plan, "rect", 120x60)
-           if spot:
-               create_table(rect, 6_pax, at_spot)
-               assign(new_table)
-               remaining_pax -= 6
-           else:
-               spot = find_spot_for_table(plan, "round", r=50)
-               if spot:
-                   create_table(round, 10_pax, at_spot)
-                   assign(new_table)
-                   remaining_pax -= 10
-               else:
-                   break  # Pas de place, laisse non assigné
-   ```
+L'algorithme a nettement dépassé le simple « glouton à 8 priorités » décrit dans
+l'analyse initiale. Il est désormais **sensible à la charge du service**.
 
-**Gestion des zones spécialisées**:
-- `_find_spot_for_table()` vérifie si position dans round_only_zone ou rect_only_zone
-- Si dans zone R: crée uniquement tables rondes
-- Si dans zone T: crée uniquement tables rect
-- Sinon: logique normale
+**Mode de placement** — calculé à partir du ratio couverts / capacité approximative :
 
-### 3.3 Parsing PDF
+| `load_ratio` | Mode | Comportement |
+|---|---|---|
+| < 0,55 | `aerer` | Écarte les convives : privilégie les tables plus grandes, autorise 2 rectangles collés pour 9–14 pax |
+| 0,55 – 0,75 | `normal` | Best-fit classique |
+| > 0,75 | `optimiser` | Minimise le gaspillage de places |
 
-**Format attendu (Albert Brussels)**:
-```
-albert brussels | Standard | 31/01/2026
-Brunch - Nombre total de couverts: 134
-Grille horaires: 11:00, 11:15, 11:30...
+**Paramètres du plan** (avec valeurs par défaut) :
+- `fixed_chair_stock` = 28 — plafond de chaises sur la zone fixe
+- `max_dynamic_tables` = `{rect: 10, round: 5}` — plafond de créations dynamiques
+- `large_table_config.pax_threshold_right` = 10 — au-delà, grande table dans la zone T
+- `large_table_config.pax_threshold_vertical` = 20 — au-delà, table en portrait
+- `large_table_config.vertical_span_max` = 7 — nombre max de segments verticaux
 
-Heure    Pax    Client              Table    Statut      Date Création    Source
-11:00    2      DUPONT Jean         [VIDE]   Confirmé    2026-01-27 11:26 Web
-                +32 123 456 789
-```
+**Ordre de traitement** :
+1. **Pré-passe** : tous les groupes de 1–4 pax remplissent d'abord la zone fixe,
+   dans la limite de `fixed_chair_stock`.
+2. Le reste est trié par `pax` décroissant puis `arrival_time` croissant.
+3. Pour chaque réservation :
+   - **Grands groupes** (> seuils) → création anticipée d'une grande table
+     dynamique dans la zone T (horizontale, ou verticale au-delà du seuil portrait)
+   - **Table fixe** best-fit (≤ 4 pax, si le stock de chaises le permet)
+   - **Paire de rectangles collés** (mode `aerer`, 9–14 pax)
+   - **Rectangle simple** best-fit, extension +2 jusqu'à 8 en dernier recours ;
+     les rectangles surdimensionnés sont écartés pour les petits groupes
+   - **Grande rect dynamique** (repli)
+   - **Places debout**, puis **table ronde** (marquée `last_resort`), puis **sofa**
+   - Les groupes ≤ 4 ne débordent hors de la zone fixe que si celle-ci est saturée
+4. Chaque échec ou compromis alimente une liste `alerts` renvoyée à l'interface.
 
-**Logique de parsing** (`import-pdf` endpoint):
-1. Extraire texte avec pdfminer.six
-2. Séparer en lignes
-3. Ignorer patterns d'en-tête (Nombre de couverts, albert brussels, etc.)
-4. Pour chaque ligne HH:MM:
-   - Chercher pax dans les 5 lignes suivantes (chiffre 1-30)
-   - Chercher nom dans les 5 lignes après pax
-   - Nettoyer nom (retirer téléphones, statuts, dates)
-   - Générer ID déterministe MD5
-5. Stocker dans instance.reservations
+**Gestion des zones spécialisées** : `_find_spot_for_table()` vérifie si la position
+tombe dans une `round_only_zone` (R) ou une `rect_only_zone` (T) et restreint le
+type de table créée en conséquence.
+
+### 4.3 Deux invariants à respecter dans `floorplan.py`
+
+Ces deux règles ne sont pas évidentes à la lecture et leur violation ne produit
+aucune erreur — seulement un comportement faux. Les deux ont été enfreintes.
+
+**a) Toute mutation d'une colonne JSON doit être signalée.**
+`row.data = plan` ne déclenche rien côté SQLAlchemy lorsque `plan` **est** déjà
+l'objet porté par l'attribut, ce qui est le cas dès qu'un helper modifie le plan
+sur place. L'écriture est alors abandonnée en silence, et le `session.refresh()`
+qui suit recharge la version d'avant : l'endpoint renvoie donc le plan périmé
+qu'il prétend avoir mis à jour. Utiliser `_persist_json(row, "data", …)` avant
+chaque `commit`.
+
+**b) La numérotation suit le *type*, jamais l'état de verrouillage.**
+Verrouiller une table la retire du pool d'auto-attribution, mais une rectangulaire
+verrouillée reste une rectangulaire et doit garder une étiquette `T`. Le canvas et
+le générateur PDF filtrent tous deux les étiquettes par type (`T\d+` pour une
+rect, `R\d+` pour une ronde…) : si la numérotation classe la table dans une autre
+famille, l'étiquette est rejetée à l'affichage et **la table apparaît sans
+numéro**. `_numbering_kind()` est la source unique de vérité, partagée par la
+numérotation, le rendu PDF et `_capacity_for_table()`.
+
+### 4.4 Parsing PDF (`POST /api/floorplan/import-pdf`)
+
+Le parsing repose sur **`pdfplumber.extract_tables()`**, et non plus sur une
+extraction de texte ligne à ligne :
+
+1. Pour chaque page, extraction des tableaux
+2. Pour chaque ligne, détection positionnelle des colonnes dans les 7 premières cellules :
+   - `heure` via `^\d{1,2}:\d{2}$`
+   - `pax` via `^\d{1,2}$` (après l'heure)
+   - `nom` : première cellule d'au moins 2 caractères contenant une majuscule
+3. Validation : `1 <= pax <= 30`, nom d'au moins 2 caractères
+4. Nettoyage : première ligne seulement, coupe à « Téléphone », rejet des mots-clés
+   (`commentaire`, `confirmé`, `web`, `google`, en-têtes)
+5. ID déterministe : `MD5(service_date_heure_pax_nom)`
+6. Erreur 400 explicite si aucune réservation n'est trouvée
 
 ---
 
-## 4. FRONTEND - FLOORCANVAS
+## 5. FRONTEND
 
-### 4.1 Composant Principal
+### 5.1 FloorCanvas.tsx (1 796 lignes)
+- Canvas HTML5, interaction souris complète, zoom/pan à la molette
+- Drag & drop, redimensionnement par poignées, menu contextuel (clic droit)
+- Modes de dessin : zones interdites, zones R, zones T
+- Détection de collision tables ↔ murs / colonnes / fixtures / no-go / autres tables,
+  avec retour automatique à la position précédente si invalide
+- Curseurs adaptatifs (`nwse-resize`, `ew-resize`, `context-menu`, `crosshair`, `move`)
+- Menu contextuel rendu via un Portal React pour échapper à l'`overflow:hidden`
 
-**FloorCanvas.tsx** (1303 lignes)
-- Canvas HTML5 avec interaction souris complète
-- Zoom/pan avec molette
-- Drag & drop pour déplacer objets
-- Redimensionnement par handles
-- Menu contextuel (clic droit)
-- Modes de dessin (zones interdites, zones R, zones T)
+### 5.2 Client API (`lib/api.ts`)
+- Instance Axios unique, jeton injecté par intercepteur depuis `localStorage`
+- Intercepteur de réponse : normalise le message d'erreur dans `error.userMessage`
+- Sur 401 (hors `/api/auth/`), purge le jeton et émet `auth:expired`, que `App.tsx`
+  écoute pour revenir à l'écran de connexion
 
-**États gérés**:
-- `draggingId`, `fixtureDraggingId`, `noGoDraggingId`, etc.
-- `resizeHandle`, `fixtureResize`, `noGoResize`, etc.
-- `draftNoGo`, `draftRoundZone`, `draftRectZone`
-- `contextMenu`, `hoveredItem`
-- `scale`, `offset` (viewport)
-
-**Détection collision**:
-- Tables vs murs
-- Tables vs colonnes
-- Tables vs fixtures
-- Tables vs no-go zones
-- Tables vs autres tables
-- Revert automatique si position invalide
-
-**Curseurs adaptatifs**:
-- `nwse-resize`, `ew-resize`, `ns-resize` sur handles
-- `context-menu` sur objets (indique clic droit disponible)
-- `crosshair` en mode dessin
-- `move` pendant drag
-
-### 4.2 Menu Contextuel
-
-**Détection prioritaire**:
-1. Zones R/T (round_only_zones, rect_only_zones)
-2. Zones interdites (no_go)
-3. Fixtures
-4. Tables
-
-**Actions disponibles**:
-- Zone R: "Supprimer la zone R"
-- Zone T: "Supprimer la zone T"
-- Zone interdite: "Supprimer la zone interdite"
-- Fixture: "Supprimer l'objet"
-- Table: "Verrouiller/Déverrouiller" + "Supprimer la table"
-
-**Rendu**: Portal React pour éviter overflow:hidden du canvas
+### 5.3 Routage et permissions
+`App.tsx` masque les liens **et** protège chaque route. Une route attrape-tout
+affiche « Page introuvable ». Le widget de notes n'est monté qu'avec la permission
+`dashboard`.
 
 ---
 
-## 5. POINTS FORTS DU CODE EXISTANT
+## 6. ÉTAT DES PROBLÈMES
 
-### 5.1 Architecture
-✅ Séparation claire backend/frontend
-✅ Type safety avec TypeScript + Pydantic
-✅ Indépendance système floorplan (pas de conflit avec réservations principales)
-✅ IDs déterministes pour cohérence PDF import/export
-✅ Migrations idempotentes (PostgreSQL + SQLite)
+### 6.1 bis — Plan de salle, corrigés le 10 août 2026
 
-### 5.2 Logique Métier
-✅ Algorithme auto-assign complet et priorisé
-✅ Gestion extension tables rect (+2 pax max 8)
-✅ Pack multi-tables pour grands groupes
-✅ Création dynamique si nécessaire
-✅ Zones spécialisées pour contrôle type tables
-✅ Flags last_resort pour tables rondes
+| Gravité | Problème | Correctif |
+|---|---|---|
+| **Critique** | **La numérotation des tables n'était jamais enregistrée.** Les quatre endpoints `number-tables` et `renumber-tables` (base et instance) mutaient le plan sur place puis réassignaient la même référence : SQLAlchemy ne détectait rien, `session.refresh()` restaurait la version d'avant, et l'endpoint **renvoyait le plan non numéroté**. Numéroter puis recharger perdait tout le travail. | `_persist_json()` avant chaque commit |
+| **Critique** | `auto-assign` renvoyait **500** dès qu'une réservation avait une heure vide, nulle ou malformée (`ValueError: Invalid isoformat string: ''`) — cas courant sur un PDF mal parsé, qui bloquait tout le service | `_parse_arrival_time()`, tolérant, avec valeur par défaut |
+| Majeur | Une rectangulaire **verrouillée** recevait un numéro de la famille « fixe » (`7`), que le canvas *et* le PDF rejetaient ensuite car ils exigent `T\d+` pour une rect : **la table s'affichait sans numéro**. Une ronde verrouillée figurait dans deux familles et consommait un numéro fixe, créant un trou dans la séquence. | `_numbering_kind()`, source unique partagée |
+| Majeur | Import PDF : si aucun service ne correspondait à la date/au libellé, les réservations lues étaient **jetées** et l'API répondait quand même « importées » | 404 explicite invitant à créer le service |
+| Moyen | Une rect verrouillée sans capacité explicite comptait **4 places** côté moteur alors que l'éditeur affichait **6** : la salle était silencieusement sous-remplie | `_capacity_for_table()` aligné sur `_numbering_kind()` |
+| Moyen | `FloorPlanPage.tsx` était corrompu en **mojibake** sur 25 lignes : l'interface affichait « Instance rÃ©initialisÃ©e », « Tables numÃ©rotÃ©es », « Service crÃ©Ã© »… | Ré-encodage UTF-8 des 25 lignes |
+| Mineur | Tri des étiquettes purement alphabétique : `T10` passait avant `T2` dans le PDF et l'écran de comparaison | `_label_sort_key()` (tri naturel) |
 
-### 5.3 UX/UI
-✅ Canvas interactif avec feedback visuel
-✅ Zoom/pan fluide
-✅ Menu contextuel intuitif
-✅ Modes de dessin exclusifs
-✅ Collision detection temps réel
-✅ Curseurs adaptatifs
+### 6.1 Corrigés le 10 août 2026
 
-### 5.4 Production-Ready
-✅ Logging structuré avec corrélation IDs
-✅ Debug mode avec buffer en mémoire
-✅ Support Railway (PostgreSQL)
-✅ Gestion erreurs propre
-✅ Migrations automatiques
+| Gravité | Problème | Correctif |
+|---|---|---|
+| Critique | `database.py` n'importait pas `select` : `ensure_supplements_migrated()` levait un `NameError` avalé par un `except: pass`. **La migration des suppléments ne s'est jamais exécutée.** | Import ajouté |
+| Critique | `ALTER TABLE … DEFAULT '{}'::text` est de la syntaxe PostgreSQL, invalide en SQLite : la colonne `floorplaninstance.reservations` n'était jamais créée en dev | Syntaxe SQLite corrigée |
+| Critique | `requirements.txt` racine sans PyJWT alors que `security.py` fait `import jwt` : plantage au démarrage | PyJWT ajouté |
+| Majeur | Le garde-fou « total par type ≤ couverts » interceptait sa propre `HTTPException` : sur un PUT, on pouvait enregistrer 5 plats pour 1 couvert sans erreur | `except HTTPException: raise` |
+| Majeur | `POST /reservations/{id}/duplicate` recopiait le nom à l'identique → violation de l'unicité (date, heure, nom, pax) → erreur 500 | Suffixe « (copie) », « (copie 2) »… |
+| Majeur | `str(None)` vaut `"None"` : une note vide était stockée et **imprimée sur les fiches et PDF sous la forme du mot « None »**. Un PUT `client_name: null` renommait le client en « None ». | Coalescence avant conversion |
+| Majeur | La clé d'URL des allergènes servait de nom de fichier sans validation à l'upload d'icône et à la suppression (écriture hors du dossier prévu) | `_validate_key()` sur les 3 routes |
+| Majeur | **La permission `billing` ne donnait accès à rien.** Le middleware mappait le préfixe `/api/facturation`, qui n'existe sur aucune route : un compte à qui l'admin accordait « Facturation » recevait 403 sur *tous* les appels de la page. Symétriquement, `BillingPanel` embarqué dans l'écran de fiche était cassé pour les comptes `reservations`. | Table de préfixes remplacée par des règles ordonnées URL + méthode, avec permissions multiples |
+| Moyen | `/health` passait une chaîne brute à `session.exec()`, refusée par SQLAlchemy 2.0 : la base était **toujours signalée en échec** | `text("SELECT 1")` |
+| Moyen | Zenchef insérait dates et heures sous forme de chaînes dans des colonnes `DATE`/`TIME` | Parsing typé |
+| Moyen | Les routes React n'étaient pas protégées : taper `/users` ou `/facturation` affichait la page malgré l'absence de permission | Garde sur chaque route |
+| Mineur | La pastille de rappels du menu était du code mort : `setReminderCount` n'était jamais appelé | `onCountChange` branché |
+| Mineur | `JWT_SECRET` absent silencieusement remplacé par un secret aléatoire | Avertissement au démarrage + `.env.example` |
+| Mineur | `.env.example` ne documentait ni `JWT_SECRET`, ni `CORS_ORIGINS`, ni `TZ`, ni `AUTH_TOKEN_TTL_HOURS` | Documentés |
 
----
+### 6.2 Problèmes signalés en février qui n'existent pas / plus
 
-## 6. PROBLÈMES IDENTIFIÉS
+- **pdfminer.six et pypdf manquants** : le code utilise `pdfplumber` (présent dans les
+  requirements) et `pypdf` y figure également. Aucun blocage.
+- **Endpoint `/api/floorplan/templates` manquant** : le frontend ne l'appelle plus.
+- **`find_free_position_for_table()` morte** : la fonction a été supprimée.
+- **Survol désactivé dans FloorCanvas** : le TODO et le code inactif ont disparu.
+- **Absence de gestion multi-utilisateurs** : un module complet de comptes, rôles et
+  permissions existe désormais (§3).
 
-### 6.1 CRITIQUE - Dépendances Manquantes
+### 6.3 Points ouverts connus
 
-**requirements.txt** ne liste PAS:
-- `pdfminer.six` - Utilisé dans `/api/floorplan/import-pdf`
-- `pypdf` - Utilisé dans `/api/floorplan/instances/{id}/export-annotated`
-
-**Impact**: L'import PDF et l'export annoté vont crasher en production.
-
-**Ligne 1317** (floorplan.py):
-```python
-try:
-    from pdfminer.high_level import extract_text
-except Exception:
-    raise HTTPException(500, "pdfminer.six non installé côté serveur")
-```
-
-**Ligne 284** (floorplan.py):
-```python
-try:
-    from pypdf import PdfReader, PdfWriter, PdfMerger
-except Exception:
-    PdfReader = None  # type: ignore
-```
-
-### 6.2 MAJEUR - Incohérence Numérotation
-
-**Mémoire système** dit:
-- Tables rectangulaires: T1, T2, T3...
-- Tables rondes: R1, R2, R3...
-
-**Code réel** (ligne 8 floorplan.py):
-```python
-# Rect tables: T1..TN
-# Round tables: R1..RN
-```
-
-**Mémoire d1a7c55c** dit:
-- Fixed/rect: 1..20
-- Round: T1..T20  ← ERREUR
-
-**Correction**: La mémoire est incorrecte. Le code fait:
-- Fixed: 1, 2, 3... 20
-- Rect: T1, T2, T3... 20
-- Round: R1, R2, R3... 20
-
-### 6.3 MOYEN - Logique find_free_position_for_table
-
-**Ligne 660-692** (floorplan.py):
-Fonction `find_free_position_for_table()` définie mais **jamais utilisée**.
-Elle contient aussi un appel à `tableCollides()` inexistant (ligne 686).
-
-Cette fonction semble être une version abandonnée de `_find_spot_for_table()`.
-
-### 6.4 MOYEN - Endpoint /templates inexistant
-
-**FloorPlanPage.tsx** appelle:
-```typescript
-const res = await api.get('/api/floorplan/templates')
-```
-
-**Backend** n'a PAS ce endpoint. Routes disponibles:
-- `/api/floorplan/base` (GET/PUT)
-- `/api/floorplan/instances` (GET/POST)
-- `/api/floorplan/instances/{id}` (GET/PUT)
-
-**Impact**: Le frontend va crasher au chargement de FloorPlanPage.
-
-### 6.5 MINEUR - Survol Désactivé
-
-**FloorCanvas.tsx ligne 929**:
-```typescript
-// DÉSACTIVÉ TEMPORAIREMENT: Le survol cause une boucle infinie de sauvegardes
-// TODO: Implémenter avec useMemo ou useCallback pour éviter les re-renders
-```
-
-Le feedback visuel au survol est désactivé pour éviter une boucle de re-renders.
-
-### 6.6 MINEUR - Gestion Rotations Horaires
-
-L'algorithme ne gère PAS les rotations de tables (turn-over).
-Si deux réservations sont sur la même table à des heures différentes, pas de détection.
-
-**Exemple**: 
-- 12:00 - Dupont - 4 pax - Table 5
-- 14:00 - Martin - 4 pax - Table 5
-
-L'algo va placer les deux sur Table 5 sans conflit détecté.
+- **Pas de détection de rotation horaire.** `arrival_time` ne sert qu'au tri
+  (`floorplan.py`, tri par `-pax` puis `arrival_time`). Deux réservations à 12:00 et
+  14:00 peuvent recevoir la même table sans qu'aucun conflit ne soit signalé.
+- **`except Exception: pass` massif dans `database.py`.** Chaque helper de migration
+  avale ses erreurs. C'est ce motif qui a masqué deux bugs critiques pendant des mois.
+  Les échecs devraient au minimum être journalisés.
+- **Aucune suite de tests automatisés.** Les `test_*.py` à la racine sont des scripts
+  d'exploration manuels, pas des tests exécutables par un runner.
+- **Pas de limitation de débit sur `/api/auth/login`**, qui reste exposé au bourrage
+  d'identifiants malgré le coût élevé de PBKDF2.
+- **`list_reservations` charge toutes les lignes** puis filtre en Python. Acceptable
+  au volume actuel, à revoir si l'historique grossit.
+- **Les permissions restent couplées aux URL, pas aux routeurs.** Le nouveau système
+  de règles est explicite et testé, mais rien n'empêche mécaniquement une future route
+  d'être ajoutée hors de toute règle. Le défaut est fermé (403), donc l'erreur se voit
+  vite — c'est exactement l'inverse qui s'était produit avec `billing`, où la règle
+  existait mais ne correspondait à aucune URL réelle, sans aucun signal.
+- **Duplication de configuration de déploiement** : deux `requirements.txt`, deux
+  `Procfile`, deux `Dockerfile`.
+- **Le dossier `plant/` est une copie morte** du plan de salle (`floorplan.py` y fait
+  71 Ko contre 112 Ko dans `app/`, `FloorCanvas.tsx` 53 Ko contre 72 Ko). Il ne reçoit
+  aucun correctif et risque d'être édité par erreur. À supprimer ou à archiver hors
+  du dépôt.
+- **`floorplan.py` définit ses fonctions avant ses imports** (les `import` sont ligne
+  ~460, les premières fonctions ligne 5). Cela ne fonctionne que grâce à
+  `from __future__ import annotations` et au fait que les corps ne s'exécutent qu'à
+  l'appel. C'est fragile et déroutant à la lecture.
 
 ---
 
 ## 7. FONCTIONNALITÉS MANQUANTES
 
-### 7.1 Gestion Conflit Horaires
-- Pas de détection overlaps temporels
-- Pas de durée estimée par réservation
-- Pas de slots horaires définis
+### 7.1 Gestion des conflits horaires
+- Pas de détection de chevauchement temporel
+- Pas de durée estimée par réservation, pas de créneaux définis
 
-### 7.2 Statistiques & Analytics
-- Pas de taux d'occupation
-- Pas de KPIs (couverts/table, rotation moyenne)
-- Pas d'historique performances
+### 7.2 Statistiques & analytics
+- Pas de taux d'occupation, pas de KPI (couverts/table, rotation moyenne)
+- Pas d'historique de performance
 
-### 7.3 Optimisation Algorithme
-- Pas de backtracking si solution meilleure existe
-- Greedy simple (pas d'exploration alternatives)
-- Pas de score de qualité d'attribution
+### 7.3 Optimisation de l'algorithme
+- Glouton sans backtracking : aucune exploration d'alternatives
+- Pas de score de qualité global d'une attribution
 
-### 7.4 Export Avancé
-- Pas d'export Excel
-- Pas d'impression directe
-- Pas de templates PDF personnalisables
+### 7.4 Export avancé
+- Pas d'export Excel, pas d'impression directe
+- Pas de modèles PDF personnalisables
 
-### 7.5 Multi-Utilisateurs
-- Pas de gestion permissions
-- Pas de collaboration temps réel
-- Pas d'audit trail
+### 7.5 Collaboration
+- Le multi-comptes existe, mais pas la **collaboration temps réel** ni l'**audit trail**
+  (qui a modifié quoi, et quand)
 
----
-
-## 8. CHOIX TECHNIQUES À VALIDER
-
-### 8.1 Pourquoi JSON pour data/assignments?
-- Flexibilité schéma (pas de migrations fréquentes)
-- Performance OK pour volumes restaurant
-- Query simple si besoin: PostgreSQL JSONB indexable
-
-**Alternative**: Tables normalisées (floor_table, floor_wall, etc.)
-**Verdict**: Choix actuel valide pour ce use-case
-
-### 8.2 Pourquoi Canvas HTML5 vs SVG?
-- Performance meilleure pour interactions temps réel
-- Contrôle pixel-perfect
-- Plus simple pour collision detection
-
-**Alternative**: SVG + React components
-**Verdict**: Choix actuel optimal
-
-### 8.3 Pourquoi ReportLab vs autres?
-- Pure Python (pas de deps système)
-- Mature et stable
-- Contrôle total du rendu
-
-**Alternative**: WeasyPrint, pdfkit
-**Verdict**: Choix correct
+### 7.6 Qualité
+- Découpage de `floorplan.py` (2 323 lignes) et `FloorCanvas.tsx` (1 796 lignes)
+- Mise en place d'une vraie suite de tests (pytest + Vitest)
 
 ---
 
-## 9. PLAN D'ACTION PROPOSÉ
+## 8. CHOIX TECHNIQUES
 
-### Phase 1: CORRECTIFS CRITIQUES (1-2h)
-1. Ajouter dépendances manquantes à requirements.txt
-2. Corriger/créer endpoint /api/floorplan/templates (ou adapter frontend)
-3. Supprimer fonction morte find_free_position_for_table
-4. Corriger mémoire système numérotation
+### 8.1 JSON pour `data` / `assignments`
+Souplesse de schéma, performances suffisantes au volume d'un restaurant, et JSONB
+indexable côté PostgreSQL. **Verdict : adapté.**
 
-### Phase 2: ROBUSTESSE (2-3h)
-1. Ajouter gestion erreurs import PDF (logs détaillés)
-2. Ajouter validation assignments avant save
-3. Ajouter tests capacité plan (max tables, bounds checks)
-4. Améliorer messages d'erreur utilisateur
+### 8.2 Canvas HTML5 plutôt que SVG
+Meilleures performances en interaction continue, contrôle au pixel, détection de
+collision plus simple. **Verdict : optimal.**
 
-### Phase 3: AMÉLIORATIONS UX (2-3h)
-1. Réactiver survol avec useMemo/useCallback
-2. Ajouter preview avant auto-assign
-3. Ajouter undo/redo sur canvas
-4. Améliorer feedback visuel collisions
+### 8.3 ReportLab
+Pur Python, sans dépendance système, mature. Complété par `pypdf` pour annoter un
+PDF existant et `pdfplumber` pour le lire. **Verdict : cohérent.**
 
-### Phase 4: FONCTIONNALITÉS (3-5h)
-1. Détection conflits horaires (optionnel avec toggle)
-2. Statistiques basiques (occupancy rate)
-3. Export Excel réservations assignées
-4. Templates de plans (quick start)
+### 8.4 PBKDF2 plutôt qu'Argon2 / bcrypt
+600 000 itérations SHA-256 via la bibliothèque standard, sans dépendance native —
+un vrai avantage au déploiement. Le coût est visible (~450 ms par connexion),
+ce qui est le comportement attendu. **Verdict : acceptable.**
 
-### Phase 5: OPTIMISATION (2-3h)
-1. Algorithme auto-assign v2 avec scoring
-2. Cache calculs coûteux (collision maps)
-3. Batch operations pour perf
-4. Lazy loading instances anciennes
+---
+
+## 9. PLAN D'ACTION
+
+### Phase 1 — Fiabilité (fait)
+Correctifs des §6.1 et §6.1 bis, vérifiés par trois campagnes de tests exécutées
+contre une base jetable — **105 contrôles, tous au vert** :
+- **44 contrôles généraux** — santé, authentification, CRUD réservations, garde-fous
+  de quantités, duplication, traversée de chemin sur les allergènes, génération PDF ;
+- **20 contrôles de permissions** — un membre `billing` peut facturer sans pouvoir
+  modifier les fiches, un membre `reservations` garde son écran de fiche complet
+  (panneau de facturation inclus) sans accéder à la page Facturation, un membre
+  `rooftop` reste cantonné au Rooftop ;
+- **41 contrôles du plan de salle** — persistance de la numérotation et du
+  renumérotage manuel, familles d'étiquettes, tri naturel, capacités par défaut,
+  auto-attribution avec couverture vérifiée réservation par réservation, tolérance
+  aux heures absentes, `compare`, `reset`, exports PDF, et **la chaîne d'import
+  complète depuis un vrai PDF généré pour le test** (parsing → stockage →
+  auto-attribution).
+
+Le frontend n'a **pas** été recompilé : Node.js n'est pas installé sur la machine
+d'audit, donc `npm run build` reste à exécuter.
+
+### Phase 2 — Filet de sécurité (prioritaire)
+1. Versionner ces deux campagnes sous forme de suite pytest (elles n'existent
+   aujourd'hui que comme scripts d'audit jetables)
+2. Journaliser les échecs de migration au lieu de les avaler
+3. Ajouter une limitation de débit sur `/api/auth/login`
+4. Fusionner les fichiers de dépendances et de déploiement dupliqués
+5. Lancer `npm run build` pour valider le typage du frontend
+
+### Phase 3 — UX
+1. Aperçu avant auto-assign
+2. Undo/redo sur le canvas
+3. Meilleur retour visuel sur les collisions
+4. Exposer les `alerts` de l'auto-assign dans l'interface
+
+### Phase 4 — Fonctionnalités
+1. Détection des conflits horaires (activable)
+2. Statistiques d'occupation
+3. Export Excel des réservations attribuées
+4. Audit trail des modifications
+
+### Phase 5 — Optimisation
+1. Auto-assign v2 avec scoring global
+2. Cache des calculs de collision
+3. Chargement paresseux des instances anciennes
 
 ---
 
 ## 10. CONCLUSION
 
-### État Actuel
-Le projet est **fonctionnel et structuré proprement**, avec:
-- Architecture solide et maintenable
-- Logique métier complète
-- UX interactive et intuitive
-- Code relativement propre
+### État actuel
+Le projet est **fonctionnel et proprement structuré** : séparation backend/frontend
+nette, typage fort des deux côtés, logique métier riche, interface interactive
+aboutie, et désormais un contrôle d'accès cohérent de bout en bout.
 
-### Problèmes Bloquants
-- **Dépendances manquantes** empêchent import/export PDF
-- **Endpoint manquant** casse interface plans
+### Risque principal
+Ce n'est plus une dépendance manquante, mais la **défaillance silencieuse**, sous deux
+formes distinctes :
 
-### Potentiel d'Amélioration
-- Gestion conflits horaires
-- Optimisation algorithme
-- Analytics/reporting
-- Multi-utilisateurs
+1. **Les erreurs avalées.** Le motif `except Exception: pass` a masqué une migration
+   jamais exécutée, une colonne jamais créée et une validation contournable — pendant
+   des mois, sans le moindre signal.
+2. **La configuration qui ne correspond à rien.** La règle de permission
+   `/api/facturation` était syntaxiquement correcte, lisible, et ne pointait vers
+   aucune URL existante : la permission « Facturation » ne donnait accès à rien, et
+   rien dans le code ne pouvait le signaler.
+
+Le point commun : dans les deux cas, le système *paraissait* configuré correctement.
+Seule une vérification par exécution réelle les a révélés.
 
 ### Recommandation
-**Priorité 1**: Corriger les bugs critiques (Phase 1)
-**Priorité 2**: Robustesse et tests (Phase 2)
-**Priorité 3**: UX et features (Phases 3-4)
+**Priorité 1** : filet de sécurité (Phase 2) — tests automatisés et journalisation
+des échecs, pour que la prochaine régression se voie.
+**Priorité 2** : conflits horaires (§7.1), seul vrai manque métier.
+**Priorité 3** : UX et analytics.
 
-Le code est déjà production-ready pour un usage mono-utilisateur avec les correctifs de Phase 1.
+Le code est prêt pour la production en usage multi-utilisateurs, à condition de
+définir `JWT_SECRET`.
 
 ---
 
@@ -512,10 +537,17 @@ Le code est déjà production-ready pour un usage mono-utilisateur avec les corr
   rect_only_zones: [{id, x, y, w, h}],
   fixtures: [{id, x, y, w?, h?, r?, shape?, label?, locked?}],
   tables: [{
-    id, kind: 'fixed'|'rect'|'round',
+    id, kind: 'fixed'|'rect'|'round'|'sofa'|'standing',
     x, y, w?, h?, r?,
     capacity?, locked?, label?
-  }]
+  }],
+  fixed_chair_stock?: 28,
+  max_dynamic_tables?: { rect?: 10, round?: 5 },
+  large_table_config?: {
+    pax_threshold_right?: 10,
+    pax_threshold_vertical?: 20,
+    vertical_span_max?: 7
+  }
 }
 ```
 
@@ -528,13 +560,24 @@ Le code est déjà production-ready pour un usage mono-utilisateur avec les corr
       name: "DUPONT",
       pax: 4,
       last_resort?: true
-    },
-    "table_id_2": { ... }
+    }
   }
 }
 ```
 
-### C. Commandes Utiles
+### C. Variables d'environnement
+| Variable | Rôle | Défaut |
+|---|---|---|
+| `DATABASE_URL` | Connexion base (ou `PGHOST`/`PGDATABASE`/`PGUSER`/`PGPASSWORD`/`PGPORT`) | `sqlite:///./data.db` |
+| `JWT_SECRET` | **Obligatoire en production**, signature des jetons | aléatoire par processus |
+| `AUTH_TOKEN_TTL_HOURS` | Durée de vie des sessions | `8` |
+| `CORS_ORIGINS` | Origines navigateur autorisées (séparées par des virgules) | `http://localhost:5173` |
+| `TZ` | Fuseau pour « à venir » / « passées » | `Europe/Paris` |
+| `AI_PROVIDER` | `openai` ou `groq` (remplissage assisté des plaintes) | `openai` |
+| `OPENAI_API_KEY` / `GROQ_API_KEY` | Clé du fournisseur choisi | — |
+| `PORT` | Port d'écoute (Railway / Docker) | `8080` |
+
+### D. Commandes utiles
 ```bash
 # Dev backend
 cd app
@@ -544,10 +587,10 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 cd app/frontend
 npm run dev
 
-# Build prod
+# Build prod (typecheck + bundle)
 cd app/frontend
 npm run build
 
-# Railway deploy
-git push origin main
+# Image Docker complète (frontend + backend)
+docker build -t albert-app .
 ```

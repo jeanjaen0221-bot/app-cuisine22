@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -28,10 +29,54 @@ app.add_middleware(
 )
 
 
+# Ordered access rules: (path pattern, permissions that grant it, methods it
+# covers). The first rule whose pattern and method both match wins, so the more
+# specific entries come first. A path matching no rule is refused for members —
+# a new route defaults to closed rather than open.
+#
+# Facturation is not a URL prefix of its own: its endpoints live under
+# /api/supplement-presets and /api/reservations/{id}/{billing,supplements}. They
+# must be listed explicitly, otherwise the "billing" permission grants nothing.
+API_PERMISSION_RULES: tuple[tuple[re.Pattern[str], tuple[str, ...], tuple[str, ...] | None], ...] = tuple(
+    (re.compile(pattern), permissions, methods)
+    for pattern, permissions, methods in (
+        (r"^/api/reservations/rooftop", ("rooftop",), None),
+        (r"^/api/reservations/[^/]+/(billing|supplements|invoice-pdf)", ("billing", "reservations"), None),
+        # The billing panel is embedded in the fiche screen too, so it must be
+        # readable there; only Facturation edits the preset library itself.
+        (r"^/api/supplement-presets", ("billing", "reservations"), ("GET", "HEAD")),
+        (r"^/api/supplement-presets", ("billing",), None),
+        # Facturation lists reservations to choose which one to invoice, read-only.
+        (r"^/api/reservations", ("reservations", "billing"), ("GET", "HEAD")),
+        (r"^/api/reservations", ("reservations",), None),
+        (r"^/api/reminders", ("reservations",), None),
+        (r"^/api/floorplan", ("floorplan",), None),
+        (r"^/api/menu-items", ("menu",), None),
+        (r"^/api/drinks", ("orders",), None),
+        (r"^/api/purchase-orders", ("orders",), None),
+        (r"^/api/suppliers", ("suppliers",), None),
+        (r"^/api/incidents", ("incidents",), None),
+        (r"^/api/zenchef", ("settings",), None),
+        (r"^/api/allergens", ("settings",), None),
+        (r"^/api/notes", ("dashboard",), None),
+    )
+)
+
+
+def permissions_required_for(path: str, method: str) -> tuple[str, ...] | None:
+    """Permissions that grant `method path`, or None when no rule covers it."""
+    for pattern, permissions, methods in API_PERMISSION_RULES:
+        if pattern.match(path) and (methods is None or method.upper() in methods):
+            return permissions
+    return None
+
+
 @app.middleware("http")
 async def require_api_authentication(request: Request, call_next):
     """Protect every business API route; authentication endpoints stay public."""
     path = request.url.path
+    # /api/auth/* is handled by the router itself (public setup/login, and
+    # require_admin on the user-management routes).
     if path.startswith("/api/") and not path.startswith("/api/auth/"):
         scheme, _, token = request.headers.get("Authorization", "").partition(" ")
         if scheme.lower() != "bearer" or not token:
@@ -44,19 +89,11 @@ async def require_api_authentication(request: Request, call_next):
             user = session.get(User, uuid.UUID(request.state.user_id))
             if user is None:
                 return JSONResponse(status_code=401, content={"detail": "Session invalide ou expirée."})
-            required_permission = next((permission for prefix, permission in {
-                "/api/reservations/rooftop": "rooftop", "/api/reservations": "reservations", "/api/reminders": "reservations",
-                "/api/floorplan": "floorplan", "/api/menu-items": "menu",
-                "/api/drinks": "orders", "/api/purchase-orders": "orders",
-                "/api/suppliers": "suppliers", "/api/facturation": "billing",
-                "/api/incidents": "incidents", "/api/zenchef": "settings",
-                "/api/allergens": "settings", "/api/notes": "dashboard",
-                "/api/auth/users": "users",
-            }.items() if path.startswith(prefix)), None)
+            accepted = permissions_required_for(path, request.method)
             permissions = {item for item in (user.permissions or "").split(",") if item}
             # Accounts created before roles existed are the original owner
             # account; keep its access even if a legacy migration returned NULL.
-            if (user.role or "admin") != "admin" and (required_permission is None or required_permission not in permissions):
+            if (user.role or "admin") != "admin" and (accepted is None or permissions.isdisjoint(accepted)):
                 return JSONResponse(status_code=403, content={"detail": "Vous n’avez pas accès à cette section."})
     return await call_next(request)
 
@@ -177,8 +214,9 @@ async def favicon():
 async def health():
     ok_db = False
     try:
+        from sqlalchemy import text
         with session_context() as s:
-            s.exec("SELECT 1")
+            s.exec(text("SELECT 1"))
             ok_db = True
     except Exception:
         ok_db = False

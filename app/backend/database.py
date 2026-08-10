@@ -2,7 +2,7 @@ import os
 from contextlib import contextmanager
 from typing import Generator
 
-from sqlmodel import SQLModel, create_engine, Session
+from sqlmodel import SQLModel, create_engine, Session, select
 from sqlalchemy import text
 
 def _dsn_from_pg_env() -> str | None:
@@ -206,7 +206,7 @@ def ensure_floorplan_reservations_column() -> None:
                     cols = [row[1] for row in res.fetchall()]
                     if 'reservations' not in cols:
                         # SQLite: use TEXT to store JSON payloads
-                        conn.exec_driver_sql("ALTER TABLE floorplaninstance ADD COLUMN reservations TEXT DEFAULT '{}'::text;")
+                        conn.exec_driver_sql("ALTER TABLE floorplaninstance ADD COLUMN reservations TEXT DEFAULT '{}';")
                 except Exception:
                     pass
             elif backend == 'postgresql':

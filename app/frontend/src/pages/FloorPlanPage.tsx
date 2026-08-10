@@ -78,15 +78,15 @@ export default function FloorPlanPage() {
     try {
       const res = await api.post(`/api/floorplan/instances/${selectedInstance.id}/reset`)
       setSelectedInstance(res.data)
-      toast('success', 'Instance rÃ©initialisÃ©e')
+      toast('success', 'Instance réinitialisée')
     } catch (err) {
       console.error('Failed to reset instance:', err)
-      toast('error', 'Erreur rÃ©initialisation')
+      toast('error', 'Erreur réinitialisation')
     }
   }
 
   async function compareWithPDF() {
-    if (!selectedInstance) { toast('warning', "SÃ©lectionnez d'abord une instance"); return }
+    if (!selectedInstance) { toast('warning', "Sélectionnez d'abord une instance"); return }
     try {
       const res = await api.get(`/api/floorplan/instances/${selectedInstance.id}/compare`)
       setCompareResult(res.data)
@@ -110,7 +110,7 @@ export default function FloorPlanPage() {
     if (!baseTemplate) return
     try {
       await updateFloorBase({ name: baseTemplate.name, data: baseTemplate.data })
-      toast('success', 'Plan de base sauvegardÃ©')
+      toast('success', 'Plan de base sauvegardé')
       await loadBase()
     } catch (err) {
       console.error('Failed to save base:', err)
@@ -122,7 +122,7 @@ export default function FloorPlanPage() {
     if (!selectedInstance) return
     try {
       await api.put(`/api/floorplan/instances/${selectedInstance.id}`, { data: selectedInstance.data, assignments: selectedInstance.assignments })
-      toast('success', 'Instance sauvegardÃ©e')
+      toast('success', 'Instance sauvegardée')
       await loadInstances()
     } catch (err) {
       console.error('Failed to save instance:', err)
@@ -131,16 +131,16 @@ export default function FloorPlanPage() {
   }
 
   async function createInstance() {
-    if (!newInstanceDate) { toast('warning', 'Veuillez sÃ©lectionner une date'); return }
+    if (!newInstanceDate) { toast('warning', 'Veuillez sélectionner une date'); return }
     try {
       await api.post('/api/floorplan/instances', { service_date: newInstanceDate, service_label: newInstanceLabel })
-      toast('success', 'Service crÃ©Ã©')
+      toast('success', 'Service créé')
       setShowCreateModal(false)
       setNewInstanceDate('')
       await loadInstances()
     } catch (err: any) {
       console.error('Failed to create instance:', err)
-      toast('error', 'Erreur: ' + (err.response?.data?.detail || 'CrÃ©ation Ã©chouÃ©e'))
+      toast('error', 'Erreur: ' + (err.response?.data?.detail || 'Création échouée'))
     }
   }
 
@@ -150,7 +150,7 @@ export default function FloorPlanPage() {
       await api.delete(`/api/floorplan/instances/${selectedInstance.id}`)
       setSelectedInstance(null)
       setConfirmDelete(false)
-      toast('success', 'Service supprimÃ©')
+      toast('success', 'Service supprimé')
       await loadInstances()
     } catch (err) {
       console.error('Failed to delete instance:', err)
@@ -159,7 +159,7 @@ export default function FloorPlanPage() {
   }
 
   async function importPDF() {
-    if (!selectedInstance) { toast('warning', "SÃ©lectionnez d'abord une instance"); return }
+    if (!selectedInstance) { toast('warning', "Sélectionnez d'abord une instance"); return }
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = '.pdf'
@@ -176,15 +176,15 @@ export default function FloorPlanPage() {
           headers: { 'Content-Type': 'multipart/form-data' }
         })
         const count = Array.isArray(res.data.parsed) ? res.data.parsed.length : 0
-        console.log('[IMPORT-PDF] RÃ©sultat:', res.data)
-        toast('success', `${count} rÃ©servation(s) importÃ©e(s)`)
+        console.log('[IMPORT-PDF] Résultat:', res.data)
+        toast('success', `${count} réservation(s) importée(s)`)
         await loadInstances()
         // Reload selected instance
         const updated = await api.get(`/api/floorplan/instances/${selectedInstance.id}`)
         setSelectedInstance(updated.data)
       } catch (err: any) {
         console.error('Failed to import PDF:', err)
-        toast('error', 'Erreur import: ' + (err.response?.data?.detail || 'Ã‰chec'))
+        toast('error', 'Erreur import: ' + (err.response?.data?.detail || 'Échec'))
       } finally {
         setUploadingPDF(false)
       }
@@ -205,9 +205,9 @@ export default function FloorPlanPage() {
   }
 
   async function autoAssign() {
-    if (!selectedInstance) { toast('warning', "SÃ©lectionnez d'abord une instance"); return }
+    if (!selectedInstance) { toast('warning', "Sélectionnez d'abord une instance"); return }
     try {
-      // Capturer AVANT l'appel API (Ã©vite bug de rÃ©fÃ©rence)
+      // Capturer AVANT l'appel API (évite bug de référence)
       const tablesBefore = selectedInstance?.data?.tables?.length || 0
       const res = await api.post(`/api/floorplan/instances/${selectedInstance.id}/auto-assign`)
       const assigned = Object.keys(res.data.assignments?.tables || {}).length
@@ -215,7 +215,7 @@ export default function FloorPlanPage() {
       const newTablesCreated = tablesAfter - tablesBefore
       const alerts: string[] = Array.isArray(res.data?.assignments?.alerts) ? res.data.assignments.alerts : []
       
-      console.log('[AUTO-ASSIGN] RÃ©sultat:', {
+      console.log('[AUTO-ASSIGN] Résultat:', {
         assigned,
         tablesBefore,
         tablesAfter,
@@ -224,11 +224,11 @@ export default function FloorPlanPage() {
       })
       
       if (alerts.length > 0) setUiAlerts(alerts)
-      toast('success', `${assigned} tables assignÃ©es${newTablesCreated > 0 ? ` (+${newTablesCreated} nouvelles)` : ''}${alerts.length > 0 ? ` Â· ${alerts.length} alerte(s)` : ''}`)
+      toast('success', `${assigned} tables assignées${newTablesCreated > 0 ? ` (+${newTablesCreated} nouvelles)` : ''}${alerts.length > 0 ? ` · ${alerts.length} alerte(s)` : ''}`)
       setSelectedInstance(res.data)
     } catch (err: any) {
       console.error('Failed to auto-assign:', err)
-      toast('error', 'Erreur: ' + (err.response?.data?.detail || 'Placement automatique Ã©chouÃ©'))
+      toast('error', 'Erreur: ' + (err.response?.data?.detail || 'Placement automatique échoué'))
     }
   }
 
@@ -245,16 +245,16 @@ export default function FloorPlanPage() {
       } else {
         setSelectedInstance(res.data)
       }
-      toast('success', 'Tables numÃ©rotÃ©es')
+      toast('success', 'Tables numérotées')
     } catch (err) {
       console.error('Failed to number tables:', err)
-      toast('error', 'Erreur numÃ©rotation')
+      toast('error', 'Erreur numérotation')
     }
   }
 
   async function renumberSelectedTables() {
     const ids = selectedTableIds
-    if (!ids.length) { toast('warning', "SÃ©lectionnez d'abord des tables"); return }
+    if (!ids.length) { toast('warning', "Sélectionnez d'abord des tables"); return }
     try {
       const payload = { table_ids: ids, prefix: renumberPrefix, start: renumberStart }
       const res = editMode === 'template'
@@ -265,15 +265,15 @@ export default function FloorPlanPage() {
       } else {
         setSelectedInstance(res.data)
       }
-      toast('success', 'NumÃ©rotation appliquÃ©e')
+      toast('success', 'Numérotation appliquée')
     } catch (err: any) {
       console.error('Failed to renumber tables:', err)
-      toast('error', 'Erreur renumÃ©rotation: ' + (err.response?.data?.detail || 'Ã‰chec'))
+      toast('error', 'Erreur renumérotation: ' + (err.response?.data?.detail || 'Échec'))
     }
   }
 
   async function exportAnnotated() {
-    if (!selectedInstance) { toast('warning', "SÃ©lectionnez d'abord une instance"); return }
+    if (!selectedInstance) { toast('warning', "Sélectionnez d'abord une instance"); return }
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = '.pdf'
@@ -294,7 +294,7 @@ export default function FloorPlanPage() {
         fileDownload(res.data, `annotated_${selectedInstance.service_date}.pdf`)
       } catch (err) {
         console.error('Failed to export annotated:', err)
-        toast('error', 'Erreur export annotÃ©')
+        toast('error', 'Erreur export annoté')
       }
     }
     input.click()

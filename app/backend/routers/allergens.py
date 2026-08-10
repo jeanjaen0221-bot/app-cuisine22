@@ -51,6 +51,16 @@ def _write_meta(meta: Dict[str, Dict[str, Any]]) -> None:
     os.replace(tmp, META_PATH)
 
 
+def _validate_key(key: str) -> str:
+    """Reject anything that could escape ALLERGENS_DIR when used as a filename."""
+    key = (key or "").strip()
+    if not key or len(key) > 64:
+        raise HTTPException(400, "Invalid key")
+    if key != os.path.basename(key) or key in {".", ".."} or any(ch in key for ch in " /\\:\t\n\r\0"):
+        raise HTTPException(400, "Invalid characters in key")
+    return key
+
+
 def _icon_path_for(key: str) -> str:
     return os.path.join(ALLERGENS_DIR, f"{key}.png")
 
@@ -108,11 +118,7 @@ def list_allergens(session: Session = Depends(get_session)):
 
 @router.put("/{key}", response_model=AllergenResponse)
 def upsert_allergen(key: str, payload: AllergenUpsert, session: Session = Depends(get_session)):
-    key = key.strip()
-    if not key:
-        raise HTTPException(400, "Invalid key")
-    if any(ch in key for ch in " /\\:\\t\n"):  # prevent path traversal and spaces
-        raise HTTPException(400, "Invalid characters in key")
+    key = _validate_key(key)
     meta = _read_meta()
     meta.setdefault(key, {})
     meta[key]["label"] = payload.label.strip() or key
@@ -132,7 +138,8 @@ def upsert_allergen(key: str, payload: AllergenUpsert, session: Session = Depend
 
 @router.post("/{key}/icon", response_model=AllergenResponse)
 def upload_icon(key: str, file: UploadFile = File(...), session: Session = Depends(get_session)):
-    if not file.filename.lower().endswith(".png"):
+    key = _validate_key(key)
+    if not (file.filename or "").lower().endswith(".png"):
         raise HTTPException(400, "Only PNG files are accepted")
     content = file.file.read()
     if len(content) > 2 * 1024 * 1024:
@@ -162,6 +169,7 @@ def upload_icon(key: str, file: UploadFile = File(...), session: Session = Depen
 
 @router.delete("/{key}")
 def delete_allergen(key: str, session: Session = Depends(get_session)):
+    key = _validate_key(key)
     meta = _read_meta()
     if key in meta:
         del meta[key]

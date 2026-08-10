@@ -10,7 +10,16 @@ from fastapi import HTTPException, status
 
 ALGORITHM = "HS256"
 TOKEN_TTL_HOURS = int(os.getenv("AUTH_TOKEN_TTL_HOURS", "8"))
-JWT_SECRET = os.getenv("JWT_SECRET") or secrets.token_urlsafe(48)
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    # A generated secret differs per process, so every restart (and every extra
+    # uvicorn worker) rejects tokens issued elsewhere. Usable for local dev only.
+    JWT_SECRET = secrets.token_urlsafe(48)
+    print(
+        "ATTENTION: JWT_SECRET n'est pas defini. Un secret temporaire est genere: "
+        "les sessions seront invalidees a chaque redemarrage et ne fonctionneront "
+        "pas avec plusieurs workers. Definissez JWT_SECRET en production."
+    )
 _ITERATIONS = 600_000
 
 

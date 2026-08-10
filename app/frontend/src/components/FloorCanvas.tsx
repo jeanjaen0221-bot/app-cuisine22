@@ -743,7 +743,9 @@ export default function FloorCanvas({ data, assignments, editable = true, showGr
       else if (t.kind === 'fixed') defaultCap = 4
       const cap = (t.capacity || defaultCap) + ''
       let lbl = (t.label || '').toString()
-      const k = t.kind as string
+      // Mirror the backend's _numbering_kind: a table with no kind is drawn as
+      // a rectangle, so it must accept a T label rather than show none.
+      const k = (t.kind as string) || 'rect'
       const validLabel = (
         (k === 'fixed' && /^\d+$/.test(lbl)) ||
         (k === 'rect' && /^T\d+$/.test(lbl)) ||

@@ -35,3 +35,17 @@ pnpm-debug.log*
 
 # ---- Generated assets ----
 app/generated_pdfs/*.pdf
+
+# ---- Donnees clients ----
+# Les listes de reservations exportees contiennent des noms et des numeros de
+# telephone de clients reels: elles ne doivent jamais partir sur le depot.
+# Les PDF versionnes volontairement (carte des boissons) vivent sous app/.
+/*.pdf
+
+# ---- Copie obsolete du plan de salle ----
+# L'outil vivant est sous app/. plant/ est un ancien instantane conserve en
+# local uniquement, pour eviter qu'il soit edite par erreur.
+plant/
+
+# ---- Reglages locaux de l'outillage ----
+.claude/settings.local.json
