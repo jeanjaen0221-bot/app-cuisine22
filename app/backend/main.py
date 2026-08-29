@@ -14,7 +14,7 @@ from .database import init_db, run_startup_migrations, session_context, backfill
 from .gpt_api import gpt_app
 from .models import User
 from .security import decode_access_token
-from .routers import auth, reservations, menu_items, zenchef, allergens, notes, drinks, suppliers, purchase_orders, floorplan, incidents, facturation, reminders
+from .routers import auth, reservations, menu_items, zenchef, allergens, notes, drinks, suppliers, purchase_orders, floorplan, incidents, facturation, reminders, gmail_oauth
 
 load_dotenv()
 
@@ -79,7 +79,14 @@ async def require_api_authentication(request: Request, call_next):
     # /api/auth/* is handled by the router itself (public setup/login, and
     # require_admin on the user-management routes). /api/gpt/* is a separate
     # sub-app (gpt_api.py) with its own API-key auth, not the human JWT login.
-    if path.startswith("/api/") and not path.startswith("/api/auth/") and not path.startswith("/api/gpt/"):
+    # /api/gmail/oauth/* is the one-time browser consent flow (Google login is
+    # its own auth; there is no JWT to check at that point).
+    if (
+        path.startswith("/api/")
+        and not path.startswith("/api/auth/")
+        and not path.startswith("/api/gpt/")
+        and not path.startswith("/api/gmail/oauth/")
+    ):
         scheme, _, token = request.headers.get("Authorization", "").partition(" ")
         if scheme.lower() != "bearer" or not token:
             return JSONResponse(status_code=401, content={"detail": "Authentification requise."})
@@ -113,6 +120,7 @@ app.include_router(floorplan.router)
 app.include_router(incidents.router)
 app.include_router(facturation.router)
 app.include_router(reminders.router)
+app.include_router(gmail_oauth.router)
 
 # Dedicated, API-key-authenticated surface for a Custom GPT Action (see gpt_api.py).
 # Mounted before the static/SPA fallback below so /api/gpt/* is never swallowed by it.

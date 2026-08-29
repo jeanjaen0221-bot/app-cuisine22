@@ -687,3 +687,15 @@ class ReminderRead(SQLModel):
     menu_formula: Optional[str] = None
     snoozed_until: Optional[datetime] = None
     muted: bool = False
+
+
+class GmailToken(SQLModel, table=True):
+    """Singleton row (id=1) holding the Gmail OAuth refresh token obtained via
+    the one-time /api/gmail/oauth/start -> /callback flow. access_token is a
+    short-lived cache refreshed on demand by gmail_service.get_access_token()."""
+    id: int = Field(default=1, primary_key=True)
+    email: str
+    refresh_token: str
+    access_token: Optional[str] = None
+    access_token_expires_at: Optional[datetime] = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
