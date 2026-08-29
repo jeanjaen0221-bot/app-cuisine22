@@ -18,6 +18,18 @@ export function getAccessToken() {
 let _salleDebug = false
 export function setSalleDebug(v: boolean) { _salleDebug = v }
 
+function _filenameFromDisposition(disposition?: string): string | null {
+  if (!disposition) return null
+  // RFC 5987 : filename*=UTF-8''nom%20du%20fichier.pdf
+  const star = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(disposition)
+  if (star && star[1]) {
+    try { return decodeURIComponent(star[1].trim().replace(/^"|"$/g, '')) } catch {}
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(disposition)
+  if (plain && plain[1]) return plain[1].trim()
+  return null
+}
+
 export async function fileDownload(data: Blob | string, filename?: string) {
   const link = document.createElement('a')
   if (data instanceof Blob) {
@@ -25,8 +37,18 @@ export async function fileDownload(data: Blob | string, filename?: string) {
     link.download = filename || 'download.pdf'
   } else {
     const response = await api.get(data, { responseType: 'blob' })
-    link.href = URL.createObjectURL(new Blob([response.data]))
-    link.download = filename || 'download'
+    // Garder le Blob renvoyé par axios : il porte déjà le bon Content-Type.
+    // Le ré-emballer dans `new Blob([...])` effaçait ce type, et le navigateur
+    // renommait alors le fichier en .txt.
+    const blob: Blob = response.data instanceof Blob
+      ? response.data
+      : new Blob([response.data], { type: String(response.headers?.['content-type'] || 'application/pdf') })
+    const fromServer = _filenameFromDisposition(String(response.headers?.['content-disposition'] || '') || undefined)
+    const fallback = (data.split('?')[0].split('/').pop() || 'download')
+    link.href = URL.createObjectURL(blob)
+    link.download = filename
+      || fromServer
+      || (blob.type === 'application/pdf' && !/\.pdf$/i.test(fallback) ? `${fallback}.pdf` : fallback)
   }
   document.body.appendChild(link)
   link.click()
