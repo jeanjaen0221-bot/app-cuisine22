@@ -76,13 +76,35 @@ gpt_app = FastAPI(
 )
 
 
-@gpt_app.get("/fiches", response_model=list[ReservationRead], summary="Lister/rechercher les fiches de réservation")
+@gpt_app.get(
+    "/fiches",
+    response_model=list[ReservationRead],
+    summary="Lister/rechercher les fiches de réservation",
+    description=(
+        "Par défaut, seules les réservations à venir sont retournées, triées par "
+        "date, paginées via page/per_page. Utiliser scope=past pour l'historique. "
+        "service_date (jour précis) ignore scope et remonte tout ce jour-là."
+    ),
+)
 def list_fiches(
     q: Optional[str] = None,
     service_date: Optional[date] = None,
+    scope: str = "upcoming",
+    page: int = 1,
+    per_page: int = 20,
     session: Session = Depends(get_session),
 ):
-    return reservations_router.list_reservations(q=q, service_date=service_date, session=session)
+    per_page = max(1, min(per_page, 50))
+    page = max(1, page)
+    if service_date is not None:
+        # A specific day is naturally bounded in size, so the exact-match path
+        # (used elsewhere for day exports) is fine here regardless of scope.
+        rows = reservations_router.list_reservations(q=q, service_date=service_date, session=session)
+        start = (page - 1) * per_page
+        return rows[start : start + per_page]
+    if (scope or "upcoming").lower().strip() == "past":
+        return reservations_router.list_past_reservations(q=q, page=page, per_page=per_page, session=session)
+    return reservations_router.list_upcoming_reservations(q=q, page=page, per_page=per_page, session=session)
 
 
 @gpt_app.get("/fiches/{reservation_id}", response_model=ReservationRead, summary="Récupérer une fiche par son id")
