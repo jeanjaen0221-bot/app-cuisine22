@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response, FileResponse, StreamingResponse
 
 from .database import init_db, run_startup_migrations, session_context, backfill_allergen_icons
+from .gpt_api import gpt_app
 from .models import User
 from .security import decode_access_token
 from .routers import auth, reservations, menu_items, zenchef, allergens, notes, drinks, suppliers, purchase_orders, floorplan, incidents, facturation, reminders
@@ -76,8 +77,9 @@ async def require_api_authentication(request: Request, call_next):
     """Protect every business API route; authentication endpoints stay public."""
     path = request.url.path
     # /api/auth/* is handled by the router itself (public setup/login, and
-    # require_admin on the user-management routes).
-    if path.startswith("/api/") and not path.startswith("/api/auth/"):
+    # require_admin on the user-management routes). /api/gpt/* is a separate
+    # sub-app (gpt_api.py) with its own API-key auth, not the human JWT login.
+    if path.startswith("/api/") and not path.startswith("/api/auth/") and not path.startswith("/api/gpt/"):
         scheme, _, token = request.headers.get("Authorization", "").partition(" ")
         if scheme.lower() != "bearer" or not token:
             return JSONResponse(status_code=401, content={"detail": "Authentification requise."})
@@ -111,6 +113,10 @@ app.include_router(floorplan.router)
 app.include_router(incidents.router)
 app.include_router(facturation.router)
 app.include_router(reminders.router)
+
+# Dedicated, API-key-authenticated surface for a Custom GPT Action (see gpt_api.py).
+# Mounted before the static/SPA fallback below so /api/gpt/* is never swallowed by it.
+app.mount("/api/gpt", gpt_app)
 
 # Ensure DB
 init_db()
