@@ -19,7 +19,8 @@ import uuid
 from datetime import date
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session
 
 from .database import get_session
@@ -33,15 +34,21 @@ from .models import (
 from .routers import menu_items as menu_items_router
 from .routers import reservations as reservations_router
 
+# A proper FastAPI security scheme (rather than a plain Header param) makes the
+# Authorization header show up in the OpenAPI schema as `securitySchemes` +
+# `security`, not as a per-operation "authorization" parameter — ChatGPT's
+# Action importer otherwise flags/ignores the latter since it already manages
+# that header itself via the configured API Key auth.
+_bearer_scheme = HTTPBearer(auto_error=False)
 
-def require_gpt_api_key(authorization: str = Header(default="")) -> None:
-    scheme, _, token = authorization.partition(" ")
+
+def require_gpt_api_key(credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme)) -> None:
     expected_hash = os.getenv("GPT_API_KEY_HASH", "")
-    if scheme.lower() != "bearer" or not token:
+    if credentials is None or not credentials.credentials:
         raise HTTPException(401, "Clé API manquante.")
     if not expected_hash:
         raise HTTPException(401, "Aucune clé API GPT configurée côté serveur.")
-    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    token_hash = hashlib.sha256(credentials.credentials.encode("utf-8")).hexdigest()
     if not hmac.compare_digest(token_hash, expected_hash):
         raise HTTPException(401, "Clé API invalide.")
 
@@ -93,11 +100,9 @@ def create_fiche(payload: ReservationCreateIn, session: Session = Depends(get_se
     response_model=ReservationRead,
     summary="Modifier ou remplir une fiche (mise à jour partielle)",
     description=(
-        "Mise à jour partielle : seuls les champs fournis sont modifiés. "
-        "Attention : si `items` est fourni, il REMPLACE ENTIÈREMENT la liste des plats "
-        "existante (ce n'est pas un ajout). Pour ajouter un plat sans perdre les autres, "
-        "commencer par un GET /fiches/{id} puis renvoyer la liste complète avec le nouvel "
-        "item inclus."
+        "Mise à jour partielle : seuls les champs fournis sont modifiés. Attention : "
+        "`items`, si fourni, REMPLACE toute la liste existante (pas un ajout) — faire "
+        "un GET avant pour renvoyer la liste complète avec le nouvel item inclus."
     ),
 )
 def update_fiche(reservation_id: uuid.UUID, payload: ReservationUpdate, session: Session = Depends(get_session)):
