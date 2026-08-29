@@ -42,6 +42,7 @@ const MENU_FORMULAS = [
   '2 services',
   '3 services',
   'À la carte',
+  'Brunch',
 ]
 
 type AllergenOption = { key: string; label: string; icon_url?: string; has_icon?: boolean }
