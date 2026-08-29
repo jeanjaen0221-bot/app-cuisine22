@@ -1,5 +1,13 @@
 # Changelog - Corrections & Améliorations
 
+## [2026-08-29] - Fix téléchargement PDF (fiches & factures)
+
+- ✅ `fileDownload()` conserve désormais le `Blob` renvoyé par axios (au lieu de le
+  ré-emballer), ce qui préservait mal le `Content-Type: application/pdf` et faisait
+  télécharger les fiches et factures en `.txt`
+- ✅ Nom de fichier repris depuis l'en-tête `Content-Disposition` du backend
+- ✅ Redéploiement forcé sur Railway pour appliquer ce correctif en production
+
 ## [2026-02-03] - Corrections Critiques & Améliorations
 
 ### ✅ PHASE 1: Correctifs Critiques
