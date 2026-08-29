@@ -46,6 +46,13 @@ def require_gpt_api_key(authorization: str = Header(default="")) -> None:
         raise HTTPException(401, "Clé API invalide.")
 
 
+# ChatGPT's Action importer requires an absolute URL in the OpenAPI `servers`
+# entry (a bare "/api/gpt" is rejected with "Impossible de trouver une URL
+# valide dans `servers`"). PUBLIC_BASE_URL must be set to the public origin
+# (e.g. https://fichesfiches.up.railway.app) for this to resolve correctly.
+_public_base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+_servers = [{"url": f"{_public_base_url}/api/gpt"}] if _public_base_url else None
+
 gpt_app = FastAPI(
     title="FicheCuisineManager - GPT Actions API",
     description=(
@@ -53,6 +60,11 @@ gpt_app = FastAPI(
         "fiches de réservation, gérer leur facturation et consulter le catalogue de "
         "plats. Authentification par clé API statique (Authorization: Bearer <clé>)."
     ),
+    servers=_servers,
+    # Without this, FastAPI auto-prepends a relative "/api/gpt" server entry
+    # (derived from the mount's root_path) ahead of the absolute one above —
+    # ChatGPT's Action importer rejects that relative entry outright.
+    root_path_in_servers=False,
     dependencies=[Depends(require_gpt_api_key)],
 )
 
