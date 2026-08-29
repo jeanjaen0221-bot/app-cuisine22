@@ -30,6 +30,7 @@ from ..pdf_service import (
     generate_reservation_pdf_cuisine,
     generate_reservation_pdf_salle,
     generate_reservation_pdf_both,
+    generate_reservation_pdf_with_invoice,
     generate_day_pdf,
     generate_invoice_pdf,
 )
@@ -468,6 +469,11 @@ def export_reservation_pdf(
     else:
         # Default to a single PDF containing salle then cuisine (and extra cuisine if desserts)
         path = generate_reservation_pdf_both(res, items, billing)
+    # The fiche no longer prints billing details itself: when billing info
+    # exists for this reservation, merge the real facture in as extra pages
+    # instead (the cuisine-only variant has no billing to show, so skip it).
+    if v != "cuisine" and billing is not None:
+        path = generate_reservation_pdf_with_invoice(path, res, items, billing)
     # Mark as exported now
     try:
         res.last_pdf_exported_at = datetime.utcnow()

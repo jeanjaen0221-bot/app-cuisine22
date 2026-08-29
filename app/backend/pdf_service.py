@@ -18,6 +18,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.platypus.flowables import HRFlowable
 from reportlab.lib.units import cm
 
+from pypdf import PdfReader, PdfWriter
+
 from .models import Reservation, ReservationItem, BillingInfo, IncidentReport, InvoiceSupplement
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -46,6 +48,11 @@ def _day_filename(d: date) -> str:
 def _invoice_filename(reservation: Reservation) -> str:
     safe_client = str(reservation.client_name).replace(" ", "_")
     return os.path.join(PDF_DIR, f"facture_{reservation.service_date}_{safe_client}_{reservation.id}.pdf")
+
+
+def _reservation_with_invoice_filename(reservation: Reservation) -> str:
+    safe_client = str(reservation.client_name).replace(" ", "_")
+    return os.path.join(PDF_DIR, f"fiche_facture_{reservation.service_date}_{safe_client}_{reservation.id}.pdf")
 
 
 def _incident_filename(incident: IncidentReport) -> str:
@@ -532,38 +539,9 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
         s.append(fb_tbl)
         s.append(Spacer(1, 10))
 
-        # Billing details (only on salle page)
-        if billing is not None:
-            s.append(Paragraph("<b>Informations de facturation :</b>", styles['Section']))
-            addr = billing.address_line1
-            if getattr(billing, 'address_line2', None):
-                addr += f"\n{billing.address_line2}"
-            rows_b = [
-                [Paragraph("Société", styles['Meta']), Paragraph(str(billing.company_name), styles['Meta'])],
-                [Paragraph("Adresse", styles['Meta']), Paragraph(addr, styles['Meta'])],
-                [Paragraph("Code postal / Ville", styles['Meta']), Paragraph(f"{billing.zip_code} {billing.city}", styles['Meta'])],
-                [Paragraph("Pays", styles['Meta']), Paragraph(str(getattr(billing, 'country', '') or ''), styles['Meta'])],
-            ]
-            if getattr(billing, 'vat_number', None):
-                rows_b.append([Paragraph("TVA", styles['Meta']), Paragraph(str(billing.vat_number), styles['Meta'])])
-            if getattr(billing, 'email', None):
-                rows_b.append([Paragraph("Email", styles['Meta']), Paragraph(str(billing.email), styles['Meta'])])
-            if getattr(billing, 'phone', None):
-                rows_b.append([Paragraph("Téléphone", styles['Meta']), Paragraph(str(billing.phone), styles['Meta'])])
-            if getattr(billing, 'payment_terms', None):
-                rows_b.append([Paragraph("Conditions de paiement", styles['Meta']), Paragraph(str(billing.payment_terms), styles['Meta'])])
-            bill_tbl = Table(rows_b, colWidths=[160, None])
-            bill_tbl.setStyle(TableStyle([
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('GRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e5e7eb')),
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f9fafb')),
-                ('LEFTPADDING', (0,0), (-1,-1), 6),
-                ('RIGHTPADDING', (0,0), (-1,-1), 6),
-                ('TOPPADDING', (0,0), (-1,-1), 4),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-            ]))
-            s.append(bill_tbl)
-            s.append(Spacer(1, 10))
+        # Les informations de facturation ne sont plus imprimées sur la fiche :
+        # la facture (si elle existe) est fusionnée en pages supplémentaires
+        # par generate_reservation_pdf_with_invoice() à la place.
 
         # Allergènes
         s.append(Paragraph("<b>Allergènes :</b>", styles['Section']))
@@ -1272,3 +1250,27 @@ def generate_invoice_pdf(reservation: Reservation, items: List[ReservationItem],
 
     doc.build(story)
     return filename
+
+
+def generate_reservation_pdf_with_invoice(
+    fiche_path: str,
+    reservation: Reservation,
+    items: List[ReservationItem],
+    billing: BillingInfo,
+) -> str:
+    """Append the facture as extra pages after an already-generated fiche PDF.
+
+    Replaces the "Informations de facturation" section that used to be printed
+    on the fiche itself: the real facture is merged in instead, when one can
+    be generated (i.e. billing info exists for the reservation).
+    """
+    invoice_path = generate_invoice_pdf(reservation, items, billing, [])
+    out_path = _reservation_with_invoice_filename(reservation)
+    writer = PdfWriter()
+    for path in (fiche_path, invoice_path):
+        reader = PdfReader(path)
+        for page in reader.pages:
+            writer.add_page(page)
+    with open(out_path, "wb") as f:
+        writer.write(f)
+    return out_path
