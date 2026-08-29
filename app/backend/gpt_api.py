@@ -19,10 +19,13 @@ import uuid
 from datetime import date
 from typing import Optional
 
+import requests
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel
 from sqlmodel import Session
 
+from . import gmail_service
 from .database import get_session
 from .models import (
     BillingInfoRead,
@@ -33,6 +36,16 @@ from .models import (
 )
 from .routers import menu_items as menu_items_router
 from .routers import reservations as reservations_router
+
+
+def _call_gmail(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except gmail_service.GmailNotConfigured as e:
+        raise HTTPException(501, str(e))
+    except requests.HTTPError as e:
+        detail = e.response.text[:300] if e.response is not None else str(e)
+        raise HTTPException(502, f"Erreur Gmail ({e.response.status_code if e.response is not None else '?'}): {detail}")
 
 # A proper FastAPI security scheme (rather than a plain Header param) makes the
 # Authorization header show up in the OpenAPI schema as `securitySchemes` +
@@ -64,8 +77,9 @@ gpt_app = FastAPI(
     title="FicheCuisineManager - GPT Actions API",
     description=(
         "Surface dédiée pour un Custom GPT : lire, créer, remplir et modifier des "
-        "fiches de réservation, gérer leur facturation et consulter le catalogue de "
-        "plats. Authentification par clé API statique (Authorization: Bearer <clé>)."
+        "fiches de réservation, gérer leur facturation, consulter le catalogue de "
+        "plats, et lire/rechercher des emails ou préparer des brouillons Gmail. "
+        "Authentification par clé API statique (Authorization: Bearer <clé>)."
     ),
     servers=_servers,
     # Without this, FastAPI auto-prepends a relative "/api/gpt" server entry
@@ -175,3 +189,59 @@ def download_invoice_pdf(reservation_id: uuid.UUID, session: Session = Depends(g
 )
 def search_menu_items(q: Optional[str] = None, type: Optional[str] = None, session: Session = Depends(get_session)):
     return menu_items_router.search_items(q, type, session)
+
+
+# ===== Gmail (boîte partagée, ex. info@albert.brussels) =====
+# Lecture seule + brouillons uniquement : aucune route n'envoie de mail, même si
+# le jeton OAuth sous-jacent (scope gmail.compose) le permettrait techniquement.
+
+class DraftCreate(BaseModel):
+    to: str
+    subject: str
+    body: str
+    thread_id: Optional[str] = None
+
+
+@gpt_app.get(
+    "/gmail/search",
+    summary="Rechercher des emails (syntaxe de recherche Gmail)",
+    description=(
+        "q utilise la syntaxe de recherche Gmail, ex: 'from:client@exemple.com "
+        "newer_than:30d' ou 'subject:facture'. Voir l'aide Gmail pour la syntaxe."
+    ),
+)
+def search_gmail(q: str, max_results: int = 10):
+    return _call_gmail(gmail_service.search_messages, q, max_results)
+
+
+@gpt_app.get(
+    "/gmail/client-messages",
+    summary="Récupérer les derniers emails échangés avec une adresse cliente",
+)
+def gmail_client_messages(email: str, max_results: int = 10):
+    query = f"from:{email} OR to:{email}"
+    return _call_gmail(gmail_service.search_messages, query, max_results)
+
+
+@gpt_app.get("/gmail/threads/{thread_id}", summary="Lire un fil de discussion complet")
+def get_gmail_thread(thread_id: str):
+    return _call_gmail(gmail_service.get_thread, thread_id)
+
+
+@gpt_app.get("/gmail/messages/{message_id}", summary="Lire un email précis")
+def get_gmail_message(message_id: str):
+    return _call_gmail(gmail_service.get_message, message_id)
+
+
+@gpt_app.post(
+    "/gmail/drafts",
+    status_code=201,
+    summary="Préparer un brouillon de réponse (jamais envoyé automatiquement)",
+    description=(
+        "Crée un brouillon visible dans Gmail, à relire et envoyer manuellement. "
+        "thread_id (optionnel) place le brouillon dans un fil existant plutôt "
+        "que d'en créer un nouveau."
+    ),
+)
+def create_gmail_draft(payload: DraftCreate):
+    return _call_gmail(gmail_service.create_draft, payload.to, payload.subject, payload.body, payload.thread_id)
