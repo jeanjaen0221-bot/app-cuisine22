@@ -45,6 +45,14 @@ const MENU_FORMULAS = [
   'Brunch',
 ]
 
+// Extras courants pour une privatisation en formule Brunch (buffet) : ajout rapide
+// en un clic dans la section Suppléments, plutôt que de tout retaper à la main.
+const BRUNCH_SUPPLEMENT_PRESETS = [
+  'Privatisation',
+  'Champagne',
+  'Planche apéro',
+]
+
 type AllergenOption = { key: string; label: string; icon_url?: string; has_icon?: boolean }
 const DEFAULT_ALLERGENS: AllergenOption[] = [
   { key: 'gluten', label: 'Gluten' },
@@ -530,11 +538,15 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     return ((it.name || '').trim() !== '' || (it.quantity || 0) > 0) && t !== 'supplement' && t !== 'supplements'
   })
 
+  const isBrunch = menu_formula.trim().toLowerCase() === 'brunch'
+
   const completionChecks = [
     { label: 'Nom du client', ok: Boolean(client_name.trim()) },
     { label: 'Date de service', ok: Boolean(service_date) },
     { label: "Heure d'arrivée", ok: Boolean(arrival_time) },
-    { label: 'Au moins un plat', ok: effectiveItems.length > 0 },
+    isBrunch
+      ? { label: 'Formule buffet (Brunch)', ok: true }
+      : { label: 'Au moins un plat', ok: effectiveItems.length > 0 },
   ]
 
   const showNoDishesWarning = !!initial?.id && !hasEffectiveDishes && !menu_formula
@@ -837,7 +849,22 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
               )}
             </div>
 
-            {/* ── Card 3 : Plats — interface POS ── */}
+            {/* ── Card 3 : Plats — interface POS (masquée pour le Brunch, buffet sans à la carte) ── */}
+            {isBrunch ? (
+              <div className="card">
+                <div className="card-header">
+                  <h2 className="text-lg font-medium flex items-center gap-2">
+                    <Package className="w-4 h-4 text-gray-500" /> Buffet brunch
+                  </h2>
+                </div>
+                <div className="card-body">
+                  <p className="text-sm text-gray-500">
+                    Formule buffet : pas de sélection d'entrées/plats/desserts à la carte.
+                    Utilisez la section « Suppléments » ci-dessous pour les extras (champagne, planche apéro, privatisation…).
+                  </p>
+                </div>
+              </div>
+            ) : (
             <div className="card">
               <div className="card-header">
                 <h2 className="text-lg font-medium">Plats</h2>
@@ -936,6 +963,7 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
 
               </div>
             </div>
+            )}
 
             {/* ══ Card 4 : Suppléments hors menu ══ */}
             <div className="card">
@@ -947,6 +975,21 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
                 <span className="text-xs text-gray-400">(facultatif)</span>
               </div>
               <div className="card-body space-y-2">
+                {isBrunch && (
+                  <div className="flex flex-wrap gap-1.5 mb-1">
+                    <span className="text-xs text-gray-400 self-center mr-1">Ajout rapide :</span>
+                    {BRUNCH_SUPPLEMENT_PRESETS.map(name => (
+                      <button
+                        key={name}
+                        type="button"
+                        className="btn btn-sm btn-outline"
+                        onClick={() => setItems(prev => [...prev, { type: 'supplément', name, quantity: 1 }])}
+                      >
+                        <Plus className="w-3 h-3" /> {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {supplementItems.length === 0 && (
                   <p className="text-sm text-gray-400 text-center py-3">Aucun supplément ajouté</p>
                 )}

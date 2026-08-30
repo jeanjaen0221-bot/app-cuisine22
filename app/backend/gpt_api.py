@@ -115,7 +115,17 @@ def get_fiche(reservation_id: uuid.UUID, session: Session = Depends(get_session)
     return reservations_router.get_reservation(reservation_id, session)
 
 
-@gpt_app.post("/fiches", response_model=ReservationRead, status_code=201, summary="Créer une fiche de réservation")
+@gpt_app.post(
+    "/fiches",
+    response_model=ReservationRead,
+    status_code=201,
+    summary="Créer une fiche de réservation",
+    description=(
+        "Si menu_formula='Brunch' (buffet, sans service à table), ne jamais ajouter "
+        "d'items entrée/plat/dessert : mettre uniquement des extras (Champagne, Planche "
+        "apéro, Privatisation…) en items type='supplément'."
+    ),
+)
 def create_fiche(payload: ReservationCreateIn, session: Session = Depends(get_session)):
     return reservations_router.create_reservation(payload, session)
 
@@ -125,9 +135,10 @@ def create_fiche(payload: ReservationCreateIn, session: Session = Depends(get_se
     response_model=ReservationRead,
     summary="Modifier ou remplir une fiche (mise à jour partielle)",
     description=(
-        "Mise à jour partielle : seuls les champs fournis sont modifiés. Attention : "
-        "`items`, si fourni, REMPLACE toute la liste existante (pas un ajout) — faire "
-        "un GET avant pour renvoyer la liste complète avec le nouvel item inclus."
+        "Mise à jour partielle : seuls les champs fournis sont modifiés. "
+        "items, si fourni, REMPLACE toute la liste (pas un ajout) — faire un GET avant. "
+        "Si menu_formula='Brunch' (buffet), items ne doit contenir que des suppléments "
+        "(type='supplément'), jamais d'entrée/plat/dessert."
     ),
 )
 def update_fiche(reservation_id: uuid.UUID, payload: ReservationUpdate, session: Session = Depends(get_session)):

@@ -246,6 +246,12 @@ def _drink_palette(variant: str) -> tuple:
     return mapping.get(variant, mapping['default'])
 
 
+def _is_brunch(reservation: Reservation) -> bool:
+    """Brunch is a buffet, not a table-service meal: no entrée/plat/dessert breakdown,
+    only supplement items (extras like Champagne, Planche apéro, Privatisation)."""
+    return (getattr(reservation, 'menu_formula', '') or '').strip().lower() == 'brunch'
+
+
 def _format_date_fr(d: date) -> str:
     jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
     return f"{jours[d.weekday()]} {d.day:02d}/{d.month:02d}/{d.year}"
@@ -476,6 +482,8 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
             [Paragraph("Heure d’arrivée", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],
             [Paragraph("Couverts", styles['Meta']), Paragraph(str(reservation.pax), styles['Meta'])],
         ]
+        if (reservation.menu_formula or '').strip():
+            meta_data.append([Paragraph("Formule repas", styles['Meta']), Paragraph(str(reservation.menu_formula), styles['Meta'])])
         if getattr(reservation, 'on_invoice', False):
             meta_data.append([Paragraph("Sur facture", styles['Meta']), Paragraph("Oui", styles['Meta'])])
         meta_tbl = Table(meta_data, colWidths=[110, None])
@@ -515,9 +523,13 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
             s.append(tbl)
             s.append(Spacer(1, 10))
 
-        section("Entrées :", entrees)
-        section("Plats :", plats)
-        section("Desserts :", desserts)
+        if _is_brunch(reservation):
+            s.append(Paragraph("<b>Buffet brunch</b> — pas de service à table, voir les suppléments ci-dessous pour les extras.", styles['Meta']))
+            s.append(Spacer(1, 10))
+        else:
+            section("Entrées :", entrees)
+            section("Plats :", plats)
+            section("Desserts :", desserts)
         if supplements:
             section("Suppléments hors menu :", supplements)
 
@@ -612,6 +624,8 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
             [Paragraph("Heure d’arrivée", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],
             [Paragraph("Couverts", styles['Meta']), Paragraph(str(reservation.pax), styles['Meta'])],
         ]
+        if (reservation.menu_formula or '').strip():
+            meta_data.append([Paragraph("Formule repas", styles['Meta']), Paragraph(str(reservation.menu_formula), styles['Meta'])])
         meta_tbl = Table(meta_data, colWidths=[110, None])
         meta_tbl.setStyle(TableStyle([
             ('VALIGN', (0,0), (-1,-1), 'TOP'),
@@ -649,9 +663,13 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
             s.append(tbl)
             s.append(Spacer(1, 10))
 
-        section("Entrées :", entrees)
-        section("Plats :", plats)
-        section("Desserts :", desserts)
+        if _is_brunch(reservation):
+            s.append(Paragraph("<b>Buffet brunch</b> — pas de service à table, voir les suppléments ci-dessous pour les extras.", styles['Meta']))
+            s.append(Spacer(1, 10))
+        else:
+            section("Entrées :", entrees)
+            section("Plats :", plats)
+            section("Desserts :", desserts)
         if supplements:
             section("Suppléments hors menu :", supplements)
 
@@ -735,6 +753,8 @@ def generate_reservation_pdf_cuisine(reservation: Reservation, items: List[Reser
             [Paragraph("Heure d’arrivée", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],
             [Paragraph("Couverts", styles['Meta']), Paragraph(str(reservation.pax), styles['Meta'])],
         ]
+        if (reservation.menu_formula or '').strip():
+            meta_data.append([Paragraph("Formule repas", styles['Meta']), Paragraph(str(reservation.menu_formula), styles['Meta'])])
         meta_tbl = Table(meta_data, colWidths=[110, None])
         meta_tbl.setStyle(TableStyle([
             ('VALIGN', (0,0), (-1,-1), 'TOP'),
@@ -772,9 +792,13 @@ def generate_reservation_pdf_cuisine(reservation: Reservation, items: List[Reser
             page_story.append(tbl)
             page_story.append(Spacer(1, 10))
 
-        section("Entrées :", entrees)
-        section("Plats :", plats)
-        section("Desserts :", desserts)
+        if _is_brunch(reservation):
+            page_story.append(Paragraph("<b>Buffet brunch</b> — pas de service à table, voir les suppléments ci-dessous pour les extras.", styles['Meta']))
+            page_story.append(Spacer(1, 10))
+        else:
+            section("Entrées :", entrees)
+            section("Plats :", plats)
+            section("Desserts :", desserts)
         if supplements:
             section("Suppléments hors menu :", supplements)
 
@@ -843,6 +867,8 @@ def generate_reservation_pdf_salle(reservation: Reservation, items: List[Reserva
         [Paragraph("Heure d’arrivée", styles['Meta']), Paragraph(str(reservation.arrival_time), styles['Meta'])],
         [Paragraph("Couverts", styles['Meta']), Paragraph(str(reservation.pax), styles['Meta'])],
     ]
+    if (reservation.menu_formula or '').strip():
+        meta_data.append([Paragraph("Formule repas", styles['Meta']), Paragraph(str(reservation.menu_formula), styles['Meta'])])
     if getattr(reservation, 'on_invoice', False):
         meta_data.append([Paragraph("Sur facture", styles['Meta']), Paragraph("Oui", styles['Meta'])])
     meta_tbl = Table(meta_data, colWidths=[110, None])
@@ -884,9 +910,13 @@ def generate_reservation_pdf_salle(reservation: Reservation, items: List[Reserva
         story.append(tbl)
         story.append(Spacer(1, 10))
 
-    section("Entrées :", entrees)
-    section("Plats :", plats)
-    section("Desserts :", desserts)
+    if _is_brunch(reservation):
+        story.append(Paragraph("<b>Buffet brunch</b> — pas de service à table, voir les suppléments ci-dessous pour les extras.", styles['Meta']))
+        story.append(Spacer(1, 10))
+    else:
+        section("Entrées :", entrees)
+        section("Plats :", plats)
+        section("Desserts :", desserts)
     if supplements:
         section("Suppléments hors menu :", supplements)
 
