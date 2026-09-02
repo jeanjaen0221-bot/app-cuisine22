@@ -20,6 +20,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlmodel import Session
@@ -173,7 +174,27 @@ def duplicate_fiche(reservation_id: uuid.UUID, session: Session = Depends(get_se
     return reservations_router.duplicate_reservation(reservation_id, session)
 
 
-@gpt_app.get("/fiches/{reservation_id}/pdf", summary="Télécharger le PDF de la fiche (et sa facture si elle existe)")
+# These two routes stream a PDF, but FastAPI cannot infer that from the handler
+# and would otherwise advertise `application/json` in the schema (the default for
+# a route without a response_model). A client that trusts the schema then parses
+# the PDF bytes as JSON and blows up — for aiohttp-based callers such as ChatGPT
+# Actions, with `ContentTypeError`, a subclass of `ClientResponseError` that
+# carries no HTTP status of its own. Declaring the real media type keeps the
+# schema honest.
+_PDF_RESPONSES = {
+    200: {
+        "description": "Le document PDF.",
+        "content": {"application/pdf": {"schema": {"type": "string", "format": "binary"}}},
+    }
+}
+
+
+@gpt_app.get(
+    "/fiches/{reservation_id}/pdf",
+    summary="Télécharger le PDF de la fiche (et sa facture si elle existe)",
+    response_class=FileResponse,
+    responses=_PDF_RESPONSES,
+)
 def download_fiche_pdf(
     reservation_id: uuid.UUID,
     variant: Optional[str] = None,
@@ -196,7 +217,12 @@ def upsert_billing(reservation_id: uuid.UUID, payload: BillingInfoUpdate, sessio
     return reservations_router.update_billing(reservation_id, payload, session)
 
 
-@gpt_app.get("/fiches/{reservation_id}/facture-pdf", summary="Télécharger la facture PDF d'une fiche")
+@gpt_app.get(
+    "/fiches/{reservation_id}/facture-pdf",
+    summary="Télécharger la facture PDF d'une fiche",
+    response_class=FileResponse,
+    responses=_PDF_RESPONSES,
+)
 def download_invoice_pdf(reservation_id: uuid.UUID, session: Session = Depends(get_session)):
     return reservations_router.export_invoice_pdf(reservation_id, session)
 
