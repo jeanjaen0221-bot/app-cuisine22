@@ -16,7 +16,7 @@ import hashlib
 import hmac
 import os
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -42,6 +42,22 @@ from .routers import reservations as reservations_router
 # Action importer otherwise flags/ignores the latter since it already manages
 # that header itself via the configured API Key auth.
 _bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _parse_gpt_date(value: str) -> date:
+    """Parse a date from a Custom GPT, which doesn't reliably stick to ISO.
+
+    Accepts ISO (2026-09-17) as well as the day/month/year format a model
+    tends to fall back to when echoing a date a user typed in French
+    (17/09/2026).
+    """
+    value = value.strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    raise HTTPException(422, f"Date invalide : {value!r}. Utiliser le format AAAA-MM-JJ.")
 
 
 def require_gpt_api_key(credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme)) -> None:
@@ -86,12 +102,13 @@ gpt_app = FastAPI(
     description=(
         "Par défaut, seules les réservations à venir sont retournées, triées par "
         "date, paginées via page/per_page. Utiliser scope=past pour l'historique. "
-        "service_date (jour précis) ignore scope et remonte tout ce jour-là."
+        "service_date (jour précis, AAAA-MM-JJ ou JJ/MM/AAAA) ignore scope et "
+        "remonte tout ce jour-là."
     ),
 )
 def list_fiches(
     q: Optional[str] = None,
-    service_date: Optional[date] = None,
+    service_date: Optional[str] = None,
     scope: str = "upcoming",
     page: int = 1,
     per_page: int = 20,
@@ -99,10 +116,11 @@ def list_fiches(
 ):
     per_page = max(1, min(per_page, 50))
     page = max(1, page)
-    if service_date is not None:
+    parsed_date = _parse_gpt_date(service_date) if service_date else None
+    if parsed_date is not None:
         # A specific day is naturally bounded in size, so the exact-match path
         # (used elsewhere for day exports) is fine here regardless of scope.
-        rows = reservations_router.list_reservations(q=q, service_date=service_date, session=session)
+        rows = reservations_router.list_reservations(q=q, service_date=parsed_date, session=session)
         start = (page - 1) * per_page
         return rows[start : start + per_page]
     if (scope or "upcoming").lower().strip() == "past":
