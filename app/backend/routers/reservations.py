@@ -38,6 +38,30 @@ from ..pdf_service import (
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
 
 
+def _search_condition(q: str):
+    """Free-text filter for a reservation search.
+
+    A booking is just as often looked up by its company ("Volta") or by the
+    person who booked it ("Stan Jeanty") as by the name the fiche is filed
+    under, so all three fields are searched.
+    """
+    like = f"%{q.strip()}%"
+    return or_(
+        Reservation.client_name.ilike(like),
+        Reservation.company.ilike(like),
+        Reservation.contact.ilike(like),
+    )
+
+
+def _matches_search(reservation: Reservation, q: str) -> bool:
+    """In-Python equivalent of `_search_condition`, for already-loaded rows."""
+    needle = q.strip().lower()
+    return any(
+        needle in (value or "").lower()
+        for value in (reservation.client_name, reservation.company, reservation.contact)
+    )
+
+
 @router.get("", response_model=List[ReservationRead])
 def list_reservations(
     q: Optional[str] = None,
@@ -48,7 +72,7 @@ def list_reservations(
     results = session.exec(stmt).all()
     rows: List[Reservation] = results
     if q:
-        rows = [r for r in rows if q.lower() in r.client_name.lower()]
+        rows = [r for r in rows if _matches_search(r, q)]
     if service_date:
         rows = [r for r in rows if r.service_date == service_date]
 
@@ -100,7 +124,7 @@ def list_upcoming_reservations(
         .order_by(Reservation.service_date.asc(), Reservation.arrival_time.asc())
     )
     if q:
-        stmt = stmt.where(Reservation.client_name.ilike(f"%{q}%"))
+        stmt = stmt.where(_search_condition(q))
     if page < 1:
         page = 1
     if per_page < 1:
@@ -137,7 +161,7 @@ def list_past_reservations(
         .order_by(Reservation.service_date.desc(), Reservation.arrival_time.desc())
     )
     if q:
-        stmt = stmt.where(Reservation.client_name.ilike(f"%{q}%"))
+        stmt = stmt.where(_search_condition(q))
     if page < 1:
         page = 1
     if per_page < 1:
