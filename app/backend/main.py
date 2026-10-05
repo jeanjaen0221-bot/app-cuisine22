@@ -259,6 +259,17 @@ async def health():
     return {"status": "ok", "db": ok_db}
 
 
+@app.get("/.well-known/oauth-protected-resource/mcp")
+async def mcp_protected_resource_metadata():
+    base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/") or "http://localhost:8000"
+    return {
+        "resource": f"{base}/mcp",
+        "authorization_servers": [f"{base}/mcp"],
+        "scopes_supported": ["albert"],
+        "bearer_methods_supported": ["header"],
+    }
+
+
 @app.get("/{full_path:path}")
 async def spa_fallback(full_path: str):
     index_file = frontend_dist / "index.html"
