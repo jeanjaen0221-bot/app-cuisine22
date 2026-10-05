@@ -154,7 +154,7 @@ class AlbertOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Re
         access = self._issue_token(
             "mcp_access",
             authorization_code.client_id,
-            authorization_code.subject or "",
+            "",
             authorization_code.scopes,
             authorization_code.resource or _resource_url(),
             ACCESS_TTL_SECONDS,
@@ -162,7 +162,7 @@ class AlbertOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Re
         refresh = self._issue_token(
             "mcp_refresh",
             authorization_code.client_id,
-            authorization_code.subject or "",
+            "",
             authorization_code.scopes,
             authorization_code.resource or _resource_url(),
             REFRESH_TTL_SECONDS,
@@ -310,7 +310,6 @@ button{{margin-top:22px;padding:11px 18px;cursor:pointer}}.muted{{color:#666;fon
                 raise HTTPException(401, "Adresse e-mail ou mot de passe incorrect.")
             if (user.role or "admin") != "admin":
                 raise HTTPException(403, "Le connecteur ChatGPT est réservé aux administrateurs.")
-            user_id = str(user.id)
 
         code_value = "mcp_" + secrets.token_urlsafe(32)
         code = AuthorizationCode(
