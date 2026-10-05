@@ -24,6 +24,8 @@ from ..models import (
     BillingInfoCreate,
     BillingInfoRead,
     BillingInfoUpdate,
+    InvoiceSupplement,
+    ReservationReminder,
 )
 from ..pdf_service import (
     generate_reservation_pdf,
@@ -426,7 +428,10 @@ def delete_reservation(reservation_id: uuid.UUID, session: Session = Depends(get
     res = session.get(Reservation, reservation_id)
     if not res:
         raise HTTPException(404, "Reservation not found")
-    session.exec(delete(ReservationItem).where(ReservationItem.reservation_id == res.id))
+    # Every row pointing at the fiche must go first: PostgreSQL enforces these
+    # foreign keys, so a fiche with billing or a reminder could not be deleted.
+    for model in (ReservationItem, BillingInfo, InvoiceSupplement, ReservationReminder):
+        session.exec(delete(model).where(model.reservation_id == res.id))
     session.delete(res)
     session.commit()
     return {"ok": True}

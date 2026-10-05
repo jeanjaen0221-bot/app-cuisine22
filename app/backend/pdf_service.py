@@ -7,6 +7,7 @@ def _reservation_filename_variant(reservation: Reservation, variant: str) -> str
     return os.path.join(PDF_DIR, f"fiche_{v}_{reservation.service_date}_{safe_client}_{reservation.id}.pdf")
 
 import os
+import re
 from datetime import date
 from typing import List, Optional
 
@@ -109,6 +110,37 @@ def generate_incident_report_pdf(incident: IncidentReport) -> str:
 
     doc.build(story)
     return filename
+
+
+
+def format_notes_markup(text: str | None) -> str:
+    """Notes markup -> reportlab mini-HTML, with the same rules as the live preview
+    of the fiche form (formatPreview in ReservationForm.tsx), so the PDF shows what
+    the user saw: [color=x]..[/color], **gras** or *gras*, _italique_, "- " bullets
+    and line breaks."""
+    if not text:
+        return "-"
+    import html as _html
+    out = _html.escape(text, quote=False)
+    prev = None
+    while out != prev:
+        prev = out
+        out = re.sub(r'\[color=([^\]]+)\]([\s\S]*?)\[/color\]', r'<font color="\1">\2</font>', out)
+    out = re.sub(r'\*\*([^*]+)\*\*|\*([^*]+)\*', lambda m: f"<b>{m.group(1) or m.group(2)}</b>", out)
+    out = re.sub(r'_([^_]+)_', r'<i>\1</i>', out)
+    out = re.sub(r'\n-\s+', '<br/>• ', out)
+    return out.replace('\n', '<br/>')
+
+
+def notes_paragraph(text: str | None, style) -> Paragraph:
+    """Paragraph for the notes. Markup that reportlab cannot parse (overlapping
+    markers, unknown colour...) must never break the whole PDF: fall back to the
+    plain text, line breaks kept."""
+    try:
+        return Paragraph(format_notes_markup(text), style)
+    except ValueError:
+        import html as _html
+        return Paragraph(_html.escape(text or "-", quote=False).replace('\n', '<br/>'), style)
 
 
 def _split_items(items: List[ReservationItem]):
@@ -406,19 +438,6 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
     notes = reservation.notes or ""
     story.append(Paragraph("<b>Notes :</b>", styles['Section']))
     
-    # Convertir les marqueurs de formatage personnalisés en balises HTML
-    def format_text(text):
-        if not text:
-            return "-"
-        # Remplacer les marqueurs de formatage
-        text = text.replace('*', '<b>', 1).replace('*', '</b>', 1)  # Gras
-        text = text.replace('_', '<i>', 1).replace('_', '</i>', 1)  # Italique
-        # Gérer les couleurs [color=#RRGGBB]texte[/color]
-        import re
-        text = re.sub(r'\[color=([^\]]+)\](.*?)\[/color\]', r'<font color="\1">\2</font>', text)
-        # Gérer les listes à puces
-        text = text.replace('\n- ', '<br/>• ')
-        return text
     
     # Créer un style pour les notes avec support du HTML
     note_style = ParagraphStyle(
@@ -429,9 +448,7 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
         spaceAfter=4
     )
     
-    # Créer un paragraphe avec formatage HTML
-    formatted_notes = format_text(notes)
-    note_para = Paragraph(formatted_notes, note_style)
+    note_para = notes_paragraph(notes, note_style)
     
     # Créer un tableau avec une seule cellule pour le paragraphe formaté
     note_tbl = Table([[note_para]], colWidths=[doc.width])
@@ -584,18 +601,8 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
         # Notes (présent pour salle)
         notes = reservation.notes or ""
         s.append(Paragraph("<b>Notes :</b>", styles['Section']))
-        def format_text(text):
-            if not text:
-                return "-"
-            import re
-            text = text.replace('*', '<b>', 1).replace('*', '</b>', 1)
-            text = text.replace('_', '<i>', 1).replace('_', '</i>', 1)
-            text = re.sub(r'\[color=([^\]]+)\](.*?)\[/color\]', r'<font color="\1">\2</font>', text)
-            text = text.replace('\n- ', '<br/>• ')
-            return text
         note_style = ParagraphStyle('NoteStyle', parent=styles['Normal'], leading=14, spaceBefore=4, spaceAfter=4)
-        formatted_notes = format_text(notes)
-        note_para = Paragraph(formatted_notes, note_style)
+        note_para = notes_paragraph(notes, note_style)
         note_tbl = Table([[note_para]], colWidths=[doc.width])
         note_tbl.setStyle(TableStyle([
             ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
@@ -967,18 +974,8 @@ def generate_reservation_pdf_salle(reservation: Reservation, items: List[Reserva
     # Notes block (present in salle)
     notes = reservation.notes or ""
     story.append(Paragraph("<b>Notes :</b>", styles['Section']))
-    def format_text(text):
-        if not text:
-            return "-"
-        import re
-        text = text.replace('*', '<b>', 1).replace('*', '</b>', 1)
-        text = text.replace('_', '<i>', 1).replace('_', '</i>', 1)
-        text = re.sub(r'\[color=([^\]]+)\](.*?)\[/color\]', r'<font color="\1">\2</font>', text)
-        text = text.replace('\n- ', '<br/>• ')
-        return text
     note_style = ParagraphStyle('NoteStyle', parent=styles['Normal'], leading=14, spaceBefore=4, spaceAfter=4)
-    formatted_notes = format_text(notes)
-    note_para = Paragraph(formatted_notes, note_style)
+    note_para = notes_paragraph(notes, note_style)
     note_tbl = Table([[note_para]], colWidths=[doc.width])
     note_tbl.setStyle(TableStyle([
         ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
@@ -1115,17 +1112,7 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
         notes = res.notes or ""
         story.append(Paragraph("<b>Notes :</b>", styles['Section']))
         note_style = ParagraphStyle('NoteStyle', parent=styles['Normal'], leading=14, spaceBefore=4, spaceAfter=4)
-        # Simple conversion des marqueurs de formatage custom
-        import re as _re
-        txt = notes
-        if txt:
-            txt = txt.replace('*', '<b>', 1).replace('*', '</b>', 1)
-            txt = txt.replace('_', '<i>', 1).replace('_', '</i>', 1)
-            txt = _re.sub(r'\[color=([^\]]+)\](.*?)\[/color\]', r'<font color="\1">\2</font>', txt)
-            txt = txt.replace('\n- ', '<br/>• ')
-        else:
-            txt = "-"
-        note_para = Paragraph(txt, note_style)
+        note_para = notes_paragraph(notes, note_style)
         note_tbl = Table([[note_para]], colWidths=[doc.width])
         note_tbl.setStyle(TableStyle([
             ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),

@@ -2,10 +2,15 @@
 
 This is a separate FastAPI sub-application (mounted at /api/gpt by main.py) so it gets
 its own, small OpenAPI schema (/api/gpt/openapi.json) sized for a GPT Action import,
-instead of exposing the full internal API. Every route below is a thin wrapper that
-delegates to the existing, already-validated route handlers in routers/reservations.py
-and routers/menu_items.py — no business logic (pax/quantity guards, sanitization, date
-parsing, billing upsert semantics...) is duplicated here.
+instead of exposing the full internal API. Routes delegate to the existing route
+handlers in routers/reservations.py and routers/menu_items.py for persistence.
+
+Many rules of the fiche form only live in the React form (ReservationForm.tsx), so the
+internal API accepts things a human could never enter. The GPT-specific input models
+and `_apply_form_rules` below re-create those rules here, so a fiche written by the GPT
+looks exactly like one typed by hand: fixed choice lists (exposed as OpenAPI enums),
+required name/date/time, catalogue spelling for dishes, allergen keys, "dishes win over
+the formula", and fiches always created as drafts.
 
 Authentication is a single static API key (not the human JWT login), checked by
 `require_gpt_api_key` below for every route on this sub-app.
@@ -15,26 +20,35 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+import re
+import unicodedata
 import uuid
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, List, Literal, Optional, get_args
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
-from sqlmodel import Session
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, select
 
 from . import gmail_service
 from .database import get_session
 from .models import (
+    BillingInfo,
     BillingInfoRead,
     BillingInfoUpdate,
+    MenuItem,
+    MenuItemRead,
+    Reservation,
     ReservationCreateIn,
+    ReservationItem,
+    ReservationItemCreate,
     ReservationRead,
     ReservationUpdate,
 )
-from .routers import menu_items as menu_items_router
+from .routers import allergens as allergens_router
 from .routers import reservations as reservations_router
 
 # A proper FastAPI security scheme (rather than a plain Header param) makes the
@@ -45,20 +59,359 @@ from .routers import reservations as reservations_router
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def _parse_gpt_date(value: str) -> date:
+# ===== Choice lists of the fiche form (ReservationForm.tsx) =====
+
+DrinkFormula = Literal[
+    "sans alcool",
+    "avec alcool",
+    "sans alcool + cava",
+    "avec alcool + cava",
+    "sans alcool + champ",
+    "avec alcool + champ",
+    "à la carte",
+    "sans Formule",
+]
+MenuFormula = Literal["", "1 service", "2 services", "3 services", "À la carte", "Brunch"]
+ItemType = Literal["entrée", "plat", "dessert", "supplément"]
+
+DISH_TYPES = ("entrée", "plat", "dessert")
+DEFAULT_ALLERGENS = (
+    "gluten", "crustaces", "oeufs", "poisson", "arachides", "soja", "lait",
+    "fruits_a_coque", "celeri", "moutarde", "sesame", "sulfites", "lupin", "mollusques",
+)
+DEFAULT_PAYMENT_TERMS = "Paiement à 30 jours"
+DEFAULT_COUNTRY = "Belgique"
+
+
+def _key(value: Any) -> str:
+    """Comparison key: lowercase, no accents, single spaces ("Entrée " -> "entree")."""
+    s = str(value or "").replace("œ", "oe").replace("Œ", "oe")
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", s.lower()).strip()
+
+
+_DRINK_ALIASES = {_key(v): v for v in get_args(DrinkFormula)}
+_DRINK_ALIASES.update({
+    "sans formule": "sans Formule",
+    "aucune": "sans Formule",
+    "aucune formule": "sans Formule",
+    "pas de formule": "sans Formule",
+    "carte": "à la carte",
+})
+
+_MENU_ALIASES = {_key(v): v for v in get_args(MenuFormula)}
+_MENU_ALIASES.update({
+    "aucune": "",
+    "aucune formule": "",
+    "1 services": "1 service",
+    "un service": "1 service",
+    "2 service": "2 services",
+    "deux services": "2 services",
+    "3 service": "3 services",
+    "trois services": "3 services",
+    "carte": "À la carte",
+    "buffet": "Brunch",
+    "brunch buffet": "Brunch",
+})
+
+_ITEM_TYPE_ALIASES = {
+    "entree": "entrée", "entrees": "entrée", "starter": "entrée", "starters": "entrée",
+    "appetizer": "entrée", "appetizers": "entrée",
+    "plat": "plat", "plats": "plat", "plat principal": "plat", "plats principaux": "plat",
+    "main": "plat", "mains": "plat", "main course": "plat", "main courses": "plat",
+    "dessert": "dessert", "desserts": "dessert",
+    "supplement": "supplément", "supplements": "supplément",
+    "extra": "supplément", "extras": "supplément",
+}
+
+_ALLERGEN_ALIASES = {
+    "ble": "gluten", "froment": "gluten", "cereales": "gluten",
+    "crustace": "crustaces", "shellfish": "crustaces",
+    "oeuf": "oeufs", "egg": "oeufs", "eggs": "oeufs",
+    "poissons": "poisson", "fish": "poisson",
+    "arachide": "arachides", "cacahuete": "arachides", "cacahuetes": "arachides",
+    "peanut": "arachides", "peanuts": "arachides",
+    "soy": "soja", "soya": "soja",
+    "lactose": "lait", "produits laitiers": "lait", "produit laitier": "lait",
+    "laitage": "lait", "laitages": "lait", "milk": "lait", "dairy": "lait",
+    "fruits a coque": "fruits_a_coque", "fruit a coque": "fruits_a_coque",
+    "noix": "fruits_a_coque", "nuts": "fruits_a_coque", "tree nuts": "fruits_a_coque",
+    "fruits secs": "fruits_a_coque",
+    "mustard": "moutarde",
+    "sulfite": "sulfites", "so2": "sulfites",
+    "mollusque": "mollusques",
+}
+
+
+def _normalize_choice(value: Any, aliases: dict) -> Any:
+    """Map an obvious variant to the exact form value; anything else is left as-is
+    so the Literal validation rejects it with the list of allowed values."""
+    if value is None or not isinstance(value, str):
+        return value
+    k = re.sub(r"\s*\+\s*", " + ", _key(value)).replace("champagne", "champ")
+    return aliases.get(k, value)
+
+
+def _parse_date_value(value: Any) -> str:
     """Parse a date from a Custom GPT, which doesn't reliably stick to ISO.
 
     Accepts ISO (2026-09-17) as well as the day/month/year format a model
     tends to fall back to when echoing a date a user typed in French
-    (17/09/2026).
+    (17/09/2026). Returns ISO.
     """
-    value = value.strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()[:10]
+    s = str(value or "").strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"):
         try:
-            return datetime.strptime(value, fmt).date()
+            return datetime.strptime(s, fmt).date().isoformat()
         except ValueError:
             continue
-    raise HTTPException(422, f"Date invalide : {value!r}. Utiliser le format AAAA-MM-JJ.")
+    raise ValueError(f"Date invalide : {s!r}. Utiliser le format AAAA-MM-JJ.")
+
+
+def _parse_time_value(value: Any) -> str:
+    """Parse an arrival time: '19:30', '19:30:00', '19h30', '19h', '1930'. Returns HH:MM."""
+    s = _key(value).replace(" ", "")
+    m = re.fullmatch(r"(\d{1,2})(?:[:h](\d{2})?(?::\d{2})?)?", s) or re.fullmatch(r"(\d{2})(\d{2})", s)
+    if m:
+        hh, mm = int(m.group(1)), int(m.group(2) or 0)
+        if 0 <= hh <= 23 and 0 <= mm <= 59:
+            return f"{hh:02d}:{mm:02d}"
+    raise ValueError(f"Heure invalide : {value!r}. Utiliser le format HH:MM (ex: 19:30).")
+
+
+def _parse_gpt_date(value: str) -> date:
+    try:
+        return date.fromisoformat(_parse_date_value(value))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+def _clean_notes(value: Any) -> Any:
+    """Notes are printed on the PDF with the site's markup only (**gras**, _italique_,
+    '- ' bullet lines): turn the Markdown a model likes to produce (headings,
+    '* ' bullets) into that."""
+    if not isinstance(value, str):
+        return value
+    lines = []
+    for line in value.replace("\r\n", "\n").split("\n"):
+        line = re.sub(r"^\s*#+\s*", "", line)
+        line = re.sub(r"^\s*[*•]\s+", "- ", line)
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def _split_allergens(value: Any) -> Any:
+    if isinstance(value, str):
+        return [p for p in re.split(r"[,;/\n]", value) if p.strip()]
+    return value
+
+
+# ===== Input models exposed to the GPT =====
+
+_NOTES_DESC = (
+    "Texte libre imprimé sur la fiche. Mise en forme du site uniquement : **gras**, "
+    "_italique_, lignes commençant par '- ' pour les listes. Pas de titres ni de "
+    "tableaux. Mettre ici "
+    "les infos sans champ dédié (société, contact, occasion, demandes spéciales)."
+)
+_ALLERGENS_DESC = (
+    "Liste de clés d'allergènes : gluten, crustaces, oeufs, poisson, arachides, soja, "
+    "lait, fruits_a_coque, celeri, moutarde, sesame, sulfites, lupin, mollusques. "
+    "Ne mettre que les allergènes demandés par le client."
+)
+_MENU_DESC = (
+    "Formule repas. Laisser vide si des plats sont listés dans items : comme dans le "
+    "site, les plats prévalent et la formule est alors vidée. 'Brunch' = buffet, sans "
+    "entrée/plat/dessert (uniquement des suppléments)."
+)
+
+
+class GptItem(BaseModel):
+    type: ItemType = Field(description="entrée, plat, dessert, ou supplément (extras : Champagne, Planche apéro, Privatisation…).")
+    name: str = Field(min_length=1, max_length=200, description="Nom exact du plat du catalogue (voir /menu-items/search).")
+    quantity: int = Field(ge=1, le=500, description="Nombre de portions.")
+    comment: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _norm_type(cls, v: Any) -> Any:
+        return _normalize_choice(v, _ITEM_TYPE_ALIASES)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Le nom du plat est vide.")
+        return v
+
+
+class _FicheFields(BaseModel):
+    @field_validator("client_name", check_fields=False)
+    @classmethod
+    def _client_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("Le nom du client est obligatoire.")
+        return v
+
+    @field_validator("service_date", mode="before", check_fields=False)
+    @classmethod
+    def _date(cls, v: Any) -> Any:
+        return None if v is None else _parse_date_value(v)
+
+    @field_validator("arrival_time", mode="before", check_fields=False)
+    @classmethod
+    def _time(cls, v: Any) -> Any:
+        return None if v is None else _parse_time_value(v)
+
+    @field_validator("drink_formula", mode="before", check_fields=False)
+    @classmethod
+    def _drink(cls, v: Any) -> Any:
+        return _normalize_choice(v, _DRINK_ALIASES)
+
+    @field_validator("menu_formula", mode="before", check_fields=False)
+    @classmethod
+    def _menu(cls, v: Any) -> Any:
+        return _normalize_choice(v, _MENU_ALIASES)
+
+    @field_validator("notes", mode="before", check_fields=False)
+    @classmethod
+    def _notes(cls, v: Any) -> Any:
+        return _clean_notes(v)
+
+    @field_validator("allergens", mode="before", check_fields=False)
+    @classmethod
+    def _allergens(cls, v: Any) -> Any:
+        return _split_allergens(v)
+
+
+class GptFicheCreate(_FicheFields):
+    client_name: str = Field(max_length=200, description="Nom sous lequel la fiche est classée (obligatoire).")
+    pax: int = Field(ge=1, le=500, description="Nombre de couverts.")
+    service_date: str = Field(description="Date du service, AAAA-MM-JJ (obligatoire, ne jamais deviner).")
+    arrival_time: str = Field(description="Heure d'arrivée, HH:MM (obligatoire, ne jamais deviner).")
+    drink_formula: DrinkFormula = Field(default="sans alcool", description="Formule boissons (défaut du site : 'sans alcool').")
+    menu_formula: MenuFormula = Field(default="", description=_MENU_DESC)
+    notes: Optional[str] = Field(default=None, max_length=4000, description=_NOTES_DESC)
+    allergens: List[str] = Field(default_factory=list, description=_ALLERGENS_DESC)
+    on_invoice: bool = Field(default=False, description="Case 'Sur facture'.")
+    items: List[GptItem] = Field(default_factory=list, description="Plats et suppléments. Total par type (entrée/plat/dessert) ≤ pax.")
+
+
+class GptFichePatch(_FicheFields):
+    client_name: Optional[str] = Field(default=None, max_length=200)
+    pax: Optional[int] = Field(default=None, ge=1, le=500)
+    service_date: Optional[str] = Field(default=None, description="AAAA-MM-JJ")
+    arrival_time: Optional[str] = Field(default=None, description="HH:MM")
+    drink_formula: Optional[DrinkFormula] = None
+    menu_formula: Optional[MenuFormula] = Field(default=None, description=_MENU_DESC)
+    notes: Optional[str] = Field(default=None, max_length=4000, description=_NOTES_DESC + " Remplace les notes existantes : repartir du texte actuel.")
+    allergens: Optional[List[str]] = Field(default=None, description=_ALLERGENS_DESC + " Remplace la liste existante.")
+    on_invoice: Optional[bool] = None
+    items: Optional[List[GptItem]] = Field(
+        default=None,
+        description=(
+            "REMPLACE toute la liste des plats. Pour ajouter/modifier/retirer un seul "
+            "plat, utiliser POST/DELETE /fiches/{id}/items à la place."
+        ),
+    )
+
+
+# ===== Form rules re-created server-side =====
+
+def _allergen_keys(session: Session) -> dict:
+    """Valid allergen keys (defaults + those managed in the site), by comparison key."""
+    known = {_key(k): k for k in DEFAULT_ALLERGENS}
+    for a in allergens_router.list_allergens(session):
+        known[_key(a.key)] = a.key
+        known.setdefault(_key(a.label), a.key)
+    return known
+
+
+def _resolve_allergens(values: List[str], session: Session) -> str:
+    known = _allergen_keys(session)
+    out: List[str] = []
+    unknown: List[str] = []
+    for raw in values:
+        k = _key(raw).replace("_", " ")
+        k = re.sub(r"^(sans|allergie|allergique|intolerance|intolerant)\s+((a la|au|aux|a|de|du|des)\s+)?", "", k)
+        candidate = _ALLERGEN_ALIASES.get(k, k)
+        key = known.get(_key(candidate)) or known.get(_key(candidate).replace(" ", "_"))
+        if key is None:
+            unknown.append(raw)
+        elif key not in out:
+            out.append(key)
+    if unknown:
+        raise HTTPException(
+            422,
+            f"Allergène(s) inconnu(s) : {', '.join(unknown)}. Clés permises : "
+            + ", ".join(sorted(set(known.values())))
+            + ". Si ce n'est pas un allergène de la liste, le mettre dans notes.",
+        )
+    return ",".join(out)
+
+
+def _canonical_item(item: dict, catalogue: dict) -> dict:
+    """Use the catalogue's spelling and type for a known dish, like clicking its tile."""
+    if item["type"] == "supplément":
+        return item
+    hit = catalogue.get(_key(item["name"]))
+    if hit is None:
+        return item
+    mapped_type = _ITEM_TYPE_ALIASES.get(_key(hit.type), item["type"])
+    return {**item, "name": hit.name, "type": mapped_type}
+
+
+def _catalogue(session: Session) -> dict:
+    rows = session.exec(select(MenuItem).where(MenuItem.active == True)).all()  # noqa: E712
+    return {_key(r.name): r for r in rows}
+
+
+def _apply_form_rules(menu_formula: str, items: List[dict]) -> str:
+    """Rules of ReservationForm.tsx; returns the menu_formula to store."""
+    has_dishes = any(_key(i["type"]) in ("entree", "plat", "dessert") for i in items)
+    if menu_formula == "Brunch" and has_dishes:
+        raise HTTPException(
+            422,
+            "Brunch = buffet : pas d'entrée/plat/dessert. Mettre les extras en type "
+            "'supplément', ou changer menu_formula si ce n'est pas un brunch.",
+        )
+    if has_dishes:
+        # "Les plats prévalent": the form never stores a formula next to dishes.
+        return ""
+    if not menu_formula:
+        raise HTTPException(
+            422,
+            "Il faut au moins un plat (entrée/plat/dessert) ou une menu_formula "
+            "('1 service', '2 services', '3 services', 'À la carte', 'Brunch').",
+        )
+    return menu_formula
+
+
+def _items_payload(items: List[dict]) -> List[ReservationItemCreate]:
+    return [ReservationItemCreate(**i) for i in items]
+
+
+def _stored_items(session: Session, reservation_id: uuid.UUID) -> List[dict]:
+    rows = session.exec(select(ReservationItem).where(ReservationItem.reservation_id == reservation_id)).all()
+    out = []
+    for r in rows:
+        t = _ITEM_TYPE_ALIASES.get(_key(r.type), r.type)
+        out.append({"type": t, "name": r.name, "quantity": r.quantity, "comment": r.comment})
+    return out
+
+
+def _get_reservation_or_404(session: Session, reservation_id: uuid.UUID) -> Reservation:
+    res = session.get(Reservation, reservation_id)
+    if not res:
+        raise HTTPException(404, "Fiche introuvable.")
+    return res
 
 
 def require_gpt_api_key(credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme)) -> None:
@@ -85,6 +438,8 @@ gpt_app = FastAPI(
         "Surface dédiée pour un Custom GPT : lire, créer, remplir et modifier des "
         "fiches de réservation, gérer leur facturation, consulter le catalogue de "
         "plats, et lire/rechercher des emails ou préparer des brouillons Gmail. "
+        "Les valeurs suivent exactement les choix du formulaire du site ; une valeur "
+        "hors liste est refusée avec la liste des valeurs permises. "
         "Authentification par clé API statique (Authorization: Bearer <clé>)."
     ),
     servers=_servers,
@@ -104,7 +459,8 @@ gpt_app = FastAPI(
         "Par défaut, seules les réservations à venir sont retournées, triées par "
         "date, paginées via page/per_page. Utiliser scope=past pour l'historique. "
         "service_date (jour précis, AAAA-MM-JJ ou JJ/MM/AAAA) ignore scope et "
-        "remonte tout ce jour-là."
+        "remonte tout ce jour-là. q cherche dans le nom, la société et le contact. "
+        "Toujours chercher une fiche existante avant d'en créer une."
     ),
 )
 def list_fiches(
@@ -140,13 +496,47 @@ def get_fiche(reservation_id: uuid.UUID, session: Session = Depends(get_session)
     status_code=201,
     summary="Créer une fiche de réservation",
     description=(
-        "Si menu_formula='Brunch' (buffet, sans service à table), ne jamais ajouter "
-        "d'items entrée/plat/dessert : mettre uniquement des extras (Champagne, Planche "
-        "apéro, Privatisation…) en items type='supplément'."
+        "Crée la fiche en Brouillon, comme une saisie manuelle. Nom, couverts, date "
+        "et heure sont obligatoires : les demander à l'utilisateur plutôt que de les "
+        "deviner. Il faut au moins un plat ou une menu_formula. Si menu_formula="
+        "'Brunch' (buffet), items ne contient que des suppléments."
     ),
 )
-def create_fiche(payload: ReservationCreateIn, session: Session = Depends(get_session)):
-    return reservations_router.create_reservation(payload, session)
+def create_fiche(payload: GptFicheCreate, session: Session = Depends(get_session)):
+    catalogue = _catalogue(session)
+    items = [_canonical_item(i.model_dump(), catalogue) for i in payload.items]
+    menu_formula = _apply_form_rules(payload.menu_formula, items)
+    data = ReservationCreateIn(
+        client_name=payload.client_name,
+        pax=payload.pax,
+        service_date=payload.service_date,
+        arrival_time=payload.arrival_time,
+        drink_formula=payload.drink_formula,
+        menu_formula=menu_formula,
+        notes=payload.notes,
+        allergens=_resolve_allergens(payload.allergens, session),
+        on_invoice=payload.on_invoice,
+        status="draft",
+        final_version=False,
+        items=_items_payload(items),
+    )
+    try:
+        return reservations_router.create_reservation(data, session)
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            409,
+            "Une fiche existe déjà avec ce nom, cette date, cette heure et ce nombre de "
+            "couverts. La modifier (PATCH) au lieu d'en créer une nouvelle.",
+        )
+
+
+def _update(reservation_id: uuid.UUID, update: dict, session: Session) -> ReservationRead:
+    try:
+        return reservations_router.update_reservation(reservation_id, ReservationUpdate(**update), session)
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(409, "Une autre fiche a déjà ce nom, cette date, cette heure et ce nombre de couverts.")
 
 
 @gpt_app.patch(
@@ -154,14 +544,79 @@ def create_fiche(payload: ReservationCreateIn, session: Session = Depends(get_se
     response_model=ReservationRead,
     summary="Modifier ou remplir une fiche (mise à jour partielle)",
     description=(
-        "Mise à jour partielle : seuls les champs fournis sont modifiés. "
-        "items, si fourni, REMPLACE toute la liste (pas un ajout) — faire un GET avant. "
-        "Si menu_formula='Brunch' (buffet), items ne doit contenir que des suppléments "
-        "(type='supplément'), jamais d'entrée/plat/dessert."
+        "Mise à jour partielle : seuls les champs fournis sont modifiés, n'envoyer que "
+        "ce que l'utilisateur a demandé de changer. items, si fourni, REMPLACE toute la "
+        "liste des plats (les suppléments existants sont conservés si items n'en "
+        "contient aucun) : pour un seul plat, utiliser /fiches/{id}/items. Le statut et "
+        "le tampon 'Version finale' se gèrent uniquement dans le site."
     ),
 )
-def update_fiche(reservation_id: uuid.UUID, payload: ReservationUpdate, session: Session = Depends(get_session)):
-    return reservations_router.update_reservation(reservation_id, payload, session)
+def update_fiche(reservation_id: uuid.UUID, payload: GptFichePatch, session: Session = Depends(get_session)):
+    res = _get_reservation_or_404(session, reservation_id)
+    update = payload.model_dump(exclude_unset=True)
+    for field in ("client_name", "pax", "service_date", "arrival_time", "drink_formula", "on_invoice"):
+        if field in update and update[field] is None:
+            raise HTTPException(422, f"{field} ne peut pas être vidé.")
+    if "allergens" in update:
+        update["allergens"] = _resolve_allergens(update["allergens"] or [], session)
+
+    if "items" in update or "menu_formula" in update:
+        if update.get("items") is not None:
+            catalogue = _catalogue(session)
+            items = [_canonical_item(i, catalogue) for i in update["items"]]
+            update["items"] = _items_payload(items)
+            effective = items
+        else:
+            update.pop("items", None)
+            effective = _stored_items(session, reservation_id)
+        if update.get("items") is not None and not any(i["type"] == "supplément" for i in effective):
+            # Supplements are preserved by update_reservation when the new list has none.
+            effective = effective + [i for i in _stored_items(session, reservation_id) if i["type"] == "supplément"]
+        menu = update["menu_formula"] if "menu_formula" in update else (res.menu_formula or "")
+        update["menu_formula"] = _apply_form_rules(menu or "", effective)
+
+    return _update(reservation_id, update, session)
+
+
+@gpt_app.post(
+    "/fiches/{reservation_id}/items",
+    response_model=ReservationRead,
+    summary="Ajouter un plat ou un supplément (ou changer sa quantité) sans toucher au reste",
+    description=(
+        "Si un item du même type et du même nom existe déjà, sa quantité (et son "
+        "commentaire) sont remplacés ; sinon il est ajouté. Les autres plats ne bougent pas."
+    ),
+)
+def add_item(reservation_id: uuid.UUID, payload: GptItem, session: Session = Depends(get_session)):
+    res = _get_reservation_or_404(session, reservation_id)
+    new = _canonical_item(payload.model_dump(), _catalogue(session))
+    items = _stored_items(session, reservation_id)
+    for existing in items:
+        if existing["type"] == new["type"] and _key(existing["name"]) == _key(new["name"]):
+            existing["quantity"] = new["quantity"]
+            if new.get("comment") is not None:
+                existing["comment"] = new["comment"]
+            break
+    else:
+        items.append(new)
+    menu = _apply_form_rules(res.menu_formula or "", items)
+    return _update(reservation_id, {"menu_formula": menu, "items": _items_payload(items)}, session)
+
+
+@gpt_app.delete(
+    "/fiches/{reservation_id}/items",
+    response_model=ReservationRead,
+    summary="Retirer un plat ou un supplément d'une fiche sans toucher au reste",
+)
+def remove_item(reservation_id: uuid.UUID, type: ItemType, name: str, session: Session = Depends(get_session)):
+    res = _get_reservation_or_404(session, reservation_id)
+    target = _canonical_item({"type": type, "name": name, "quantity": 1, "comment": None}, _catalogue(session))
+    items = _stored_items(session, reservation_id)
+    kept = [i for i in items if not (i["type"] == target["type"] and _key(i["name"]) == _key(target["name"]))]
+    if len(kept) == len(items):
+        raise HTTPException(404, f"Aucun item {type} '{name}' sur cette fiche.")
+    menu = _apply_form_rules(res.menu_formula or "", kept)
+    return _update(reservation_id, {"menu_formula": menu, "items": _items_payload(kept)}, session)
 
 
 @gpt_app.delete("/fiches/{reservation_id}", summary="Supprimer une fiche de réservation")
@@ -212,8 +667,20 @@ def get_billing(reservation_id: uuid.UUID, session: Session = Depends(get_sessio
     "/fiches/{reservation_id}/billing",
     response_model=BillingInfoRead,
     summary="Créer ou mettre à jour la facturation d'une fiche (upsert)",
+    description=(
+        "Création : company_name, address_line1, zip_code et city obligatoires ; "
+        "country et payment_terms prennent les valeurs par défaut du site "
+        "('Belgique', 'Paiement à 30 jours'). Mise à jour : seuls les champs fournis changent."
+    ),
 )
 def upsert_billing(reservation_id: uuid.UUID, payload: BillingInfoUpdate, session: Session = Depends(get_session)):
+    if session.get(BillingInfo, reservation_id) is None:
+        defaults = {"country": DEFAULT_COUNTRY, "payment_terms": DEFAULT_PAYMENT_TERMS}
+        data = payload.model_dump(exclude_unset=True)
+        for field, value in defaults.items():
+            if not data.get(field):
+                data[field] = value
+        payload = BillingInfoUpdate(**data)
     return reservations_router.update_billing(reservation_id, payload, session)
 
 
@@ -230,9 +697,22 @@ def download_invoice_pdf(reservation_id: uuid.UUID, session: Session = Depends(g
 @gpt_app.get(
     "/menu-items/search",
     summary="Rechercher des plats du catalogue (pour connaître les noms/types valides avant de remplir une fiche)",
+    response_model=list[MenuItemRead],
 )
 def search_menu_items(q: Optional[str] = None, type: Optional[str] = None, session: Session = Depends(get_session)):
-    return menu_items_router.search_items(q, type, session)
+    # Insensitive to case, accents and word order ("boeuf carpaccio" finds
+    # "Carpaccio de bœuf"), so the GPT does not conclude a dish is missing and
+    # type an off-catalogue name instead.
+    rows = session.exec(select(MenuItem).where(MenuItem.active == True)).all()  # noqa: E712
+    if type:
+        wanted = _ITEM_TYPE_ALIASES.get(_key(type))
+        if wanted not in DISH_TYPES:
+            raise HTTPException(422, "type doit être entrée, plat ou dessert.")
+        rows = [r for r in rows if _ITEM_TYPE_ALIASES.get(_key(r.type)) == wanted]
+    if q:
+        words = _key(q).split()
+        rows = [r for r in rows if all(w in _key(r.name) for w in words)]
+    return [MenuItemRead.model_validate(r) for r in sorted(rows, key=lambda r: _key(r.name))[:20]]
 
 
 # ===== Gmail (boîte partagée, ex. info@albert.brussels) =====

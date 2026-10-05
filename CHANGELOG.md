@@ -1,5 +1,28 @@
 # Changelog - Corrections & Améliorations
 
+## [2026-10-05] - L'API GPT respecte les règles du formulaire
+
+- ✅ Listes fixes (formules boissons/repas, types de plat) exposées en `enum` au GPT ;
+  variantes évidentes corrigées (« 3 Services », « Main course », « 19h30 », « 17/09/2026 »),
+  le reste refusé avec la liste des valeurs permises
+- ✅ Nom, couverts, date et heure obligatoires (plus de fiche « Client » à 00:00 aujourd'hui)
+- ✅ Plats ⇒ formule vidée, fiche vide refusée, Brunch sans entrée/plat/dessert
+- ✅ Noms de plats repris du catalogue ; allergènes convertis en clés (`lactose` → `lait`)
+- ✅ Le GPT crée toujours en Brouillon, ne touche plus au statut ni au tampon final
+- ✅ PATCH : une date/heure invalide est refusée au lieu d'être ignorée en silence
+- ✅ Nouvelles routes `POST/DELETE /api/gpt/fiches/{id}/items` pour un seul plat
+- ✅ Facturation créée par le GPT : « Belgique » et « Paiement à 30 jours » par défaut
+- ✅ `GPT_INSTRUCTIONS.md` : instructions à coller dans le Custom GPT
+- ✅ Recherche de plats pour le GPT insensible aux accents et à l'ordre des mots
+
+### Notes et suppression (site et GPT)
+- ✅ PDF : les notes suivent les mêmes règles que l'aperçu du formulaire
+  (`**gras**` fonctionnait mal, les retours à la ligne étaient perdus)
+- ✅ PDF : un `_` ou `*` isolé dans les notes (ex. une adresse `jean_dupont@…`) ne fait
+  plus planter la génération du PDF
+- ✅ Supprimer une fiche qui a une facturation, des suppléments ou un rappel ne
+  plante plus (contrainte de clé étrangère PostgreSQL)
+
 ## [2026-08-29] - Fix téléchargement PDF (fiches & factures)
 
 - ✅ `fileDownload()` conserve désormais le `Blob` renvoyé par axios (au lieu de le
