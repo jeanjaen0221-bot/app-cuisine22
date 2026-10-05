@@ -24,7 +24,7 @@ from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
-from mcp.server import MCPServer
+from mcp.server.fastmcp import FastMCP
 from mcp.server.auth.provider import (
     AccessToken,
     AuthorizationCode,
@@ -185,8 +185,6 @@ class AlbertOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Re
             scopes=payload.get("scopes", [MCP_SCOPE]),
             expires_at=int(payload["exp"]),
             resource=payload.get("resource"),
-            subject=payload.get("sub"),
-            claims={"iss": _resource_url()},
         )
 
     async def load_refresh_token(
@@ -200,8 +198,6 @@ class AlbertOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Re
             client_id=payload["client_id"],
             scopes=payload.get("scopes", [MCP_SCOPE]),
             expires_at=int(payload["exp"]),
-            resource=payload.get("resource"),
-            subject=payload.get("sub"),
         )
 
     async def exchange_refresh_token(
@@ -213,17 +209,17 @@ class AlbertOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Re
         access = self._issue_token(
             "mcp_access",
             refresh_token.client_id,
-            refresh_token.subject or "",
+            "",
             scopes,
-            refresh_token.resource or _resource_url(),
+            _resource_url(),
             ACCESS_TTL_SECONDS,
         )
         new_refresh = self._issue_token(
             "mcp_refresh",
             refresh_token.client_id,
-            refresh_token.subject or "",
+            "",
             scopes,
-            refresh_token.resource or _resource_url(),
+            _resource_url(),
             REFRESH_TTL_SECONDS,
         )
         return OAuthToken(
@@ -234,7 +230,7 @@ class AlbertOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Re
             scope=" ".join(scopes),
         )
 
-    async def revoke_token(self, token: str, token_type_hint: str | None = None) -> None:  # type: ignore[override]
+    async def revoke_token(self, token: AccessToken | RefreshToken) -> None:
         # Tokens are short-lived signed JWTs. Revocation takes effect by expiry;
         # rotating JWT_SECRET invalidates every token immediately.
         return None
@@ -326,7 +322,6 @@ button{{margin-top:22px;padding:11px 18px;cursor:pointer}}.muted{{color:#666;fon
             scopes=[MCP_SCOPE],
             code_challenge=data["code_challenge"],
             resource=data["resource"],
-            subject=user_id,
         )
         self._codes[code_value] = code
         self._pending.pop(state, None)
@@ -338,10 +333,8 @@ button{{margin-top:22px;padding:11px 18px;cursor:pointer}}.muted{{color:#666;fon
 
 oauth_provider = AlbertOAuthProvider()
 
-mcp_server = MCPServer(
+mcp_server = FastMCP(
     name="Restaurant Albert",
-    title="Restaurant Albert – Fiches & Gmail",
-    description="Gestion des fiches de réservation et de la boîte Gmail du Restaurant Albert.",
     instructions=(
         "Utiliser les outils fiches pour lire/mettre à jour les réservations et les outils Gmail "
         "pour rechercher/lire des échanges ou créer des brouillons. Ne jamais envoyer d'e-mail."
@@ -351,13 +344,15 @@ mcp_server = MCPServer(
         issuer_url=AnyHttpUrl(_resource_url()),
         resource_server_url=AnyHttpUrl(_resource_url()),
         required_scopes=[MCP_SCOPE],
-        validate_token_resource=True,
         client_registration_options=ClientRegistrationOptions(
             enabled=True,
             valid_scopes=[MCP_SCOPE],
             default_scopes=[MCP_SCOPE],
         ),
     ),
+    streamable_http_path="/",
+    json_response=True,
+    stateless_http=False,
 )
 
 
@@ -523,8 +518,4 @@ def gmail_creer_brouillon(
 
 def create_mcp_asgi_app():
     """Build the mounted Streamable HTTP ASGI app."""
-    return mcp_server.streamable_http_app(
-        streamable_http_path="/",
-        json_response=True,
-        stateless_http=False,
-    )
+    return mcp_server.streamable_http_app()
