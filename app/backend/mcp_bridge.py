@@ -312,6 +312,9 @@ button{{margin-top:22px;padding:11px 18px;cursor:pointer}}.muted{{color:#666;fon
             user = session.exec(select(User).where(User.email == normalize_email(email))).first()
             if user is None or not verify_password(password, user.password_hash):
                 raise HTTPException(401, "Adresse e-mail ou mot de passe incorrect.")
+            if (user.role or "admin") != "admin":
+                raise HTTPException(403, "Le connecteur ChatGPT est réservé aux administrateurs.")
+            user_id = str(user.id)
 
         code_value = "mcp_" + secrets.token_urlsafe(32)
         code = AuthorizationCode(
@@ -323,7 +326,7 @@ button{{margin-top:22px;padding:11px 18px;cursor:pointer}}.muted{{color:#666;fon
             scopes=[MCP_SCOPE],
             code_challenge=data["code_challenge"],
             resource=data["resource"],
-            subject=str(user.id),
+            subject=user_id,
         )
         self._codes[code_value] = code
         self._pending.pop(state, None)
