@@ -74,6 +74,16 @@ def permissions_required_for(path: str, method: str) -> tuple[str, ...] | None:
 
 
 @app.middleware("http")
+async def route_mcp_oauth_discovery(request: Request, call_next):
+    """Expose mounted OAuth metadata at its RFC 8414 discovery URL."""
+    if request.url.path == "/.well-known/oauth-authorization-server/mcp":
+        path = "/mcp/.well-known/oauth-authorization-server"
+        request.scope["path"] = path
+        request.scope["raw_path"] = path.encode("ascii")
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def require_api_authentication(request: Request, call_next):
     """Protect every business API route; authentication endpoints stay public."""
     path = request.url.path
