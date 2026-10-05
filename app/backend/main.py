@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, Response, FileResponse, StreamingRes
 
 from .database import init_db, run_startup_migrations, session_context, backfill_allergen_icons
 from .gpt_api import gpt_app
+from .mcp_bridge import create_mcp_asgi_app, mcp_server
 from .models import User
 from .security import decode_access_token
 from .routers import auth, reservations, menu_items, zenchef, allergens, notes, drinks, suppliers, purchase_orders, floorplan, incidents, facturation, reminders, gmail_oauth
@@ -126,6 +127,27 @@ app.include_router(gmail_oauth.router)
 # Mounted before the static/SPA fallback below so /api/gpt/* is never swallowed by it.
 app.mount("/api/gpt", gpt_app)
 
+# OAuth-protected MCP endpoint for ChatGPT plugins. The MCP ASGI app must be
+# created before startup so its session manager exists, then kept alive for the
+# lifetime of the main FastAPI process.
+_mcp_asgi_app = create_mcp_asgi_app()
+app.mount("/mcp", _mcp_asgi_app)
+
+
+@app.on_event("startup")
+async def _start_mcp_session_manager():
+    cm = mcp_server.session_manager.run()
+    app.state.mcp_session_manager_cm = cm
+    await cm.__aenter__()
+
+
+@app.on_event("shutdown")
+async def _stop_mcp_session_manager():
+    cm = getattr(app.state, "mcp_session_manager_cm", None)
+    if cm is not None:
+        await cm.__aexit__(None, None, None)
+
+
 # Ensure DB
 init_db()
 # Backfill existing allergen icons into DB rows (idempotent)
@@ -235,6 +257,17 @@ async def health():
     except Exception:
         ok_db = False
     return {"status": "ok", "db": ok_db}
+
+
+@app.get("/.well-known/oauth-protected-resource/mcp")
+async def mcp_protected_resource_metadata():
+    base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/") or "http://localhost:8000"
+    return {
+        "resource": f"{base}/mcp",
+        "authorization_servers": [f"{base}/mcp"],
+        "scopes_supported": ["albert"],
+        "bearer_methods_supported": ["header"],
+    }
 
 
 @app.get("/{full_path:path}")
