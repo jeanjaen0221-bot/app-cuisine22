@@ -17,6 +17,7 @@ import secrets
 import time
 import uuid
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 import jwt
 from pydantic import AnyHttpUrl
@@ -25,6 +26,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from mcp.server import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.server.auth.provider import (
     AccessToken,
     AuthorizationCode,
@@ -521,10 +523,28 @@ def gmail_creer_brouillon(
         return _jsonable(create_gmail_draft(payload, session))
 
 
+
+def _mcp_transport_security() -> TransportSecuritySettings:
+    """Allow the configured public host while retaining DNS rebinding checks."""
+    public_url = urlsplit(_public_base_url())
+    public_host = public_url.netloc
+    allowed_hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+    allowed_origins = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+    if public_host:
+        allowed_hosts.append(public_host)
+        allowed_origins.append(f"{public_url.scheme}://{public_host}")
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=allowed_hosts,
+        allowed_origins=allowed_origins,
+    )
+
+
 def create_mcp_asgi_app():
     """Build the mounted Streamable HTTP ASGI app."""
     return mcp_server.streamable_http_app(
         streamable_http_path="/",
         json_response=True,
         stateless_http=False,
+        transport_security=_mcp_transport_security(),
     )
