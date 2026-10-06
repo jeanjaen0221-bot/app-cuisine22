@@ -385,12 +385,11 @@ def _apply_form_rules(menu_formula: str, items: List[dict]) -> str:
     if has_dishes:
         # "Les plats prévalent": the form never stores a formula next to dishes.
         return ""
+    # A draft fiche may legitimately be incomplete while waiting for the client's
+    # choices. The human site already supports that workflow, so the MCP/GPT layer
+    # must not reject an otherwise valid draft solely because menu/items are pending.
     if not menu_formula:
-        raise HTTPException(
-            422,
-            "Il faut au moins un plat (entrée/plat/dessert) ou une menu_formula "
-            "('1 service', '2 services', '3 services', 'À la carte', 'Brunch').",
-        )
+        return ""
     return menu_formula
 
 
