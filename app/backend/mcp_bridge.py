@@ -65,6 +65,8 @@ from .models import BillingInfoUpdate, Setting, User
 from .security import ALGORITHM, JWT_SECRET, normalize_email, verify_password
 
 MCP_SCOPE = "albert"
+OFFLINE_SCOPE = "offline_access"
+MCP_ALLOWED_SCOPES = [MCP_SCOPE, OFFLINE_SCOPE]
 ACCESS_TTL_SECONDS = int(os.getenv("MCP_ACCESS_TOKEN_TTL_SECONDS", "28800"))
 REFRESH_TTL_SECONDS = int(os.getenv("MCP_REFRESH_TOKEN_TTL_SECONDS", "2592000"))
 _CLIENT_PREFIX = "mcp_oauth_client:"
@@ -325,7 +327,7 @@ button{{margin-top:22px;padding:11px 18px;cursor:pointer}}.muted{{color:#666;fon
             redirect_uri=AnyHttpUrl(data["redirect_uri"]),
             redirect_uri_provided_explicitly=bool(data["redirect_uri_provided_explicitly"]),
             expires_at=time.time() + 300,
-            scopes=[MCP_SCOPE],
+            scopes=[scope for scope in data["scopes"] if scope in MCP_ALLOWED_SCOPES] or [MCP_SCOPE],
             code_challenge=data["code_challenge"],
             resource=data["resource"],
             subject=user_id,
@@ -356,8 +358,8 @@ mcp_server = MCPServer(
         validate_token_resource=True,
         client_registration_options=ClientRegistrationOptions(
             enabled=True,
-            valid_scopes=[MCP_SCOPE],
-            default_scopes=[MCP_SCOPE],
+            valid_scopes=MCP_ALLOWED_SCOPES,
+            default_scopes=MCP_ALLOWED_SCOPES,
         ),
     ),
 )
