@@ -98,6 +98,33 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
+def _tool_write_result(fn) -> Any:
+    """Return validation/business errors as structured MCP results.
+
+    ChatGPT otherwise only receives a generic "Error executing tool", which hides
+    the actionable 4xx detail from the model and user.
+    """
+    try:
+        return _jsonable(fn())
+    except HTTPException as exc:
+        return {
+            "ok": False,
+            "error": {
+                "status_code": exc.status_code,
+                "detail": exc.detail,
+            },
+        }
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "error": {
+                "status_code": 422,
+                "detail": str(exc),
+            },
+        }
+
+
+
 class AlbertOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, RefreshToken, AccessToken]):
     """OAuth provider backed by the app's existing users and JWT secret."""
 
@@ -410,28 +437,34 @@ def fiche_creer(
     items: Optional[list[dict[str, Any]]] = None,
 ) -> Any:
     """Créer une fiche en brouillon. Nom, couverts, date et heure doivent être connus."""
-    payload = GptFicheCreate(
-        client_name=client_name,
-        pax=pax,
-        service_date=service_date,
-        arrival_time=arrival_time,
-        drink_formula=drink_formula,
-        menu_formula=menu_formula,
-        notes=notes,
-        allergens=allergens or [],
-        on_invoice=on_invoice,
-        items=items or [],
-    )
-    with session_context() as session:
-        return _jsonable(create_fiche(payload, session))
+    def _run():
+        payload = GptFicheCreate(
+            client_name=client_name,
+            pax=pax,
+            service_date=service_date,
+            arrival_time=arrival_time,
+            drink_formula=drink_formula,
+            menu_formula=menu_formula,
+            notes=notes,
+            allergens=allergens or [],
+            on_invoice=on_invoice,
+            items=items or [],
+        )
+        with session_context() as session:
+            return create_fiche(payload, session)
+
+    return _tool_write_result(_run)
 
 
 @mcp_server.tool()
 def fiche_modifier(reservation_id: str, changes: dict[str, Any]) -> Any:
     """Modifier uniquement les champs demandés d'une fiche existante."""
-    payload = GptFichePatch(**changes)
-    with session_context() as session:
-        return _jsonable(update_fiche(uuid.UUID(reservation_id), payload, session))
+    def _run():
+        payload = GptFichePatch(**changes)
+        with session_context() as session:
+            return update_fiche(uuid.UUID(reservation_id), payload, session)
+
+    return _tool_write_result(_run)
 
 
 @mcp_server.tool()
