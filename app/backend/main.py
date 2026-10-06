@@ -275,7 +275,7 @@ async def mcp_protected_resource_metadata():
     return {
         "resource": f"{base}/mcp",
         "authorization_servers": [f"{base}/mcp"],
-        "scopes_supported": ["albert"],
+        "scopes_supported": ["albert", "offline_access"],
         "bearer_methods_supported": ["header"],
     }
 
