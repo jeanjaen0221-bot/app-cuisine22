@@ -16,6 +16,7 @@ Rappel des décisions :
 - **D5** La compta a **son compte dans l'outil** et y trouve les devis et bons transmis.
 - **D6** On **garde tous les modules** : plan de salle, Rooftop, plaintes, commandes de boissons, fournisseurs, notes.
 - **D7** Grille de prix initiale : §2 bis.
+- **D8** Les prix et les formules se gèrent dans les menus **« Prix »** et **« Formules »** de l'outil ; ChatGPT les lit, il ne les modifie jamais.
 
 > Les valeurs marquées *(à valider)* dépendent des questions ouvertes de `REFONTE_ANALYSE.md` §16.
 
@@ -45,7 +46,7 @@ Rappel des décisions :
 
 ## 2. Valeurs de référence
 
-ChatGPT lit ces listes avec l'outil `references_lister` au lieu de les deviner. Valeurs actuelles du site :
+ChatGPT lit ces listes avec l'outil `references_lister` au lieu de les deviner : elles viennent du menu « Formules » et peuvent changer. Valeurs de départ :
 
 **Formule boissons** 🔒 : `sans alcool` (défaut), `avec alcool`, `sans alcool + cava`, `avec alcool + cava`, `sans alcool + champ`, `avec alcool + champ`, `à la carte`, `sans Formule`.
 
@@ -78,19 +79,22 @@ ChatGPT lit toujours les prix avec `catalogue_rechercher` ; ce tableau sert à v
 
 | Produit | Unité | Prix TVAC |
 |---|---|---|
+| 1 service | par personne | 28,00 € |
 | 2 services | par personne | 32,00 € |
 | 3 services | par personne | 40,00 € |
 | Sharing | par personne | 32,00 € |
+| Brunch | par personne | 36,00 € |
+| À la carte | — | prix de chaque plat de la carte |
 | Formule avec alcool | par personne | 20,00 € |
 | Formule sans alcool | par personne | 10,00 € |
 | Coupe de cava | par personne | 6,00 € |
 | Coupe de champagne | par personne | 11,00 € |
 | Privatisation City | forfait | 600,00 € |
-| Planche apéro | par personne | *à confirmer* (donné 3,85 € HTVA) |
+| Planche apéro | par personne | à saisir TVAC dans le menu « Prix » |
 
-Prix non encore fixés : `1 service`, `Brunch`, `À la carte`. Le serveur renvoie `prix_manquant` pour ces lignes 🔒.
+Tout produit sans prix dans le menu « Prix » (ex. un plat de la carte pas encore chiffré) fait renvoyer `prix_manquant` au serveur 🔒 ; ChatGPT dit alors à l'utilisateur de le compléter dans le menu « Prix ».
 
-Formules boissons « + cava » / « + champ » = formule de base + coupe, en deux lignes au devis (ex. `avec alcool + cava` = 20,00 € + 6,00 € = 26,00 €/p) *(à confirmer)*. `à la carte` et `sans Formule` : aucune ligne au devis.
+Formules boissons « + cava » / « + champ » = formule de base + coupe, en deux lignes au devis (ex. `avec alcool + cava` = 20,00 € + 6,00 € = 26,00 €/p) *(confirmé)*. `à la carte` et `sans Formule` : aucune ligne au devis.
 
 ---
 
@@ -107,7 +111,7 @@ Formules boissons « + cava » / « + champ » = formule de base + coupe, en deu
 1. Une fiche est **toujours rattachée à un client** 🔒.
 2. Obligatoires : client, **date**, **heure d'arrivée**, **couverts** (1 à 500) 🔒. Si une information manque, **la demander** ; ne jamais supposer « aujourd'hui », « 19:30 » ou « 2 couverts ».
 3. Une fiche créée par ChatGPT commence **toujours** en `brouillon` 🔒. `finale` et `réalisée` sont réservées à l'équipe 🔒.
-4. **Les plats prévalent sur la formule** : s'il y a au moins une entrée, un plat ou un dessert, la formule repas est vidée 🔒.
+4. **Les plats prévalent sur la formule** : s'il y a au moins une entrée, un plat ou un dessert, une formule `1/2/3 services` est vidée (le devis la retrouve à partir des plats) 🔒. **Exception : `À la carte` et `Sharing` sont gardées avec les plats**, car les plats y servent au calcul ou au partage *(Sharing à confirmer)* 🔒.
 5. **Total par type ≤ couverts** 🔒.
 6. **Brunch = buffet** : aucune entrée/plat/dessert ; les extras (Privatisation, Champagne, Planche apéro…) sont des `supplément` 🔒.
 7. **Au moins un plat ou une formule** : exigé pour passer en `confirmée` ; un brouillon peut rester incomplet *(à valider)* 🔒.
@@ -131,6 +135,7 @@ Formules boissons « + cava » / « + champ » = formule de base + coupe, en deu
 6. La **validation** du devis et sa **transmission à la comptabilité** sont faites **dans l'outil par une personne** 🔒. C'est ensuite **la comptabilité qui l'envoie au client**.
 7. Un devis déjà transmis ne se modifie pas : si le client demande un changement, ChatGPT met à jour la fiche puis propose `devis_nouvelle_version` (nouvelle version en brouillon) 🔒.
 7 bis. **Formule déduite des plats** : si la fiche liste des plats (formule vidée), le serveur facture la formule correspondant aux types présents — entrée + plat + dessert → `3 services`, entrée + plat ou plat + dessert → `2 services`, plat seul → `1 service` 🔒. ChatGPT n'a rien à calculer.
+7 ter. **À la carte** : chaque plat est compté à son prix de la carte × sa quantité 🔒.
 8. Quand on demande à ChatGPT d'« envoyer le devis », il répond que le devis doit être validé et transmis à la compta dans l'outil, et que la compta l'enverra au client.
 
 ### 3.4 Bon pour facturation
@@ -232,7 +237,9 @@ Chaque scénario est vérifié par un test serveur, indépendamment du comportem
 | 11 bis | « Fais-lui 10 % » / « Demande un acompte de 30 % » | Refus : le restaurant ne fait ni remise ni acompte |
 | 12 | Devis 20 couverts, `3 services`, `avec alcool + cava`, privatisation City | Lignes 20 × 40,00 + 20 × 20,00 + 20 × 6,00 + 600,00 ; total `192 000` centimes (`1 920,00 €`), « TVA comprise », aucune ligne de TVA |
 | 12 bis | Fiche de 10 couverts avec entrées, plats et desserts (formule vide) | Devis facturé `3 services` : 10 × 40,00 = `400,00 €` |
-| 12 ter | Fiche `1 service` | Devis en brouillon avec `prix_manquant` tant que le prix n'est pas fixé |
+| 12 ter | Fiche `1 service`, 15 couverts | 15 × 28,00 = `420,00 €` |
+| 12 quater | Fiche `À la carte` : 4 « Carpaccio » sans prix au menu « Prix » | Devis en brouillon, alerte `prix_manquant` sur Carpaccio ; ChatGPT renvoie vers le menu « Prix » |
+| 12 quinquies | Brunch 30 couverts + planche apéro | 30 × 36,00 + 30 × prix TVAC de la planche ; aucune entrée/plat/dessert |
 | 13 | Devis avec un plat hors catalogue | Devis créé en brouillon, `manques: prix_manquant` signalé |
 | 14 | « Envoie le devis au client » | Explication : validation et transmission à la compta dans l'outil, la compta l'envoie |
 | 15 | Modifier un devis `transmis` | Refus ; proposition de `devis_nouvelle_version` |
@@ -274,7 +281,7 @@ REMPLIR UNE FICHE
 - Lis d'abord les listes avec references_lister. Utilise exactement ces valeurs.
 - Formule boissons : une valeur de la liste, « sans alcool » par défaut.
 - Plats : cherche-les avec catalogue_rechercher et reprends le nom exact. Un plat hors catalogue seulement si l'utilisateur le demande tel quel.
-- S'il y a des plats, laisse la formule repas vide (les plats prévalent). Sinon choisis 1 service, 2 services, 3 services, À la carte ou Brunch.
+- S'il y a des plats et que ce n'est ni « À la carte » ni « Sharing », laisse la formule repas vide (les plats prévalent). Sinon choisis une formule de references_lister (1 service, 2 services, 3 services, Sharing, À la carte, Brunch).
 - Total des entrées, des plats et des desserts : chacun ≤ nombre de couverts.
 - Brunch = buffet : pas d'entrée, de plat ni de dessert ; les extras (Privatisation, Champagne, Planche apéro…) sont des suppléments.
 - Pour une seule ligne, utilise fiche_ligne_ajouter ou fiche_ligne_retirer.
@@ -284,7 +291,8 @@ REMPLIR UNE FICHE
 
 DEVIS
 - Prépare le devis avec devis_preparer à partir de la fiche. Si la fiche change, utilise devis_actualiser tant que le devis est en brouillon, sinon propose devis_nouvelle_version.
-- Si le serveur signale des manques (prix manquant, adresse incomplète), dis à l'utilisateur ce qu'il doit compléter dans l'outil.
+- Si le serveur signale des manques, dis à l'utilisateur ce qu'il doit compléter : un prix manquant se complète dans le menu « Prix », une adresse incomplète sur la fiche client.
+- Tu ne modifies jamais les menus « Prix » et « Formules ».
 - Donne le total TVA comprise renvoyé par le serveur et le lien PDF (pdf_lien).
 
 AUTRES MODULES

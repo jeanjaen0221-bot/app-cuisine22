@@ -19,7 +19,8 @@ Document compagnon : [`REGLES_CHATGPT.md`](./REGLES_CHATGPT.md) (règles et cont
 | D4 | **Pas de remise, pas d'acompte.** | Aucune ligne de remise, aucun acompte sur les devis ni sur les bons pour facturation. Le prix est celui du catalogue. |
 | D5 | **La compta a son propre compte dans l'outil** (option A). | Rôle `compta` avec deux listes : « À envoyer » (devis) et « À facturer » (bons pour facturation). Aucun email n'est envoyé par l'outil. |
 | D6 | **On garde tous les modules** (plan de salle, Rooftop, plaintes, commandes de boissons, fournisseurs, notes) et on les améliore. | Ils font partie de la nouvelle version, branchés sur les mêmes clients et fiches (§13.4). |
-| D7 | **Grille de prix fournie** (§12.3). | Le catalogue initial est connu ; quelques prix restent à préciser (§16). |
+| D7 | **Grille de prix fournie** (§12.3), formules boissons « + coupe » confirmées. | Le catalogue initial est connu ; « À la carte » = prix de chaque plat de la carte. |
+| D8 | **Deux menus pour gérer les prix soi-même** : « Prix » et « Formules » (§13.5). | Les prix manquants et les formules se complètent dans l'outil, sans développeur. ChatGPT ne peut pas y toucher. |
 
 ---
 
@@ -341,6 +342,7 @@ Ce que l'outil **ne fait pas** : envoyer quoi que ce soit au client, numéroter 
 ### 12.2 Du formulaire au devis
 - Générer le devis depuis la fiche :
   - **formule repas × couverts**. Si la fiche liste des plats (la formule est alors vidée, règle « les plats prévalent »), le serveur **déduit la formule** des types de plats, comme le fait déjà le PDF actuel (`_deduce_formula`) : entrée + plat + dessert → `3 services` ; entrée + plat ou plat + dessert → `2 services` ; plat seul → `1 service`. Les plats choisis servent à la cuisine, le prix vient de la formule ;
+  - formule `À la carte` : **chaque plat × sa quantité × son prix de la carte** (pas de prix par personne). **Ajustement de la règle « les plats prévalent »** : elle ne vide plus que les formules `1/2/3 services` ; `À la carte` et `Sharing` restent sur la fiche à côté des plats ;
   - **formule boissons × couverts**, en deux lignes quand elle comprend une coupe (ex. « Formule avec alcool » + « Coupe de cava ») ;
   - **suppléments** × quantité (planche apéro par personne, coupes…) ;
   - **privatisation** au forfait.
@@ -353,17 +355,20 @@ Prix fournis le 22/10/2026, **TVA comprise** sauf mention contraire.
 
 | Produit | Type | Unité | Prix TVAC |
 |---|---|---|---|
+| 1 service | formule repas | par personne | 28,00 € |
 | 2 services | formule repas | par personne | 32,00 € |
 | 3 services | formule repas | par personne | 40,00 € |
 | Sharing | formule repas | par personne | 32,00 € |
+| Brunch | formule repas | par personne | 36,00 € |
+| À la carte | formule repas | — | prix de chaque plat de la carte (menu « Prix ») |
 | Formule avec alcool | formule boissons | par personne | 20,00 € |
 | Formule sans alcool | formule boissons | par personne | 10,00 € |
 | Coupe de cava | supplément / complément de formule | par personne | 6,00 € |
 | Coupe de champagne | supplément / complément de formule | par personne | 11,00 € |
 | Privatisation City | location | forfait | 600,00 € |
-| Planche apéro | supplément | par personne | **3,85 € HTVA** → à convertir (§16) |
+| Planche apéro | supplément | par personne | donné 3,85 € HTVA → **prix TVAC à saisir** dans le menu « Prix » |
 
-Formules boissons de la fiche → lignes du devis (lecture proposée, **à confirmer**) :
+Formules boissons de la fiche → lignes du devis (**confirmé**) :
 
 | Formule boissons (fiche) | Lignes du devis | Total par personne |
 |---|---|---|
@@ -379,7 +384,7 @@ Formules boissons de la fiche → lignes du devis (lecture proposée, **à confi
 Exemple : 20 couverts, 3 services, formule `avec alcool + cava`, privatisation City
 = 20 × 40,00 + 20 × 20,00 + 20 × 6,00 + 600,00 = **1 920,00 € TVA comprise**.
 
-Prix encore inconnus : `1 service`, `Brunch`, `À la carte` (repas), autres espaces (Rooftop, salle entière…), autres suppléments de la bibliothèque actuelle (§16).
+À compléter dans le menu « Prix » (§13.5) : prix de chaque plat de la carte (pour « À la carte »), planche apéro en TVAC, privatisation des autres espaces, autres suppléments de la bibliothèque actuelle. Tant qu'un prix manque, le devis reste en brouillon avec l'alerte « prix manquant ».
 
 ### 12.4 Transmission à la comptabilité (D2)
 Deux documents seulement partent vers la compta :
@@ -405,7 +410,7 @@ Contenu de chaque transmission : PDF, coordonnées de facturation du client, n°
 4. **Devis** : générer depuis une fiche, ajuster, valider, transmettre, nouvelle version.
 5. **Bons pour facturation** : saisir le réel après l'événement, valider, transmettre.
 6. **Espace compta** : « À envoyer », « À facturer », historique.
-7. **Catalogue** : produits, prix TVAC, unités, allergènes, formules.
+7. **Prix** et **Formules** : deux menus pour compléter et modifier les prix et les formules soi-même (§13.5).
 8. **Paramètres** : identité du restaurant (nom, adresse, logo, coordonnées compta), mentions par défaut des devis, validité par défaut, allergènes, utilisateurs, connexions ChatGPT et Gmail.
 9. **Journal** : qui a fait quoi (y compris ChatGPT).
 10. **Modules conservés** (§13.4) : Salle, Rooftop, Plaintes, Commandes/Achats, Fournisseurs, Notes.
@@ -452,6 +457,26 @@ Principe : chaque module garde ce qu'il fait aujourd'hui, mais **lit les mêmes 
 
 **Zenchef**
 - Synchronisation conservée ; une réservation importée cherche ou crée le client correspondant et prend la formule boissons exactement dans la liste (corrige `Sans alcool`, §8 n° 15).
+
+### 13.5 Menus « Prix » et « Formules » (D8)
+
+Deux entrées dans le menu latéral, réservées aux rôles `admin` (et `prix` si vous voulez donner ce droit à quelqu'un d'autre). Toute modification est enregistrée dans le journal (qui, quand, ancien prix → nouveau prix).
+
+**Menu « Prix »** — tout ce qui se vend, au même endroit
+- Une seule liste avec des onglets : *Formules repas*, *Formules boissons*, *Plats de la carte* (entrées, plats, desserts), *Suppléments*, *Privatisations*.
+- Chaque ligne : nom, unité (`par personne`, `pièce`, `forfait`, `bouteille`), **prix TVA comprise** modifiable directement dans la liste, actif oui/non.
+- Filtre **« Prix manquants »** en haut, avec un compteur rouge dans le menu latéral tant qu'il en reste (ex. « Prix 12 »). Au démarrage, il contiendra : les plats de la carte actuelle, la planche apéro, les autres privatisations, les suppléments de la bibliothèque actuelle.
+- Bouton **« Ajouter »** pour un nouveau plat, supplément ou espace à privatiser.
+- Saisie en euros avec virgule (`4,31`), stockée en centimes ; un prix vide = « prix manquant », un prix à 0 = gratuit (confirmé à la saisie).
+- Changer un prix ne modifie **pas** les devis déjà préparés : seuls les nouveaux devis et les devis en brouillon recalculés prennent le nouveau prix.
+- Un lien « Compléter le prix » apparaît sur chaque devis bloqué par un prix manquant et mène directement à la bonne ligne.
+
+**Menu « Formules »** — ce qu'on choisit sur une fiche
+- **Formules repas** : nom, prix par personne (ou « prix de la carte » pour À la carte), types de plats qu'elle couvre (ex. `2 services` = 2 types parmi entrée / plat / dessert ; `Brunch` = aucun plat, suppléments seulement), ordre d'affichage, active oui/non.
+- **Formules boissons** : nom, **formule de base** (avec alcool / sans alcool / aucune) + **coupe** éventuelle (cava, champagne, aucune). Le prix par personne s'affiche automatiquement à partir du menu « Prix » (ex. avec alcool + cava = 20,00 + 6,00 = 26,00 €), il n'est pas retapé.
+- Les listes déroulantes de la fiche, les règles du serveur et ce que ChatGPT lit (`references_lister`) viennent **de ce menu** : une formule ajoutée ou désactivée ici l'est partout, sans développeur.
+- Une formule utilisée par des fiches existantes ne se supprime pas : on la **désactive** (elle disparaît des choix, les anciennes fiches la gardent).
+- Le badge coloré des formules boissons sur la fiche salle (couleurs actuelles) se choisit ici pour les nouvelles formules.
 
 ## 14. Cible : l'accès ChatGPT
 
@@ -514,17 +539,15 @@ Migration des données existantes :
 
 ## 16. Questions encore ouvertes
 
-Réglées : ~~émission des factures~~ (D1), ~~envoi aux clients~~ (D2), ~~TVA~~ (D3), ~~remises et acomptes~~ (D4), ~~canal de transmission à la compta~~ (D5), ~~périmètre~~ (D6), ~~grille de prix principale~~ (D7).
+Réglées : ~~émission des factures~~ (D1), ~~envoi aux clients~~ (D2), ~~TVA~~ (D3), ~~remises et acomptes~~ (D4), ~~canal de transmission à la compta~~ (D5), ~~périmètre~~ (D6), ~~grille de prix~~ (D7), ~~gestion des prix et formules~~ (D8).
 
-1. **Planche apéro** : 3,85 € **HTVA** par personne. Quel prix TVA comprise afficher ? (à 12 % : 4,31 € ; à 21 % : 4,66 €)
-2. **Prix manquants** : `1 service`, `Brunch`, `À la carte` (repas) ; privatisation des autres espaces (Rooftop, salle entière…) ; autres suppléments.
-3. **Formules boissons + coupe** : la lecture du tableau §12.3 est-elle juste (ex. `avec alcool + cava` = 20 € + 6 € = 26 €/p) ?
-4. **« City »** : est-ce le nom d'un espace ? Quels autres espaces proposer sur une fiche ?
-5. **Prix manuels** : l'équipe peut-elle saisir un prix différent du catalogue sur une ligne (cas particulier), ou jamais ?
-6. **Validité d'un devis** : combien de jours par défaut ?
-7. **Acceptation du devis** : qui l'indique dans l'outil (la compta ou l'équipe) ?
-8. **Statuts de fiche** : garder Brouillon/Confirmée/Imprimée, ou passer à Brouillon/Confirmée/Finale/Réalisée/Annulée ?
-9. **Règle « au moins un plat ou une formule »** : dès la création, ou seulement pour confirmer ?
-10. **ChatGPT** : utilisé par les admins seulement, ou aussi par le personnel ? Peut-il préparer des devis, ou seulement des fiches ?
-11. **Langues** des devis : FR seulement, ou aussi NL/EN ?
-12. **Zenchef** : garder le seuil actuel (groupes de plus de 10 personnes) pour l’import automatique ?
+1. **Sharing** : les plats à partager sont-ils listés sur la fiche (formule gardée à côté des plats, comme À la carte) ?
+2. **« City »** : est-ce le nom d'un espace ? Quels autres espaces proposer sur une fiche ?
+3. **Prix manuels** : en plus du menu « Prix », l'équipe peut-elle changer le prix d'une seule ligne sur un devis précis (cas particulier), ou jamais ?
+4. **Validité d'un devis** : combien de jours par défaut ?
+5. **Acceptation du devis** : qui l'indique dans l'outil (la compta ou l'équipe) ?
+6. **Statuts de fiche** : garder Brouillon/Confirmée/Imprimée, ou passer à Brouillon/Confirmée/Finale/Réalisée/Annulée ?
+7. **Règle « au moins un plat ou une formule »** : dès la création, ou seulement pour confirmer ?
+8. **ChatGPT** : utilisé par les admins seulement, ou aussi par le personnel ? Peut-il préparer des devis, ou seulement des fiches ?
+9. **Langues** des devis : FR seulement, ou aussi NL/EN ?
+10. **Zenchef** : garder le seuil actuel (groupes de plus de 10 personnes) pour l’import automatique ?
