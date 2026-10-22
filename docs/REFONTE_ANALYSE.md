@@ -292,6 +292,7 @@ Ce que l'outil **ne fait pas** : envoyer quoi que ce soit au client, numéroter 
 **Fiche** (`fiche`) — remplace `reservation`
 - client (obligatoire), contact sur place, téléphone sur place
 - date, heure d'arrivée, couverts, espace (salle, City, Rooftop… *liste à valider*)
+- **privatisation** : `aucune` | `semi-privatisation` | `privatisation complète` (prix au forfait, menu « Prix »)
 - formule boissons, formule repas (listes actuelles + `Sharing`)
 - allergènes (liste de clés), **notes salle** et **notes cuisine** séparées
 - statut : `brouillon` → `confirmée` → `finale` → `réalisée` | `annulée` *(à valider)*
@@ -345,7 +346,7 @@ Ce que l'outil **ne fait pas** : envoyer quoi que ce soit au client, numéroter 
   - formule `À la carte` : **chaque plat × sa quantité × son prix de la carte** (pas de prix par personne). **Ajustement de la règle « les plats prévalent »** : elle ne vide plus que les formules `1/2/3 services` ; `À la carte` et `Sharing` restent sur la fiche à côté des plats ;
   - **formule boissons × couverts**, en deux lignes quand elle comprend une coupe (ex. « Formule avec alcool » + « Coupe de cava ») ;
   - **suppléments** × quantité (planche apéro par personne, coupes…) ;
-  - **privatisation** au forfait.
+  - **privatisation** au forfait selon le choix de la fiche : semi-privatisation ou privatisation complète de l'espace.
 - Une fiche modifiée après la transmission de son devis affiche **« Devis à mettre à jour »** (écart couverts, plats, formules).
 - Un devis transmis ne se modifie plus : on crée une **nouvelle version** (l'ancienne passe en `remplacé`).
 
@@ -365,7 +366,9 @@ Prix fournis le 22/10/2026, **TVA comprise** sauf mention contraire.
 | Formule sans alcool | formule boissons | par personne | 10,00 € |
 | Coupe de cava | supplément / complément de formule | par personne | 6,00 € |
 | Coupe de champagne | supplément / complément de formule | par personne | 11,00 € |
-| Privatisation City | location | forfait | 600,00 € |
+| Privatisation City — 600 € donné sans préciser : semi ou complète ? | location | forfait | 600,00 € |
+| Semi-privatisation (par espace) | location | forfait | à compléter dans le menu « Prix » |
+| Privatisation complète (par espace) | location | forfait | à compléter dans le menu « Prix » |
 | Planche apéro | supplément | par personne | donné 3,85 € HTVA → **prix TVAC à saisir** dans le menu « Prix » |
 
 Formules boissons de la fiche → lignes du devis (**confirmé**) :
@@ -542,7 +545,7 @@ Migration des données existantes :
 Réglées : ~~émission des factures~~ (D1), ~~envoi aux clients~~ (D2), ~~TVA~~ (D3), ~~remises et acomptes~~ (D4), ~~canal de transmission à la compta~~ (D5), ~~périmètre~~ (D6), ~~grille de prix~~ (D7), ~~gestion des prix et formules~~ (D8).
 
 1. **Sharing** : les plats à partager sont-ils listés sur la fiche (formule gardée à côté des plats, comme À la carte) ?
-2. **« City »** : est-ce le nom d'un espace ? Quels autres espaces proposer sur une fiche ?
+2. **Privatisation** : deux formules, semi-privatisation et privatisation complète. Les 600 € de « City » correspondent à laquelle ? « City » est-il un espace (et lesquels d'autre : Rooftop, salle…) ?
 3. **Prix manuels** : en plus du menu « Prix », l'équipe peut-elle changer le prix d'une seule ligne sur un devis précis (cas particulier), ou jamais ?
 4. **Validité d'un devis** : combien de jours par défaut ?
 5. **Acceptation du devis** : qui l'indique dans l'outil (la compta ou l'équipe) ?
