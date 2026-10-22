@@ -292,7 +292,7 @@ Ce que l'outil **ne fait pas** : envoyer quoi que ce soit au client, numéroter 
 **Fiche** (`fiche`) — remplace `reservation`
 - client (obligatoire), contact sur place, téléphone sur place
 - date, heure d'arrivée, couverts, espace (`salle`, `City` — espace à part —, `Rooftop`)
-- **privatisation** : `aucune` | `semi-privatisation` | `privatisation complète` (prix au forfait, menu « Prix »)
+- **privatisation** : `aucune` | `semi-privatisation` | `privatisation complète` | `privatisation City` — trois privatisations différentes, prix au forfait dans le menu « Prix »
 - formule boissons, formule repas (listes actuelles + `Sharing`)
 - allergènes (liste de clés), **notes salle** et **notes cuisine** séparées
 - statut : `brouillon` → `confirmée` → `finale` → `réalisée` | `annulée` *(à valider)*
@@ -347,7 +347,7 @@ Ce que l'outil **ne fait pas** : envoyer quoi que ce soit au client, numéroter 
   - formule `Sharing` : **prix par personne, sans plats listés** sur la fiche (comme `Brunch`, seuls des suppléments sont permis) ;
   - **formule boissons × couverts**, en deux lignes quand elle comprend une coupe (ex. « Formule avec alcool » + « Coupe de cava ») ;
   - **suppléments** × quantité (planche apéro par personne, coupes…) ;
-  - **privatisation** au forfait selon le choix de la fiche : semi-privatisation ou privatisation complète de l'espace.
+  - **privatisation** au forfait selon le choix de la fiche (une des trois).
 - Une fiche modifiée après la transmission de son devis affiche **« Devis à mettre à jour »** (écart couverts, plats, formules).
 - Un devis transmis ne se modifie plus : on crée une **nouvelle version** (l'ancienne passe en `remplacé`).
 
@@ -367,9 +367,9 @@ Prix fournis le 22/10/2026, **TVA comprise** sauf mention contraire.
 | Formule sans alcool | formule boissons | par personne | 10,00 € |
 | Coupe de cava | supplément / complément de formule | par personne | 6,00 € |
 | Coupe de champagne | supplément / complément de formule | par personne | 11,00 € |
-| Privatisation City — 600 € donné sans préciser : semi ou complète ? | location | forfait | 600,00 € |
-| Semi-privatisation (par espace) | location | forfait | à compléter dans le menu « Prix » |
-| Privatisation complète (par espace) | location | forfait | à compléter dans le menu « Prix » |
+| Privatisation City | location | forfait | 600,00 € |
+| Semi-privatisation | location | forfait | à compléter dans le menu « Prix » |
+| Privatisation complète | location | forfait | à compléter dans le menu « Prix » |
 | Planche apéro | supplément | par personne | donné 3,85 € HTVA → **prix TVAC à saisir** dans le menu « Prix » |
 
 Formules boissons de la fiche → lignes du devis (**confirmé**) :
@@ -388,7 +388,7 @@ Formules boissons de la fiche → lignes du devis (**confirmé**) :
 Exemple : 20 couverts, 3 services, formule `avec alcool + cava`, privatisation City
 = 20 × 40,00 + 20 × 20,00 + 20 × 6,00 + 600,00 = **1 920,00 € TVA comprise**.
 
-À compléter dans le menu « Prix » (§13.5) : prix de chaque plat de la carte (pour « À la carte »), planche apéro en TVAC, privatisation des autres espaces, autres suppléments de la bibliothèque actuelle. Tant qu'un prix manque, le devis reste en brouillon avec l'alerte « prix manquant ».
+À compléter dans le menu « Prix » (§13.5) : prix de chaque plat de la carte (pour « À la carte »), planche apéro en TVAC, semi-privatisation et privatisation complète, autres suppléments de la bibliothèque actuelle. Tant qu'un prix manque, le devis reste en brouillon avec l'alerte « prix manquant ».
 
 ### 12.4 Transmission à la comptabilité (D2)
 Deux documents seulement partent vers la compta :
@@ -469,7 +469,7 @@ Deux entrées dans le menu latéral, réservées aux rôles `admin` (et `prix` s
 **Menu « Prix »** — tout ce qui se vend, au même endroit
 - Une seule liste avec des onglets : *Formules repas*, *Formules boissons*, *Plats de la carte* (entrées, plats, desserts), *Suppléments*, *Privatisations*.
 - Chaque ligne : nom, unité (`par personne`, `pièce`, `forfait`, `bouteille`), **prix TVA comprise** modifiable directement dans la liste, actif oui/non.
-- Filtre **« Prix manquants »** en haut, avec un compteur rouge dans le menu latéral tant qu'il en reste (ex. « Prix 12 »). Au démarrage, il contiendra : les plats de la carte actuelle, la planche apéro, les autres privatisations, les suppléments de la bibliothèque actuelle.
+- Filtre **« Prix manquants »** en haut, avec un compteur rouge dans le menu latéral tant qu'il en reste (ex. « Prix 12 »). Au démarrage, il contiendra : les plats de la carte actuelle, la planche apéro, la semi-privatisation et la privatisation complète, les suppléments de la bibliothèque actuelle.
 - Bouton **« Ajouter »** pour un nouveau plat, supplément ou espace à privatiser.
 - Saisie en euros avec virgule (`4,31`), stockée en centimes ; un prix vide = « prix manquant », un prix à 0 = gratuit (confirmé à la saisie).
 - Changer un prix ne modifie **pas** les devis déjà préparés : seuls les nouveaux devis et les devis en brouillon recalculés prennent le nouveau prix.
@@ -543,14 +543,13 @@ Migration des données existantes :
 
 ## 16. Questions encore ouvertes
 
-Réglées : ~~émission des factures~~ (D1), ~~envoi aux clients~~ (D2), ~~TVA~~ (D3), ~~remises et acomptes~~ (D4), ~~canal de transmission à la compta~~ (D5), ~~périmètre~~ (D6), ~~grille de prix~~ (D7), ~~gestion des prix et formules~~ (D8), ~~City = espace à part~~, ~~Sharing sans plats listés~~.
+Réglées : ~~émission des factures~~ (D1), ~~envoi aux clients~~ (D2), ~~TVA~~ (D3), ~~remises et acomptes~~ (D4), ~~canal de transmission à la compta~~ (D5), ~~périmètre~~ (D6), ~~grille de prix~~ (D7), ~~gestion des prix et formules~~ (D8), ~~City = espace à part~~, ~~Sharing sans plats listés~~, ~~trois privatisations (prix complétés plus tard dans le menu « Prix »)~~.
 
-1. **Privatisation** : deux formules, semi-privatisation et privatisation complète. Les 600 € de l'espace City correspondent à laquelle ? Prix des deux formules pour la salle et le Rooftop ?
-2. **Prix manuels** : en plus du menu « Prix », l'équipe peut-elle changer le prix d'une seule ligne sur un devis précis (cas particulier), ou jamais ?
-3. **Validité d'un devis** : combien de jours par défaut ?
-4. **Acceptation du devis** : qui l'indique dans l'outil (la compta ou l'équipe) ?
-5. **Statuts de fiche** : garder Brouillon/Confirmée/Imprimée, ou passer à Brouillon/Confirmée/Finale/Réalisée/Annulée ?
-6. **Règle « au moins un plat ou une formule »** : dès la création, ou seulement pour confirmer ?
-7. **ChatGPT** : utilisé par les admins seulement, ou aussi par le personnel ? Peut-il préparer des devis, ou seulement des fiches ?
-8. **Langues** des devis : FR seulement, ou aussi NL/EN ?
-9. **Zenchef** : garder le seuil actuel (groupes de plus de 10 personnes) pour l’import automatique ?
+1. **Prix manuels** : en plus du menu « Prix », l'équipe peut-elle changer le prix d'une seule ligne sur un devis précis (cas particulier), ou jamais ?
+2. **Validité d'un devis** : combien de jours par défaut ?
+3. **Acceptation du devis** : qui l'indique dans l'outil (la compta ou l'équipe) ?
+4. **Statuts de fiche** : garder Brouillon/Confirmée/Imprimée, ou passer à Brouillon/Confirmée/Finale/Réalisée/Annulée ?
+5. **Règle « au moins un plat ou une formule »** : dès la création, ou seulement pour confirmer ?
+6. **ChatGPT** : utilisé par les admins seulement, ou aussi par le personnel ? Peut-il préparer des devis, ou seulement des fiches ?
+7. **Langues** des devis : FR seulement, ou aussi NL/EN ?
+8. **Zenchef** : garder le seuil actuel (groupes de plus de 10 personnes) pour l’import automatique ?

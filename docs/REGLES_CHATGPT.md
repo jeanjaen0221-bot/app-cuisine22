@@ -54,7 +54,7 @@ ChatGPT lit ces listes avec l'outil `references_lister` au lieu de les deviner :
 
 **Espaces** 🔒 : `salle`, `City` (espace à part), `Rooftop`.
 
-**Privatisation** 🔒 : `aucune` (défaut), `semi-privatisation`, `privatisation complète`. Ne jamais la supposer : seulement si le client ou l'utilisateur la demande.
+**Privatisation** 🔒 : `aucune` (défaut), `semi-privatisation`, `privatisation complète`, `privatisation City` (trois privatisations différentes). Ne jamais la supposer : seulement si le client ou l'utilisateur la demande.
 
 **Types de ligne de fiche** 🔒 : `entrée`, `plat`, `dessert`, `supplément`.
 
@@ -91,8 +91,9 @@ ChatGPT lit toujours les prix avec `catalogue_rechercher` ; ce tableau sert à v
 | Formule sans alcool | par personne | 10,00 € |
 | Coupe de cava | par personne | 6,00 € |
 | Coupe de champagne | par personne | 11,00 € |
-| Privatisation City (semi ou complète : à préciser) | forfait | 600,00 € |
-| Semi-privatisation / Privatisation complète des autres espaces | forfait | à compléter dans le menu « Prix » |
+| Privatisation City | forfait | 600,00 € |
+| Semi-privatisation | forfait | à compléter dans le menu « Prix » |
+| Privatisation complète | forfait | à compléter dans le menu « Prix » |
 | Planche apéro | par personne | à saisir TVAC dans le menu « Prix » |
 
 Tout produit sans prix dans le menu « Prix » (ex. un plat de la carte pas encore chiffré) fait renvoyer `prix_manquant` au serveur 🔒 ; ChatGPT dit alors à l'utilisateur de le compléter dans le menu « Prix ».
