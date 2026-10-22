@@ -16,6 +16,8 @@ Document compagnon : [`REGLES_CHATGPT.md`](./REGLES_CHATGPT.md) (règles et cont
 | D1 | **L'outil prépare les devis, il ne fait pas les factures.** | Pas de numérotation légale de facture, pas de notes de crédit, pas de suivi des paiements, pas de Peppol. |
 | D2 | **La comptabilité envoie elle-même** les devis et les factures aux clients. | L'outil ne parle jamais directement au client : il **transmet** à la comptabilité (devis prêt, puis bon pour facturation après l'événement). |
 | D3 | **On ne gère pas la TVA : tous les prix sont TVA comprise (TVAC).** | Le catalogue, les devis et les récapitulatifs ne contiennent que des montants TVAC. Aucun taux, aucune ventilation HTVA/TVA. La ventilation éventuelle est faite par la comptabilité. |
+| D4 | **Pas de remise, pas d'acompte.** | Aucune ligne de remise, aucun acompte sur les devis ni sur les bons pour facturation. Le prix est celui du catalogue. |
+| D5 | **La compta a son propre compte dans l'outil** (option A). | Rôle `compta` avec deux listes : « À envoyer » (devis) et « À facturer » (bons pour facturation). Aucun email n'est envoyé par l'outil. |
 
 ---
 
@@ -305,21 +307,21 @@ Ce que l'outil **ne fait pas** : envoyer quoi que ce soit au client, numéroter 
 - client et fiche liés ; **coordonnées du client figées** au moment de la transmission
 - date de création, **date de validité**, couverts prévus
 - lignes : libellé, quantité, unité, **prix unitaire TVAC figé**, total ligne TVAC
-- **total TVAC**, acompte demandé (montant ou % TVAC, *à valider*), remarques pour le client, remarques pour la compta
+- **total TVAC**, remarques pour le client, remarques pour la compta (pas d'acompte, pas de remise : D4)
 - statut : `brouillon` → `validé` → `transmis` → `accepté` | `refusé` | `remplacé` (par une nouvelle version) | `expiré`
 - PDF stocké à la transmission (ne change plus ensuite)
 
 **Bon pour facturation** (`bon_facturation`)
 - lié au devis accepté et à la fiche
 - **réel** : couverts réels, lignes réellement servies (reprises du devis, modifiables), extras ajoutés, boissons à la consommation
-- total TVAC, acompte déjà demandé (rappel), écart avec le devis mis en évidence
+- total TVAC, écart avec le devis mis en évidence
 - statut : `brouillon` → `validé` → `transmis` ; PDF stocké à la transmission
 
 **Transmission** (`transmission`) : historique de ce qui a été envoyé à la compta (document, version, date, par qui, canal).
 
 **Journal d'audit** (`audit`) : utilisateur, canal (`site` | `chatgpt`), action, objet, avant/après, date.
 
-**Utilisateur** : comme aujourd'hui ; ajouter un rôle **`compta`** si la comptabilité a un accès au site (*à valider*).
+**Utilisateur** : comme aujourd'hui, plus un rôle **`compta`** (D5) qui voit seulement les devis transmis et les bons pour facturation.
 
 ---
 
@@ -331,7 +333,7 @@ Ce que l'outil **ne fait pas** : envoyer quoi que ce soit au client, numéroter 
 - Aucun taux de TVA, aucune colonne HTVA, aucune ventilation : les documents portent la mention **« Prix TVA comprise »**.
 - Le prix est **copié dans le devis** au moment où la ligne est ajoutée : modifier le catalogue ne change pas un devis existant.
 - Une ligne peut avoir un **prix manuel** saisi par l'équipe dans le site (cas particulier, négociation) ; il est signalé « prix manuel » dans le devis et dans l'audit. ChatGPT ne peut pas en saisir.
-- Remises *(à valider)* : ligne de remise en montant TVAC négatif, saisie uniquement par l'équipe.
+- **Pas de remise ni d'acompte** (D4) : aucune ligne négative, aucun montant à payer d'avance.
 
 ### 12.2 Du formulaire au devis
 - Générer le devis depuis la fiche : formule repas × couverts, ou plats × quantités ; formule boissons × couverts ; suppléments ; location/privatisation.
@@ -343,14 +345,11 @@ Deux documents seulement partent vers la compta :
 1. **Devis transmis** → la compta l'envoie au client.
 2. **Bon pour facturation** après l'événement → la compta établit la facture.
 
-Canal de transmission *(à choisir, §16)* :
-- **A.** La compta a un **compte « compta »** dans l'outil : elle voit la liste « À envoyer » / « À facturer », télécharge les PDF, et marque « envoyé au client » ou « facturé ».
-- **B.** L'outil crée un **brouillon Gmail** adressé à la compta avec le PDF en pièce jointe ; quelqu'un de l'équipe le relit et l'envoie.
-- **C.** Export (PDF + CSV) déposé dans un dossier partagé.
+Canal de transmission (D5) : la compta a un **compte « compta »** dans l'outil. Elle voit la liste « À envoyer » (devis) et « À facturer » (bons), télécharge les PDF, et marque « envoyé au client » ou « facturé ». Aucun email n'est envoyé par l'outil.
 
-Contenu de chaque transmission : PDF, coordonnées de facturation du client, n° TVA et référence PO éventuels, conditions de paiement, acompte, remarques pour la compta.
+Contenu de chaque transmission : PDF, coordonnées de facturation du client, n° TVA et référence PO éventuels, conditions de paiement, remarques pour la compta.
 
-### 12.4 Statuts côté compta (si option A)
+### 12.4 Statuts côté compta
 - Devis : `transmis` → `envoyé au client` (par la compta) → `accepté` / `refusé`.
 - Bon pour facturation : `transmis` → `facturé` (la compta peut noter son n° de facture, pour retrouver le lien).
 
@@ -364,7 +363,7 @@ Contenu de chaque transmission : PDF, coordonnées de facturation du client, n°
 3. **Fiches** : liste/agenda, formulaire (règles validées par le serveur), PDF salle/cuisine/jour.
 4. **Devis** : générer depuis une fiche, ajuster, valider, transmettre, nouvelle version.
 5. **Bons pour facturation** : saisir le réel après l'événement, valider, transmettre.
-6. **Espace compta** (si option A) : « À envoyer », « À facturer », historique.
+6. **Espace compta** : « À envoyer », « À facturer », historique.
 7. **Catalogue** : produits, prix TVAC, unités, allergènes, formules.
 8. **Paramètres** : identité du restaurant (nom, adresse, logo, coordonnées compta), mentions par défaut des devis, validité par défaut, allergènes, utilisateurs, connexions ChatGPT et Gmail.
 9. **Journal** : qui a fait quoi (y compris ChatGPT).
@@ -372,7 +371,7 @@ Contenu de chaque transmission : PDF, coordonnées de facturation du client, n°
 ### 13.2 PDF
 Un seul moteur de gabarits avec composants partagés (ReportLab réorganisé, ou HTML → PDF avec WeasyPrint) :
 - **Fiche salle**, **fiche cuisine** (+ page dessert), **récapitulatif du jour** : contenu actuel conservé.
-- **Devis** : logo, coordonnées du restaurant, client, référence et version, date et validité, détail de l'événement (date, heure, couverts), lignes (libellé, quantité, prix unitaire TVAC, total), **total TVAC**, acompte, « Prix TVA comprise », remarques, conditions.
+- **Devis** : logo, coordonnées du restaurant, client, référence et version, date et validité, détail de l'événement (date, heure, couverts), lignes (libellé, quantité, prix unitaire TVAC, total), **total TVAC**, « Prix TVA comprise », remarques, conditions.
 - **Bon pour facturation** : mêmes informations + réel servi + écart avec le devis + référence du devis.
 - Tout texte utilisateur échappé (corrige §8 n° 10) ; noms de fichiers nettoyés (§8 n° 11).
 - PDF de devis et de bons **stockés** à la transmission (stockage objet ou base).
@@ -402,7 +401,7 @@ OAuth 2.1 + PKCE avec le compte du site ; codes et états en base ; jetons révo
 | `devis:preparer` | créer/modifier des devis et bons **en brouillon** |
 | `gmail:lire` | lire les emails clients pour remplir les fiches |
 
-**Jamais accordé à ChatGPT** : valider ou transmettre un devis ou un bon à la compta, saisir un prix manuel ou une remise, modifier le catalogue, supprimer quoi que ce soit, passer une fiche en `finale`, envoyer un email (même un brouillon au client : c'est la compta qui écrit au client).
+**Jamais accordé à ChatGPT** : valider ou transmettre un devis ou un bon à la compta, saisir un prix manuel, modifier le catalogue, supprimer quoi que ce soit, passer une fiche en `finale`, envoyer un email (même un brouillon au client : c'est la compta qui écrit au client).
 
 ### 14.4 Garde-fous côté serveur
 1. Même validation que le site (module de règles unique).
@@ -428,7 +427,7 @@ Détail des outils et consignes : [`REGLES_CHATGPT.md`](./REGLES_CHATGPT.md).
 | 2. Clients + catalogue | Modèles, écrans, import des clients depuis `billinginfo`, saisie des prix TVAC | Clients réutilisables, catalogue chiffré |
 | 3. Fiches | Règles §5 dans `domain/`, écrans, PDF salle/cuisine/jour, migration des réservations | Parité avec l'actuel |
 | 4. Devis | Génération depuis la fiche, versions, PDF, validation, transmission | Devis TVAC prêts pour la compta |
-| 5. Bons pour facturation | Saisie du réel, écart avec le devis, PDF, transmission ; espace compta si option A | Boucle complète jusqu'à la compta |
+| 5. Bons pour facturation | Saisie du réel, écart avec le devis, PDF, transmission ; espace compta | Boucle complète jusqu'à la compta |
 | 6. ChatGPT | Serveur MCP (scopes, confirmations, audit), consignes, tests de scénarios | ChatGPT opérationnel et encadré |
 | 7. Bascule | Migration des données de production, double fonctionnement, arrêt de l'ancien | Ancien site retiré |
 
@@ -442,17 +441,15 @@ Migration des données existantes :
 
 ## 16. Questions encore ouvertes
 
-Réglées : ~~émission des factures~~ (D1), ~~envoi aux clients~~ (D2), ~~TVA~~ (D3).
+Réglées : ~~émission des factures~~ (D1), ~~envoi aux clients~~ (D2), ~~TVA~~ (D3), ~~remises et acomptes~~ (D4), ~~canal de transmission à la compta~~ (D5).
 
 1. **Périmètre** : que deviennent le plan de salle, le Rooftop, les plaintes, les commandes de boissons/fournisseurs et les notes ? (supprimés, laissés dans l'ancien site, ou intégrés plus tard)
-2. **Transmission à la compta** : option A (compte compta dans l'outil), B (brouillon Gmail vers la compta) ou C (dossier partagé) ? Adresse email de la compta ?
-3. **Grille de prix TVAC** : prix par personne de chaque formule repas et boissons, prix des suppléments, de la privatisation, du Rooftop ?
-4. **Acompte** : en pourcentage ou en montant ? Fixe ou au cas par cas ?
-5. **Remises et prix manuels** : autorisés ? Par qui ?
-6. **Validité d'un devis** : combien de jours par défaut ?
-7. **Acceptation du devis** : qui l'indique dans l'outil (la compta ou l'équipe) ?
-8. **Statuts de fiche** : garder Brouillon/Confirmée/Imprimée, ou passer à Brouillon/Confirmée/Finale/Réalisée/Annulée ?
-9. **Règle « au moins un plat ou une formule »** : dès la création, ou seulement pour confirmer ?
-10. **ChatGPT** : utilisé par les admins seulement, ou aussi par le personnel ? Peut-il préparer des devis, ou seulement des fiches ?
-11. **Langues** des devis : FR seulement, ou aussi NL/EN ?
-12. **Zenchef** : garder la synchronisation des groupes > 10 personnes ? Créer automatiquement le client ?
+2. **Grille de prix TVAC** : prix par personne de chaque formule repas et boissons, prix des suppléments, de la privatisation, du Rooftop ?
+3. **Prix manuels** : l'équipe peut-elle saisir un prix différent du catalogue sur une ligne (cas particulier), ou jamais ?
+4. **Validité d'un devis** : combien de jours par défaut ?
+5. **Acceptation du devis** : qui l'indique dans l'outil (la compta ou l'équipe) ?
+6. **Statuts de fiche** : garder Brouillon/Confirmée/Imprimée, ou passer à Brouillon/Confirmée/Finale/Réalisée/Annulée ?
+7. **Règle « au moins un plat ou une formule »** : dès la création, ou seulement pour confirmer ?
+8. **ChatGPT** : utilisé par les admins seulement, ou aussi par le personnel ? Peut-il préparer des devis, ou seulement des fiches ?
+9. **Langues** des devis : FR seulement, ou aussi NL/EN ?
+10. **Zenchef** : garder la synchronisation des groupes > 10 personnes ? Créer automatiquement le client ?
