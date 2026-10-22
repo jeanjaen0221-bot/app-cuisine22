@@ -291,7 +291,7 @@ Ce que l'outil **ne fait pas** : envoyer quoi que ce soit au client, numéroter 
 
 **Fiche** (`fiche`) — remplace `reservation`
 - client (obligatoire), contact sur place, téléphone sur place
-- date, heure d'arrivée, couverts, espace (salle, City, Rooftop… *liste à valider*)
+- date, heure d'arrivée, couverts, espace (`salle`, `City` — espace à part —, `Rooftop`)
 - **privatisation** : `aucune` | `semi-privatisation` | `privatisation complète` (prix au forfait, menu « Prix »)
 - formule boissons, formule repas (listes actuelles + `Sharing`)
 - allergènes (liste de clés), **notes salle** et **notes cuisine** séparées
@@ -343,7 +343,8 @@ Ce que l'outil **ne fait pas** : envoyer quoi que ce soit au client, numéroter 
 ### 12.2 Du formulaire au devis
 - Générer le devis depuis la fiche :
   - **formule repas × couverts**. Si la fiche liste des plats (la formule est alors vidée, règle « les plats prévalent »), le serveur **déduit la formule** des types de plats, comme le fait déjà le PDF actuel (`_deduce_formula`) : entrée + plat + dessert → `3 services` ; entrée + plat ou plat + dessert → `2 services` ; plat seul → `1 service`. Les plats choisis servent à la cuisine, le prix vient de la formule ;
-  - formule `À la carte` : **chaque plat × sa quantité × son prix de la carte** (pas de prix par personne). **Ajustement de la règle « les plats prévalent »** : elle ne vide plus que les formules `1/2/3 services` ; `À la carte` et `Sharing` restent sur la fiche à côté des plats ;
+  - formule `À la carte` : **chaque plat × sa quantité × son prix de la carte** (pas de prix par personne). **Ajustement de la règle « les plats prévalent »** : elle ne vide plus que les formules `1/2/3 services` ; `À la carte` reste sur la fiche à côté des plats ;
+  - formule `Sharing` : **prix par personne, sans plats listés** sur la fiche (comme `Brunch`, seuls des suppléments sont permis) ;
   - **formule boissons × couverts**, en deux lignes quand elle comprend une coupe (ex. « Formule avec alcool » + « Coupe de cava ») ;
   - **suppléments** × quantité (planche apéro par personne, coupes…) ;
   - **privatisation** au forfait selon le choix de la fiche : semi-privatisation ou privatisation complète de l'espace.
@@ -542,15 +543,14 @@ Migration des données existantes :
 
 ## 16. Questions encore ouvertes
 
-Réglées : ~~émission des factures~~ (D1), ~~envoi aux clients~~ (D2), ~~TVA~~ (D3), ~~remises et acomptes~~ (D4), ~~canal de transmission à la compta~~ (D5), ~~périmètre~~ (D6), ~~grille de prix~~ (D7), ~~gestion des prix et formules~~ (D8).
+Réglées : ~~émission des factures~~ (D1), ~~envoi aux clients~~ (D2), ~~TVA~~ (D3), ~~remises et acomptes~~ (D4), ~~canal de transmission à la compta~~ (D5), ~~périmètre~~ (D6), ~~grille de prix~~ (D7), ~~gestion des prix et formules~~ (D8), ~~City = espace à part~~, ~~Sharing sans plats listés~~.
 
-1. **Sharing** : les plats à partager sont-ils listés sur la fiche (formule gardée à côté des plats, comme À la carte) ?
-2. **Privatisation** : deux formules, semi-privatisation et privatisation complète. Les 600 € de « City » correspondent à laquelle ? « City » est-il un espace (et lesquels d'autre : Rooftop, salle…) ?
-3. **Prix manuels** : en plus du menu « Prix », l'équipe peut-elle changer le prix d'une seule ligne sur un devis précis (cas particulier), ou jamais ?
-4. **Validité d'un devis** : combien de jours par défaut ?
-5. **Acceptation du devis** : qui l'indique dans l'outil (la compta ou l'équipe) ?
-6. **Statuts de fiche** : garder Brouillon/Confirmée/Imprimée, ou passer à Brouillon/Confirmée/Finale/Réalisée/Annulée ?
-7. **Règle « au moins un plat ou une formule »** : dès la création, ou seulement pour confirmer ?
-8. **ChatGPT** : utilisé par les admins seulement, ou aussi par le personnel ? Peut-il préparer des devis, ou seulement des fiches ?
-9. **Langues** des devis : FR seulement, ou aussi NL/EN ?
-10. **Zenchef** : garder le seuil actuel (groupes de plus de 10 personnes) pour l’import automatique ?
+1. **Privatisation** : deux formules, semi-privatisation et privatisation complète. Les 600 € de l'espace City correspondent à laquelle ? Prix des deux formules pour la salle et le Rooftop ?
+2. **Prix manuels** : en plus du menu « Prix », l'équipe peut-elle changer le prix d'une seule ligne sur un devis précis (cas particulier), ou jamais ?
+3. **Validité d'un devis** : combien de jours par défaut ?
+4. **Acceptation du devis** : qui l'indique dans l'outil (la compta ou l'équipe) ?
+5. **Statuts de fiche** : garder Brouillon/Confirmée/Imprimée, ou passer à Brouillon/Confirmée/Finale/Réalisée/Annulée ?
+6. **Règle « au moins un plat ou une formule »** : dès la création, ou seulement pour confirmer ?
+7. **ChatGPT** : utilisé par les admins seulement, ou aussi par le personnel ? Peut-il préparer des devis, ou seulement des fiches ?
+8. **Langues** des devis : FR seulement, ou aussi NL/EN ?
+9. **Zenchef** : garder le seuil actuel (groupes de plus de 10 personnes) pour l’import automatique ?

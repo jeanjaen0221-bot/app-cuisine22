@@ -52,7 +52,7 @@ ChatGPT lit ces listes avec l'outil `references_lister` au lieu de les deviner :
 
 **Formule repas** 🔒 : vide, `1 service`, `2 services`, `3 services`, `Sharing`, `À la carte`, `Brunch`.
 
-**Espaces** *(à valider)* : `salle`, `City`, `Rooftop`.
+**Espaces** 🔒 : `salle`, `City` (espace à part), `Rooftop`.
 
 **Privatisation** 🔒 : `aucune` (défaut), `semi-privatisation`, `privatisation complète`. Ne jamais la supposer : seulement si le client ou l'utilisateur la demande.
 
@@ -114,7 +114,8 @@ Formules boissons « + cava » / « + champ » = formule de base + coupe, en deu
 1. Une fiche est **toujours rattachée à un client** 🔒.
 2. Obligatoires : client, **date**, **heure d'arrivée**, **couverts** (1 à 500) 🔒. Si une information manque, **la demander** ; ne jamais supposer « aujourd'hui », « 19:30 » ou « 2 couverts ».
 3. Une fiche créée par ChatGPT commence **toujours** en `brouillon` 🔒. `finale` et `réalisée` sont réservées à l'équipe 🔒.
-4. **Les plats prévalent sur la formule** : s'il y a au moins une entrée, un plat ou un dessert, une formule `1/2/3 services` est vidée (le devis la retrouve à partir des plats) 🔒. **Exception : `À la carte` et `Sharing` sont gardées avec les plats**, car les plats y servent au calcul ou au partage *(Sharing à confirmer)* 🔒.
+4. **Les plats prévalent sur la formule** : s'il y a au moins une entrée, un plat ou un dessert, une formule `1/2/3 services` est vidée (le devis la retrouve à partir des plats) 🔒. **Exception : `À la carte` est gardée avec les plats**, car chaque plat y est compté à son prix 🔒.
+4 bis. **Sharing** : prix par personne, **sans entrée/plat/dessert listés** ; seuls des suppléments sont permis (comme Brunch) 🔒.
 5. **Total par type ≤ couverts** 🔒.
 6. **Brunch = buffet** : aucune entrée/plat/dessert ; les extras (Privatisation, Champagne, Planche apéro…) sont des `supplément` 🔒.
 7. **Au moins un plat ou une formule** : exigé pour passer en `confirmée` ; un brouillon peut rester incomplet *(à valider)* 🔒.
@@ -242,6 +243,7 @@ Chaque scénario est vérifié par un test serveur, indépendamment du comportem
 | 12 bis | Fiche de 10 couverts avec entrées, plats et desserts (formule vide) | Devis facturé `3 services` : 10 × 40,00 = `400,00 €` |
 | 12 ter | Fiche `1 service`, 15 couverts | 15 × 28,00 = `420,00 €` |
 | 12 quater | Fiche `À la carte` : 4 « Carpaccio » sans prix au menu « Prix » | Devis en brouillon, alerte `prix_manquant` sur Carpaccio ; ChatGPT renvoie vers le menu « Prix » |
+| 12 sexies | Fiche `Sharing` 12 couverts + 1 plat | Refus `regle_metier` : Sharing sans plats listés ; 12 × 32,00 = `384,00 €` sans le plat |
 | 12 quinquies | Brunch 30 couverts + planche apéro | 30 × 36,00 + 30 × prix TVAC de la planche ; aucune entrée/plat/dessert |
 | 13 | Devis avec un plat hors catalogue | Devis créé en brouillon, `manques: prix_manquant` signalé |
 | 14 | « Envoie le devis au client » | Explication : validation et transmission à la compta dans l'outil, la compta l'envoie |
@@ -284,7 +286,8 @@ REMPLIR UNE FICHE
 - Lis d'abord les listes avec references_lister. Utilise exactement ces valeurs.
 - Formule boissons : une valeur de la liste, « sans alcool » par défaut.
 - Plats : cherche-les avec catalogue_rechercher et reprends le nom exact. Un plat hors catalogue seulement si l'utilisateur le demande tel quel.
-- S'il y a des plats et que ce n'est ni « À la carte » ni « Sharing », laisse la formule repas vide (les plats prévalent). Sinon choisis une formule de references_lister (1 service, 2 services, 3 services, Sharing, À la carte, Brunch).
+- Sharing et Brunch : pas d'entrée, de plat ni de dessert sur la fiche, seulement des suppléments.
+- S'il y a des plats et que ce n'est pas « À la carte », laisse la formule repas vide (les plats prévalent). Sinon choisis une formule de references_lister (1 service, 2 services, 3 services, Sharing, À la carte, Brunch).
 - Total des entrées, des plats et des desserts : chacun ≤ nombre de couverts.
 - Brunch = buffet : pas d'entrée, de plat ni de dessert ; les extras (Privatisation, Champagne, Planche apéro…) sont des suppléments.
 - Pour une seule ligne, utilise fiche_ligne_ajouter ou fiche_ligne_retirer.
