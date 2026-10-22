@@ -18,6 +18,8 @@ Document compagnon : [`REGLES_CHATGPT.md`](./REGLES_CHATGPT.md) (règles et cont
 | D3 | **On ne gère pas la TVA : tous les prix sont TVA comprise (TVAC).** | Le catalogue, les devis et les récapitulatifs ne contiennent que des montants TVAC. Aucun taux, aucune ventilation HTVA/TVA. La ventilation éventuelle est faite par la comptabilité. |
 | D4 | **Pas de remise, pas d'acompte.** | Aucune ligne de remise, aucun acompte sur les devis ni sur les bons pour facturation. Le prix est celui du catalogue. |
 | D5 | **La compta a son propre compte dans l'outil** (option A). | Rôle `compta` avec deux listes : « À envoyer » (devis) et « À facturer » (bons pour facturation). Aucun email n'est envoyé par l'outil. |
+| D6 | **On garde tous les modules** (plan de salle, Rooftop, plaintes, commandes de boissons, fournisseurs, notes) et on les améliore. | Ils font partie de la nouvelle version, branchés sur les mêmes clients et fiches (§13.4). |
+| D7 | **Grille de prix fournie** (§12.3). | Le catalogue initial est connu ; quelques prix restent à préciser (§16). |
 
 ---
 
@@ -245,7 +247,7 @@ C'est déjà, dans l'esprit, un **document de transmission à la comptabilité**
 | `billinginfo` par réservation | **Remplacer** par la fiche Client | |
 | Feuille de facturation interne | **Remplacer** par **devis TVAC** + **bon pour facturation TVAC** | D1, D2, D3 |
 | Catalogue sans prix | **Refaire** avec prix TVAC | D3 |
-| Plan de salle, Rooftop, plaintes, boissons/achats, notes | **Hors périmètre** (à décider §16) | Sans lien avec fiches/devis |
+| Plan de salle, Rooftop, plaintes, boissons/achats, fournisseurs, notes | **Garder et améliorer** (D6, §13.4) | Utilisés au quotidien ; à rebrancher sur les clients et les fiches |
 | Migrations maison, suppression auto des doublons | **Jeter** → Alembic | Risque de perte de données |
 
 ---
@@ -288,8 +290,8 @@ Ce que l'outil **ne fait pas** : envoyer quoi que ce soit au client, numéroter 
 
 **Fiche** (`fiche`) — remplace `reservation`
 - client (obligatoire), contact sur place, téléphone sur place
-- date, heure d'arrivée, couverts, espace (salle, Rooftop, privatisation… *à valider*)
-- formule boissons, formule repas (listes actuelles)
+- date, heure d'arrivée, couverts, espace (salle, City, Rooftop… *liste à valider*)
+- formule boissons, formule repas (listes actuelles + `Sharing`)
 - allergènes (liste de clés), **notes salle** et **notes cuisine** séparées
 - statut : `brouillon` → `confirmée` → `finale` → `réalisée` | `annulée` *(à valider)*
 - `version` (verrou optimiste), date du dernier PDF imprimé
@@ -334,13 +336,52 @@ Ce que l'outil **ne fait pas** : envoyer quoi que ce soit au client, numéroter 
 - Le prix est **copié dans le devis** au moment où la ligne est ajoutée : modifier le catalogue ne change pas un devis existant.
 - Une ligne peut avoir un **prix manuel** saisi par l'équipe dans le site (cas particulier, négociation) ; il est signalé « prix manuel » dans le devis et dans l'audit. ChatGPT ne peut pas en saisir.
 - **Pas de remise ni d'acompte** (D4) : aucune ligne négative, aucun montant à payer d'avance.
+- Si un produit est donné **hors TVA** (cas de la planche apéro, §12.3), il est converti **une seule fois** en TVAC à son entrée dans le catalogue ; tous les documents restent en TVAC.
 
 ### 12.2 Du formulaire au devis
-- Générer le devis depuis la fiche : formule repas × couverts, ou plats × quantités ; formule boissons × couverts ; suppléments ; location/privatisation.
+- Générer le devis depuis la fiche :
+  - **formule repas × couverts**. Si la fiche liste des plats (la formule est alors vidée, règle « les plats prévalent »), le serveur **déduit la formule** des types de plats, comme le fait déjà le PDF actuel (`_deduce_formula`) : entrée + plat + dessert → `3 services` ; entrée + plat ou plat + dessert → `2 services` ; plat seul → `1 service`. Les plats choisis servent à la cuisine, le prix vient de la formule ;
+  - **formule boissons × couverts**, en deux lignes quand elle comprend une coupe (ex. « Formule avec alcool » + « Coupe de cava ») ;
+  - **suppléments** × quantité (planche apéro par personne, coupes…) ;
+  - **privatisation** au forfait.
 - Une fiche modifiée après la transmission de son devis affiche **« Devis à mettre à jour »** (écart couverts, plats, formules).
 - Un devis transmis ne se modifie plus : on crée une **nouvelle version** (l'ancienne passe en `remplacé`).
 
-### 12.3 Transmission à la comptabilité (D2)
+### 12.3 Grille de prix initiale (D7)
+
+Prix fournis le 22/10/2026, **TVA comprise** sauf mention contraire.
+
+| Produit | Type | Unité | Prix TVAC |
+|---|---|---|---|
+| 2 services | formule repas | par personne | 32,00 € |
+| 3 services | formule repas | par personne | 40,00 € |
+| Sharing | formule repas | par personne | 32,00 € |
+| Formule avec alcool | formule boissons | par personne | 20,00 € |
+| Formule sans alcool | formule boissons | par personne | 10,00 € |
+| Coupe de cava | supplément / complément de formule | par personne | 6,00 € |
+| Coupe de champagne | supplément / complément de formule | par personne | 11,00 € |
+| Privatisation City | location | forfait | 600,00 € |
+| Planche apéro | supplément | par personne | **3,85 € HTVA** → à convertir (§16) |
+
+Formules boissons de la fiche → lignes du devis (lecture proposée, **à confirmer**) :
+
+| Formule boissons (fiche) | Lignes du devis | Total par personne |
+|---|---|---|
+| `sans alcool` | Formule sans alcool | 10,00 € |
+| `avec alcool` | Formule avec alcool | 20,00 € |
+| `sans alcool + cava` | Formule sans alcool + Coupe de cava | 16,00 € |
+| `avec alcool + cava` | Formule avec alcool + Coupe de cava | 26,00 € |
+| `sans alcool + champ` | Formule sans alcool + Coupe de champagne | 21,00 € |
+| `avec alcool + champ` | Formule avec alcool + Coupe de champagne | 31,00 € |
+| `à la carte` | aucune ligne au devis ; consommations au bon pour facturation | — |
+| `sans Formule` | aucune ligne | — |
+
+Exemple : 20 couverts, 3 services, formule `avec alcool + cava`, privatisation City
+= 20 × 40,00 + 20 × 20,00 + 20 × 6,00 + 600,00 = **1 920,00 € TVA comprise**.
+
+Prix encore inconnus : `1 service`, `Brunch`, `À la carte` (repas), autres espaces (Rooftop, salle entière…), autres suppléments de la bibliothèque actuelle (§16).
+
+### 12.4 Transmission à la comptabilité (D2)
 Deux documents seulement partent vers la compta :
 1. **Devis transmis** → la compta l'envoie au client.
 2. **Bon pour facturation** après l'événement → la compta établit la facture.
@@ -349,7 +390,7 @@ Canal de transmission (D5) : la compta a un **compte « compta »** dans l'outil
 
 Contenu de chaque transmission : PDF, coordonnées de facturation du client, n° TVA et référence PO éventuels, conditions de paiement, remarques pour la compta.
 
-### 12.4 Statuts côté compta
+### 12.5 Statuts côté compta
 - Devis : `transmis` → `envoyé au client` (par la compta) → `accepté` / `refusé`.
 - Bon pour facturation : `transmis` → `facturé` (la compta peut noter son n° de facture, pour retrouver le lien).
 
@@ -367,6 +408,7 @@ Contenu de chaque transmission : PDF, coordonnées de facturation du client, n°
 7. **Catalogue** : produits, prix TVAC, unités, allergènes, formules.
 8. **Paramètres** : identité du restaurant (nom, adresse, logo, coordonnées compta), mentions par défaut des devis, validité par défaut, allergènes, utilisateurs, connexions ChatGPT et Gmail.
 9. **Journal** : qui a fait quoi (y compris ChatGPT).
+10. **Modules conservés** (§13.4) : Salle, Rooftop, Plaintes, Commandes/Achats, Fournisseurs, Notes.
 
 ### 13.2 PDF
 Un seul moteur de gabarits avec composants partagés (ReportLab réorganisé, ou HTML → PDF avec WeasyPrint) :
@@ -385,6 +427,32 @@ Un seul moteur de gabarits avec composants partagés (ReportLab réorganisé, ou
 
 ---
 
+### 13.4 Modules conservés (D6)
+
+Principe : chaque module garde ce qu'il fait aujourd'hui, mais **lit les mêmes clients et fiches** au lieu de sa propre copie, et passe par les mêmes règles, le même audit et le même moteur PDF.
+
+**Rooftop**
+- Aujourd'hui : planning hebdomadaire de réservations marquées `is_rooftop`, avec des statuts renommés (Option / Confirmée / Terminée), sans plats chargés dans la liste.
+- Cible : une fiche ordinaire avec `espace = Rooftop`. Le planning hebdomadaire devient une **vue agenda filtrée** ; les fiches Rooftop ont client, devis et bon pour facturation comme les autres. Mêmes statuts que les fiches (« Option » peut rester le libellé affiché pour `brouillon`).
+
+**Plan de salle**
+- Aujourd'hui : les réservations du service sont importées d'un PDF et stockées **à part** dans le plan (JSON), sans lien avec les fiches ; placement automatique ; PDF annoté ; `floorplan.py` fait 2 368 lignes avec un journal de débogage en mémoire.
+- Cible : le plan d'un service charge **les fiches du jour** (groupes) + l'import PDF/Zenchef pour les petites tables ; la table affectée à une fiche s'affiche sur la fiche salle. Le code est découpé (géométrie, placement automatique, PDF, API), le placement automatique est couvert par des tests (le script `test_auto_assign.py` existe déjà à la racine), et le journal de débogage est remplacé par des logs normaux.
+
+**Plaintes**
+- Aujourd'hui : rapport d'incident + remplissage par IA via une clé OpenAI/Groq sur le serveur ; PDF.
+- Cible : rapport **rattaché au client et à la fiche** concernés ; remplissage proposé par **ChatGPT via le connecteur** (outil `plainte_preparer`, en brouillon), ce qui permet de retirer la clé OpenAI/Groq du serveur ; PDF avec texte échappé ; statut `ouverte` / `traitée`.
+
+**Commandes de boissons, achats, fournisseurs**
+- Aujourd'hui : boissons, stock min/max, calcul de réassort, bons de commande, export CSV, prix d'achat par fournisseur.
+- Cible : même fonctionnement, plus un bon de commande en PDF, des statuts `brouillon` → `envoyé` → `reçu` et un historique par fournisseur. Les prix d'achat restent **séparés** des prix de vente du catalogue. ChatGPT peut **préparer** un bon de commande en brouillon (`achat_preparer`) ; l'envoi au fournisseur reste humain.
+
+**Notes (post-it)**
+- Gardées telles quelles, avec auteur et date.
+
+**Zenchef**
+- Synchronisation conservée ; une réservation importée cherche ou crée le client correspondant et prend la formule boissons exactement dans la liste (corrige `Sans alcool`, §8 n° 15).
+
 ## 14. Cible : l'accès ChatGPT
 
 ### 14.1 Canal
@@ -400,6 +468,9 @@ OAuth 2.1 + PKCE avec le compte du site ; codes et états en base ; jetons révo
 | `fiches:ecrire` | créer/modifier clients et fiches (hors fiches finales) |
 | `devis:preparer` | créer/modifier des devis et bons **en brouillon** |
 | `gmail:lire` | lire les emails clients pour remplir les fiches |
+| `plaintes:preparer` | rédiger un rapport de plainte en brouillon |
+| `achats:preparer` | préparer un bon de commande fournisseur en brouillon |
+| `salle:lire` | lire le plan de salle d'un service (tables affectées) |
 
 **Jamais accordé à ChatGPT** : valider ou transmettre un devis ou un bon à la compta, saisir un prix manuel, modifier le catalogue, supprimer quoi que ce soit, passer une fiche en `finale`, envoyer un email (même un brouillon au client : c'est la compta qui écrit au client).
 
@@ -422,34 +493,38 @@ Détail des outils et consignes : [`REGLES_CHATGPT.md`](./REGLES_CHATGPT.md).
 
 | Étape | Contenu | Résultat |
 |---|---|---|
-| 0. Décisions | Répondre aux questions §16 ; valider les règles §5 ; établir la grille de prix TVAC | Spécification figée |
+| 0. Décisions | Répondre aux questions §16 ; valider les règles §5 ; compléter la grille de prix §12.3 | Spécification figée |
 | 1. Socle | Nouveau squelette, Alembic, auth, audit, CI, un seul Dockerfile | Projet vide qui se déploie |
 | 2. Clients + catalogue | Modèles, écrans, import des clients depuis `billinginfo`, saisie des prix TVAC | Clients réutilisables, catalogue chiffré |
 | 3. Fiches | Règles §5 dans `domain/`, écrans, PDF salle/cuisine/jour, migration des réservations | Parité avec l'actuel |
 | 4. Devis | Génération depuis la fiche, versions, PDF, validation, transmission | Devis TVAC prêts pour la compta |
 | 5. Bons pour facturation | Saisie du réel, écart avec le devis, PDF, transmission ; espace compta | Boucle complète jusqu'à la compta |
+| 5 bis. Modules conservés | Rooftop dans les fiches, plan de salle branché sur les fiches, plaintes, achats, notes, Zenchef (§13.4) | Tous les modules dans la nouvelle version |
 | 6. ChatGPT | Serveur MCP (scopes, confirmations, audit), consignes, tests de scénarios | ChatGPT opérationnel et encadré |
 | 7. Bascule | Migration des données de production, double fonctionnement, arrêt de l'ancien | Ancien site retiré |
 
 Migration des données existantes :
 - `billinginfo` → `client` (dédoublonnage par n° TVA, puis par nom de société normalisé) ; `reservation.client_name/company/contact` → rattachement au client.
 - `reservation` + `reservationitem` → `fiche` + `fiche_ligne`.
-- `menuitem` + `supplementpreset` → `produit` (prix TVAC à compléter avant la mise en service des devis).
+- `menuitem` + `supplementpreset` → `produit`, avec la grille §12.3 (prix manquants à compléter avant la mise en service des devis).
+- Réservations Rooftop → `fiche` avec `espace = Rooftop` ; plans de salle, plaintes, boissons, fournisseurs, bons de commande et notes repris tels quels.
 - Les anciennes feuilles de facturation ne sont pas reprises comme devis (pas de montants).
 
 ---
 
 ## 16. Questions encore ouvertes
 
-Réglées : ~~émission des factures~~ (D1), ~~envoi aux clients~~ (D2), ~~TVA~~ (D3), ~~remises et acomptes~~ (D4), ~~canal de transmission à la compta~~ (D5).
+Réglées : ~~émission des factures~~ (D1), ~~envoi aux clients~~ (D2), ~~TVA~~ (D3), ~~remises et acomptes~~ (D4), ~~canal de transmission à la compta~~ (D5), ~~périmètre~~ (D6), ~~grille de prix principale~~ (D7).
 
-1. **Périmètre** : que deviennent le plan de salle, le Rooftop, les plaintes, les commandes de boissons/fournisseurs et les notes ? (supprimés, laissés dans l'ancien site, ou intégrés plus tard)
-2. **Grille de prix TVAC** : prix par personne de chaque formule repas et boissons, prix des suppléments, de la privatisation, du Rooftop ?
-3. **Prix manuels** : l'équipe peut-elle saisir un prix différent du catalogue sur une ligne (cas particulier), ou jamais ?
-4. **Validité d'un devis** : combien de jours par défaut ?
-5. **Acceptation du devis** : qui l'indique dans l'outil (la compta ou l'équipe) ?
-6. **Statuts de fiche** : garder Brouillon/Confirmée/Imprimée, ou passer à Brouillon/Confirmée/Finale/Réalisée/Annulée ?
-7. **Règle « au moins un plat ou une formule »** : dès la création, ou seulement pour confirmer ?
-8. **ChatGPT** : utilisé par les admins seulement, ou aussi par le personnel ? Peut-il préparer des devis, ou seulement des fiches ?
-9. **Langues** des devis : FR seulement, ou aussi NL/EN ?
-10. **Zenchef** : garder la synchronisation des groupes > 10 personnes ? Créer automatiquement le client ?
+1. **Planche apéro** : 3,85 € **HTVA** par personne. Quel prix TVA comprise afficher ? (à 12 % : 4,31 € ; à 21 % : 4,66 €)
+2. **Prix manquants** : `1 service`, `Brunch`, `À la carte` (repas) ; privatisation des autres espaces (Rooftop, salle entière…) ; autres suppléments.
+3. **Formules boissons + coupe** : la lecture du tableau §12.3 est-elle juste (ex. `avec alcool + cava` = 20 € + 6 € = 26 €/p) ?
+4. **« City »** : est-ce le nom d'un espace ? Quels autres espaces proposer sur une fiche ?
+5. **Prix manuels** : l'équipe peut-elle saisir un prix différent du catalogue sur une ligne (cas particulier), ou jamais ?
+6. **Validité d'un devis** : combien de jours par défaut ?
+7. **Acceptation du devis** : qui l'indique dans l'outil (la compta ou l'équipe) ?
+8. **Statuts de fiche** : garder Brouillon/Confirmée/Imprimée, ou passer à Brouillon/Confirmée/Finale/Réalisée/Annulée ?
+9. **Règle « au moins un plat ou une formule »** : dès la création, ou seulement pour confirmer ?
+10. **ChatGPT** : utilisé par les admins seulement, ou aussi par le personnel ? Peut-il préparer des devis, ou seulement des fiches ?
+11. **Langues** des devis : FR seulement, ou aussi NL/EN ?
+12. **Zenchef** : garder le seuil actuel (groupes de plus de 10 personnes) pour l’import automatique ?
