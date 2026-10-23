@@ -41,6 +41,7 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from .database import session_context
 from .gpt_api import (
     GptFicheCreate,
+    GptBillingPatch,
     GptFichePatch,
     GptItem,
     DraftCreate,
@@ -61,7 +62,7 @@ from .gpt_api import (
     update_fiche,
     upsert_billing,
 )
-from .models import BillingInfoUpdate, Setting, User
+from .models import Setting, User
 from .security import ALGORITHM, JWT_SECRET, normalize_email, verify_password
 
 MCP_SCOPE = "albert"
@@ -460,6 +461,10 @@ def fiche_creer(
 def fiche_modifier(reservation_id: str, changes: dict[str, Any]) -> Any:
     """Modifier uniquement les champs demandés d'une fiche existante.
 
+    Champs permis dans changes : client_name, pax, service_date, arrival_time,
+    drink_formula, menu_formula, notes, allergens, on_invoice, status,
+    final_version, items (items REMPLACE toute la liste : pour un seul plat,
+    utiliser fiche_item_ajouter / fiche_item_retirer). Tout autre champ est refusé.
     status = réservation confirmée ('confirmed', preuve Gmail/Zenchef) ou 'draft'.
     final_version = fiche finalisée pour la cuisine (menus, quantités, infos validés).
     Les deux sont indépendants. La fiche est relue après écriture : si la réponse
@@ -499,15 +504,21 @@ def fiche_item_retirer(reservation_id: str, type: str, name: str) -> Any:
 @mcp_server.tool()
 def fiche_dupliquer(reservation_id: str) -> Any:
     """Dupliquer une fiche existante."""
-    with session_context() as session:
-        return _jsonable(duplicate_fiche(uuid.UUID(reservation_id), session))
+    def _run():
+        with session_context() as session:
+            return duplicate_fiche(uuid.UUID(reservation_id), session)
+
+    return _tool_write_result(_run)
 
 
 @mcp_server.tool()
 def fiche_supprimer(reservation_id: str) -> Any:
     """Supprimer une fiche. À appeler uniquement après demande explicite et confirmation."""
-    with session_context() as session:
-        return _jsonable(delete_fiche(uuid.UUID(reservation_id), session))
+    def _run():
+        with session_context() as session:
+            return delete_fiche(uuid.UUID(reservation_id), session)
+
+    return _tool_write_result(_run)
 
 
 @mcp_server.tool()
@@ -526,10 +537,18 @@ def facturation_lire(reservation_id: str) -> Any:
 
 @mcp_server.tool()
 def facturation_mettre_a_jour(reservation_id: str, changes: dict[str, Any]) -> Any:
-    """Créer ou mettre à jour la facturation. À la création, société/adresse/CP/ville sont obligatoires."""
-    payload = BillingInfoUpdate(**changes)
-    with session_context() as session:
-        return _jsonable(upsert_billing(uuid.UUID(reservation_id), payload, session))
+    """Créer ou mettre à jour la facturation. À la création, société/adresse/CP/ville sont obligatoires.
+
+    Champs permis : company_name, address_line1, address_line2, zip_code, city,
+    country, vat_number, po_reference, email, phone, payment_terms, notes.
+    Si la réponse contient ok=false, la mise à jour a échoué.
+    """
+    def _run():
+        payload = GptBillingPatch(**changes)
+        with session_context() as session:
+            return upsert_billing(uuid.UUID(reservation_id), payload, session)
+
+    return _tool_write_result(_run)
 
 
 @mcp_server.tool()
@@ -565,9 +584,12 @@ def gmail_creer_brouillon(
     to: str, subject: str, body: str, thread_id: Optional[str] = None
 ) -> Any:
     """Créer un brouillon Gmail, sans jamais envoyer le message."""
-    payload = DraftCreate(to=to, subject=subject, body=body, thread_id=thread_id)
-    with session_context() as session:
-        return _jsonable(create_gmail_draft(payload, session))
+    def _run():
+        payload = DraftCreate(to=to, subject=subject, body=body, thread_id=thread_id)
+        with session_context() as session:
+            return create_gmail_draft(payload, session)
+
+    return _tool_write_result(_run)
 
 
 

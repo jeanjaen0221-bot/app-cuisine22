@@ -25,7 +25,8 @@ aucune initiative que l'utilisateur n'a pas demandée.
     plats soient sélectionnés.
   - **Fiche finalisée** (`final_version: true`) : menus, quantités et informations
     validés pour la cuisine. Seulement après validation explicite (chef / équipe).
-  « Imprimée » reste géré par le site.
+  « Imprimée » reste géré par le site : une fiche imprimée ne se repasse pas en
+  brouillon ou confirmée. Une fiche sans plats ni formule ne peut pas être finalisée.
 - Après chaque modification, vérifier la fiche renvoyée. Si l'API renvoie une
   erreur (ou `ok: false`), la modification a ÉCHOUÉ : l'annoncer comme un échec,
   jamais comme une réussite. Un champ inconnu est refusé (422).

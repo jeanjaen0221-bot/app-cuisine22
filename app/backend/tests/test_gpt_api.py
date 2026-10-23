@@ -101,9 +101,10 @@ def test_dishes_win_over_formula(client):
     assert f["menu_formula"] == ""
 
 
-def test_empty_fiche_is_rejected(client):
-    r = client.post("/fiches", json=fiche(menu_formula=""), headers=AUTH)
-    assert r.status_code == 422
+def test_empty_draft_is_allowed_while_dishes_are_pending(client):
+    # Like the site: a draft may wait for the client's choices.
+    f = create(client, menu_formula="")
+    assert f["status"] == "draft" and f["items"] == [] and f["menu_formula"] == ""
 
 
 def test_brunch_rejects_dishes(client):
@@ -249,3 +250,35 @@ def test_menu_search_ignores_accents_and_word_order(client):
     assert [i["name"] for i in r.json()] == ["Carpaccio de boeuf"]
     r = client.get("/menu-items/search", params={"type": "Desserts"}, headers=AUTH)
     assert [i["name"] for i in r.json()] == ["Tiramisu"]
+
+
+def test_final_version_needs_dishes_or_formula(client):
+    r = client.post("/fiches", json=fiche(menu_formula="", final_version=True), headers=AUTH)
+    assert r.status_code == 422
+    fid = create(client, menu_formula="")["id"]
+    assert client.patch(f"/fiches/{fid}", json={"final_version": True}, headers=AUTH).status_code == 422
+    r = client.patch(f"/fiches/{fid}", json={"menu_formula": "3 services", "final_version": True}, headers=AUTH)
+    assert r.status_code == 200 and r.json()["final_version"] is True
+
+
+def test_printed_fiche_status_is_not_downgraded(client):
+    from app.backend.models import Reservation
+    import uuid as _uuid
+    fid = create(client)["id"]
+    with Session(engine) as s:
+        row = s.get(Reservation, _uuid.UUID(fid))
+        row.status = "printed"
+        s.add(row)
+        s.commit()
+    assert client.patch(f"/fiches/{fid}", json={"status": "confirmed"}, headers=AUTH).status_code == 409
+
+
+def test_billing_unknown_field_is_refused(client):
+    fid = create(client)["id"]
+    body = {"company_name": "ACME", "address_line1": "Rue 1", "zip_code": "1000", "city": "Bruxelles"}
+    r = client.put(f"/fiches/{fid}/billing", json={**body, "tva": "BE0123"}, headers=AUTH)
+    assert r.status_code == 422
+    r = client.put(f"/fiches/{fid}/billing", json=body, headers=AUTH)
+    assert r.status_code == 200 and r.json()["country"] == "Belgique"
+    r = client.put(f"/fiches/{fid}/billing", json={"vat_number": "BE0123"}, headers=AUTH)
+    assert r.status_code == 200 and r.json()["vat_number"] == "BE0123"

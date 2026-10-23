@@ -347,6 +347,12 @@ class GptFichePatch(_FicheFields):
     )
 
 
+class GptBillingPatch(BillingInfoUpdate):
+    """BillingInfoUpdate as the site sends it, but an unknown field is refused
+    instead of being dropped while the call reports success."""
+    model_config = ConfigDict(extra="forbid")
+
+
 # ===== Form rules re-created server-side =====
 
 def _allergen_keys(session: Session) -> dict:
@@ -529,6 +535,7 @@ def create_fiche(payload: GptFicheCreate, session: Session = Depends(get_session
     catalogue = _catalogue(session)
     items = [_canonical_item(i.model_dump(), catalogue) for i in payload.items]
     menu_formula = _apply_form_rules(payload.menu_formula, items)
+    _check_final_version(payload.final_version, menu_formula, items)
     data = ReservationCreateIn(
         client_name=payload.client_name,
         pax=payload.pax,
@@ -544,13 +551,29 @@ def create_fiche(payload: GptFicheCreate, session: Session = Depends(get_session
         items=_items_payload(items),
     )
     try:
-        return reservations_router.create_reservation(data, session)
+        created = reservations_router.create_reservation(data, session)
     except IntegrityError:
         session.rollback()
         raise HTTPException(
             409,
             "Une fiche existe déjà avec ce nom, cette date, cette heure et ce nombre de "
             "couverts. La modifier (PATCH) au lieu d'en créer une nouvelle.",
+        )
+    _verify_saved(
+        created.id,
+        {"status": payload.status, "final_version": payload.final_version, "menu_formula": menu_formula},
+        items,
+    )
+    return created
+
+
+def _check_final_version(final_version: Optional[bool], menu_formula: str, items: List[dict]) -> None:
+    if final_version and not menu_formula and not any(i["type"] in DISH_TYPES for i in items):
+        raise HTTPException(
+            422,
+            "final_version=true refusé : la fiche n'a ni plats ni formule. Une fiche "
+            "finalisée doit avoir ses menus et quantités validés pour la cuisine. Une "
+            "réservation confirmée sans plats se note avec status='confirmed' seul.",
         )
 
 
@@ -638,6 +661,12 @@ def update_fiche(reservation_id: uuid.UUID, payload: GptFichePatch, session: Ses
             raise HTTPException(422, f"{field} ne peut pas être vidé.")
     if "allergens" in update:
         update["allergens"] = _resolve_allergens(update["allergens"] or [], session)
+    if "status" in update and _comparable(res.status) == "printed" and update["status"] != "printed":
+        raise HTTPException(
+            409,
+            "La fiche est déjà « Imprimée » : son statut se gère dans le site. Ne pas la "
+            "repasser en brouillon ou confirmée.",
+        )
 
     expected_items = None
     if "items" in update or "menu_formula" in update:
@@ -666,6 +695,12 @@ def update_fiche(reservation_id: uuid.UUID, payload: GptFichePatch, session: Ses
             )
         update["menu_formula"] = stored_menu
 
+    if update.get("final_version"):
+        _check_final_version(
+            True,
+            update.get("menu_formula", res.menu_formula or ""),
+            expected_items if expected_items is not None else _stored_items(session, reservation_id),
+        )
     return _update(reservation_id, update, session, expected_items)
 
 
@@ -764,15 +799,28 @@ def get_billing(reservation_id: uuid.UUID, session: Session = Depends(get_sessio
         "('Belgique', 'Paiement à 30 jours'). Mise à jour : seuls les champs fournis changent."
     ),
 )
-def upsert_billing(reservation_id: uuid.UUID, payload: BillingInfoUpdate, session: Session = Depends(get_session)):
+def upsert_billing(reservation_id: uuid.UUID, payload: GptBillingPatch, session: Session = Depends(get_session)):
+    data = payload.model_dump(exclude_unset=True)
     if session.get(BillingInfo, reservation_id) is None:
         defaults = {"country": DEFAULT_COUNTRY, "payment_terms": DEFAULT_PAYMENT_TERMS}
-        data = payload.model_dump(exclude_unset=True)
         for field, value in defaults.items():
             if not data.get(field):
                 data[field] = value
-        payload = BillingInfoUpdate(**data)
-    return reservations_router.update_billing(reservation_id, payload, session)
+    result = reservations_router.update_billing(reservation_id, BillingInfoUpdate(**data), session)
+    with Session(engine) as fresh:
+        row = fresh.get(BillingInfo, reservation_id)
+        mismatches = {
+            k: {"demande": _comparable(v), "enregistre": _comparable(getattr(row, k, None))}
+            for k, v in data.items()
+            if row is None or _comparable(getattr(row, k, None)) != _comparable(v)
+        }
+    if mismatches:
+        raise HTTPException(500, {
+            "message": "Échec : la facturation n'a pas été enregistrée telle que demandée. "
+            "Ne pas annoncer de réussite.",
+            "champs_non_enregistres": mismatches,
+        })
+    return result
 
 
 @gpt_app.get(

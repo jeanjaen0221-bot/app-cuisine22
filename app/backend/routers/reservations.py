@@ -313,7 +313,8 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
         try:
             update_data["service_date"] = date.fromisoformat(update_data["service_date"][:10])
         except Exception:
-            del update_data["service_date"]
+            # Never drop a requested change and still answer 200.
+            raise HTTPException(422, "Invalid service_date")
     if isinstance(update_data.get("arrival_time"), str):
         try:
             t = update_data["arrival_time"]
@@ -321,7 +322,7 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
                 t = f"{t}:00"
             update_data["arrival_time"] = dtime.fromisoformat(t)
         except Exception:
-            del update_data["arrival_time"]
+            raise HTTPException(422, "Invalid arrival_time")
     # Sanitize/validate updates
     # str(None) is "None": always coalesce before converting, or the literal
     # word ends up stored and printed on the fiche.
