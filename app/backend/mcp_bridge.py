@@ -458,7 +458,13 @@ def fiche_creer(
 
 @mcp_server.tool()
 def fiche_modifier(reservation_id: str, changes: dict[str, Any]) -> Any:
-    """Modifier uniquement les champs demandés d'une fiche existante."""
+    """Modifier uniquement les champs demandés d'une fiche existante.
+
+    status = réservation confirmée ('confirmed', preuve Gmail/Zenchef) ou 'draft'.
+    final_version = fiche finalisée pour la cuisine (menus, quantités, infos validés).
+    Les deux sont indépendants. La fiche est relue après écriture : si la réponse
+    contient ok=false, la modification a échoué et il faut l'annoncer comme un échec.
+    """
     def _run():
         payload = GptFichePatch(**changes)
         with session_context() as session:
@@ -472,16 +478,22 @@ def fiche_item_ajouter(
     reservation_id: str, type: str, name: str, quantity: int, comment: Optional[str] = None
 ) -> Any:
     """Ajouter un plat/supplément ou modifier sa quantité sans remplacer les autres items."""
-    payload = GptItem(type=type, name=name, quantity=quantity, comment=comment)
-    with session_context() as session:
-        return _jsonable(add_item(uuid.UUID(reservation_id), payload, session))
+    def _run():
+        payload = GptItem(type=type, name=name, quantity=quantity, comment=comment)
+        with session_context() as session:
+            return add_item(uuid.UUID(reservation_id), payload, session)
+
+    return _tool_write_result(_run)
 
 
 @mcp_server.tool()
 def fiche_item_retirer(reservation_id: str, type: str, name: str) -> Any:
     """Retirer un seul plat ou supplément sans toucher au reste."""
-    with session_context() as session:
-        return _jsonable(remove_item(uuid.UUID(reservation_id), type, name, session))
+    def _run():
+        with session_context() as session:
+            return remove_item(uuid.UUID(reservation_id), type, name, session)
+
+    return _tool_write_result(_run)
 
 
 @mcp_server.tool()

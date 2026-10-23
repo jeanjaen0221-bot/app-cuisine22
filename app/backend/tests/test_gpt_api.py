@@ -16,6 +16,7 @@ from sqlalchemy import event  # noqa: E402
 from sqlmodel import Session, SQLModel  # noqa: E402
 
 from app.backend.database import engine  # noqa: E402
+from app.backend import gpt_api  # noqa: E402
 from app.backend.gpt_api import gpt_app  # noqa: E402
 from app.backend.models import MenuItem  # noqa: E402
 
@@ -121,14 +122,59 @@ def test_allergens_become_keys(client):
     assert "Clés permises" in r.text
 
 
-def test_status_and_final_version_cannot_be_set(client):
-    f = create(client, status="confirmed", final_version=True, company="ACME")
-    assert f["status"] == "draft"
-    assert f["final_version"] is False
-    assert f["company"] is None
+def test_unknown_field_is_refused_not_ignored(client):
+    r = client.post("/fiches", json=fiche(company="ACME"), headers=AUTH)
+    assert r.status_code == 422
+    fid = create(client)["id"]
+    r = client.patch(f"/fiches/{fid}", json={"statut": "confirmed"}, headers=AUTH)
+    assert r.status_code == 422
+
+
+def test_booking_confirmed_is_independent_of_final_fiche(client):
+    f = create(client, menu_formula="", items=[{"type": "dessert", "name": "Tiramisu", "quantity": 12}])
+    assert f["status"] == "draft" and f["final_version"] is False
     fid = f["id"]
-    r = client.patch(f"/fiches/{fid}", json={"status": "printed"}, headers=AUTH)
-    assert r.status_code == 200 and r.json()["status"] == "draft"
+    r = client.patch(f"/fiches/{fid}", json={"status": "confirmed"}, headers=AUTH)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "confirmed"
+    assert r.json()["final_version"] is False
+    assert len(r.json()["items"]) == 1
+    r = client.patch(f"/fiches/{fid}", json={"final_version": True}, headers=AUTH)
+    assert r.json()["status"] == "confirmed" and r.json()["final_version"] is True
+    # Read back independently: the values really are stored.
+    stored = client.get(f"/fiches/{fid}", headers=AUTH).json()
+    assert stored["status"] == "confirmed" and stored["final_version"] is True
+    assert client.patch(f"/fiches/{fid}", json={"status": "printed"}, headers=AUTH).status_code == 422
+
+
+def test_create_can_record_confirmed_booking_without_dishes(client):
+    f = create(client, menu_formula="", status="confirmed")
+    assert f["status"] == "confirmed" and f["final_version"] is False and f["items"] == []
+
+
+def test_formula_not_storable_next_to_dishes_is_refused(client):
+    fid = create(client, menu_formula="", items=[{"type": "plat", "name": "Filet de bar", "quantity": 12}])["id"]
+    r = client.patch(f"/fiches/{fid}", json={"menu_formula": "3 services"}, headers=AUTH)
+    assert r.status_code == 422
+    assert "plats prévalent" in r.text
+    r = client.patch(f"/fiches/{fid}", json={"menu_formula": ""}, headers=AUTH)
+    assert r.status_code == 200
+    assert r.json()["menu_formula"] == "" and len(r.json()["items"]) == 1
+
+
+def test_write_not_stored_is_reported_as_failure(client, monkeypatch):
+    fid = create(client)["id"]
+    original = gpt_api.reservations_router.update_reservation
+
+    def drops_status(reservation_id, payload, session):
+        payload.status = None
+        payload.__pydantic_fields_set__.discard("status")
+        return original(reservation_id, payload, session)
+
+    monkeypatch.setattr(gpt_api.reservations_router, "update_reservation", drops_status)
+    r = client.patch(f"/fiches/{fid}", json={"status": "confirmed"}, headers=AUTH)
+    assert r.status_code == 500
+    assert "status" in r.json()["detail"]["champs_non_enregistres"]
 
 
 def test_markdown_notes_are_cleaned(client):
@@ -188,7 +234,7 @@ def test_openapi_exposes_choice_lists(client):
     schema = client.get("/openapi.json", headers=AUTH).json()
     create_schema = schema["components"]["schemas"]["GptFicheCreate"]["properties"]
     assert "sans alcool" in create_schema["drink_formula"]["enum"]
-    assert "status" not in create_schema
+    assert create_schema["status"]["enum"] == ["draft", "confirmed"]
 
 
 def test_delete_fiche_with_billing(client):
