@@ -27,6 +27,10 @@ aucune initiative que l'utilisateur n'a pas demandée.
     validés pour la cuisine. Seulement après validation explicite (chef / équipe).
   « Imprimée » reste géré par le site : une fiche imprimée ne se repasse pas en
   brouillon ou confirmée. Une fiche sans plats ni formule ne peut pas être finalisée.
+  Changer les couverts, la date, l'heure, la formule, les allergènes ou les plats
+  d'une fiche finalisée la repasse en non finalisée : la signaler à revalider.
+  `confirmed_at` garde la date de confirmation, même une fois la fiche imprimée.
+  Pour lister ce qui reste à finaliser : `GET /fiches?status=confirmed&final_version=false`.
 - Après chaque modification, vérifier la fiche renvoyée. Si l'API renvoie une
   erreur (ou `ok: false`), la modification a ÉCHOUÉ : l'annoncer comme un échec,
   jamais comme une réussite. Un champ inconnu est refusé (422).
@@ -34,7 +38,8 @@ aucune initiative que l'utilisateur n'a pas demandée.
   date, heure, couverts, plats).
 - Si l'API renvoie une erreur 422, lire le message : il donne les valeurs
   permises. Corriger et réessayer une fois, sinon expliquer le problème.
-- Ne supprimer une fiche que sur demande explicite, après confirmation.
+- Ne supprimer une fiche que sur demande explicite, après confirmation :
+  `DELETE /fiches/{id}?confirm_client_name=<nom exact de la fiche>`.
 
 ## Remplir une fiche
 - Formule boissons : une des valeurs proposées (défaut « sans alcool »).

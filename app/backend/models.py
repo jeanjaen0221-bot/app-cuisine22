@@ -5,7 +5,7 @@ from enum import Enum
 from typing import List, Optional
 
 from sqlmodel import Field, SQLModel
-from sqlalchemy import UniqueConstraint, CheckConstraint, Index, Column, JSON
+from sqlalchemy import UniqueConstraint, CheckConstraint, Index, Column, JSON, event
 
 
 class ReservationStatus(str, Enum):
@@ -149,11 +149,24 @@ class Reservation(ReservationBase, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_pdf_exported_at: Optional[datetime] = None
+    # When the booking itself was confirmed. Survives "printed", which replaces
+    # "confirmed" in status, so the confirmation is never lost.
+    confirmed_at: Optional[datetime] = None
     __table_args__ = (
         UniqueConstraint('service_date','arrival_time','client_name','pax', name='uq_reservation_slot'),
         CheckConstraint('pax >= 1', name='ck_reservation_pax_min'),
         Index('ix_reservation_date_time', 'service_date', 'arrival_time'),
     )
+
+
+@event.listens_for(Reservation, "before_insert")
+@event.listens_for(Reservation, "before_update")
+def _track_confirmation(_mapper, _connection, target: Reservation) -> None:
+    status = getattr(target.status, "value", target.status)
+    if status == ReservationStatus.draft.value:
+        target.confirmed_at = None
+    elif status == ReservationStatus.confirmed.value and target.confirmed_at is None:
+        target.confirmed_at = datetime.utcnow()
 
 
 class ReservationCreate(ReservationBase):
@@ -208,6 +221,7 @@ class ReservationRead(ReservationBase):
     created_at: datetime
     updated_at: datetime
     last_pdf_exported_at: Optional[datetime] = None
+    confirmed_at: Optional[datetime] = None
     items: List[ReservationItemRead] = Field(default_factory=list)
 
 

@@ -489,6 +489,8 @@ gpt_app = FastAPI(
         "date, paginées via page/per_page. Utiliser scope=past pour l'historique. "
         "service_date (jour précis, AAAA-MM-JJ ou JJ/MM/AAAA) ignore scope et "
         "remonte tout ce jour-là. q cherche dans le nom, la société et le contact. "
+        "status (draft/confirmed/printed) et final_version filtrent, ex: status=confirmed"
+        "&final_version=false = réservations confirmées dont la fiche n'est pas finalisée. "
         "Toujours chercher une fiche existante avant d'en créer une."
     ),
 )
@@ -499,6 +501,8 @@ def list_fiches(
     page: int = 1,
     per_page: int = 20,
     session: Session = Depends(get_session),
+    status: Optional[Literal["draft", "confirmed", "printed"]] = None,
+    final_version: Optional[bool] = None,
 ):
     per_page = max(1, min(per_page, 50))
     page = max(1, page)
@@ -507,11 +511,17 @@ def list_fiches(
         # A specific day is naturally bounded in size, so the exact-match path
         # (used elsewhere for day exports) is fine here regardless of scope.
         rows = reservations_router.list_reservations(q=q, service_date=parsed_date, session=session)
+        rows = [
+            r for r in rows
+            if (status is None or _comparable(r.status) == status)
+            and (final_version is None or r.final_version == final_version)
+        ]
         start = (page - 1) * per_page
         return rows[start : start + per_page]
+    filters = {"status": status, "final_version": final_version}
     if (scope or "upcoming").lower().strip() == "past":
-        return reservations_router.list_past_reservations(q=q, page=page, per_page=per_page, session=session)
-    return reservations_router.list_upcoming_reservations(q=q, page=page, per_page=per_page, session=session)
+        return reservations_router.list_past_reservations(q=q, page=page, per_page=per_page, session=session, **filters)
+    return reservations_router.list_upcoming_reservations(q=q, page=page, per_page=per_page, session=session, **filters)
 
 
 @gpt_app.get("/fiches/{reservation_id}", response_model=ReservationRead, summary="Récupérer une fiche par son id")
@@ -565,6 +575,26 @@ def create_fiche(payload: GptFicheCreate, session: Session = Depends(get_session
         items,
     )
     return created
+
+
+# A validated fiche stops being final as soon as what the kitchen relies on changes:
+# the chef has to validate it again.
+_KITCHEN_FIELDS = ("pax", "service_date", "arrival_time", "menu_formula", "allergens")
+
+
+def _unfinalize_if_changed(res: Reservation, update: dict, new_items: Optional[List[dict]], session: Session) -> None:
+    if not res.final_version or update.get("final_version") is True:
+        return
+    changed = any(
+        field in update and _comparable(update[field]) != _comparable(getattr(res, field, None))
+        for field in _KITCHEN_FIELDS
+    )
+    if new_items is not None:
+        old = [i for i in _stored_items(session, res.id) if i["type"] in DISH_TYPES]
+        new = [i for i in new_items if i["type"] in DISH_TYPES]
+        changed = changed or sorted(map(_item_key, old)) != sorted(map(_item_key, new))
+    if changed:
+        update["final_version"] = False
 
 
 def _check_final_version(final_version: Optional[bool], menu_formula: str, items: List[dict]) -> None:
@@ -695,6 +725,7 @@ def update_fiche(reservation_id: uuid.UUID, payload: GptFichePatch, session: Ses
             )
         update["menu_formula"] = stored_menu
 
+    _unfinalize_if_changed(res, update, expected_items, session)
     if update.get("final_version"):
         _check_final_version(
             True,
@@ -726,7 +757,10 @@ def add_item(reservation_id: uuid.UUID, payload: GptItem, session: Session = Dep
     else:
         items.append(new)
     menu = _apply_form_rules(res.menu_formula or "", items)
-    return _update(reservation_id, {"menu_formula": menu, "items": _items_payload(items)}, session, items)
+    update = {"menu_formula": menu}
+    _unfinalize_if_changed(res, update, items, session)
+    update["items"] = _items_payload(items)
+    return _update(reservation_id, update, session, items)
 
 
 @gpt_app.delete(
@@ -742,11 +776,28 @@ def remove_item(reservation_id: uuid.UUID, type: ItemType, name: str, session: S
     if len(kept) == len(items):
         raise HTTPException(404, f"Aucun item {type} '{name}' sur cette fiche.")
     menu = _apply_form_rules(res.menu_formula or "", kept)
-    return _update(reservation_id, {"menu_formula": menu, "items": _items_payload(kept)}, session, kept)
+    update = {"menu_formula": menu}
+    _unfinalize_if_changed(res, update, kept, session)
+    update["items"] = _items_payload(kept)
+    return _update(reservation_id, update, session, kept)
 
 
-@gpt_app.delete("/fiches/{reservation_id}", summary="Supprimer une fiche de réservation")
-def delete_fiche(reservation_id: uuid.UUID, session: Session = Depends(get_session)):
+@gpt_app.delete(
+    "/fiches/{reservation_id}",
+    summary="Supprimer une fiche de réservation",
+    description=(
+        "Uniquement après demande explicite et confirmation de l'utilisateur. "
+        "confirm_client_name doit reprendre le nom exact de la fiche (relire la fiche avant)."
+    ),
+)
+def delete_fiche(reservation_id: uuid.UUID, confirm_client_name: str, session: Session = Depends(get_session)):
+    res = _get_reservation_or_404(session, reservation_id)
+    if _key(confirm_client_name) != _key(res.client_name):
+        raise HTTPException(
+            409,
+            f"Suppression refusée : confirm_client_name ne correspond pas au nom de la fiche "
+            f"('{res.client_name}'). Relire la fiche et confirmer avec l'utilisateur.",
+        )
     return reservations_router.delete_reservation(reservation_id, session)
 
 

@@ -42,6 +42,36 @@ def init_db() -> None:
     ensure_supplements_migrated()
     ensure_rooftop_reservation_columns()
     ensure_user_access_columns()
+    ensure_confirmed_at_column()
+
+
+def ensure_confirmed_at_column() -> None:
+    """Add reservation.confirmed_at; fiches already confirmed keep their last update as date."""
+    try:
+        backend = engine.url.get_backend_name()
+        with engine.begin() as conn:
+            if backend == "sqlite":
+                existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(reservation);").fetchall()}
+                if "confirmed_at" in existing:
+                    return
+                conn.exec_driver_sql("ALTER TABLE reservation ADD COLUMN confirmed_at TIMESTAMP;")
+            elif backend == "postgresql":
+                exists = conn.execute(text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name='reservation' AND column_name='confirmed_at'"
+                )).first()
+                if exists:
+                    return
+                conn.execute(text("ALTER TABLE reservation ADD COLUMN confirmed_at TIMESTAMP;"))
+            else:
+                return
+            conn.execute(text(
+                "UPDATE reservation SET confirmed_at = updated_at "
+                "WHERE status IN ('confirmed', 'printed') AND confirmed_at IS NULL"
+            ))
+    except Exception:
+        # Non-fatal, like the other column migrations.
+        pass
 
 
 def ensure_user_access_columns() -> None:

@@ -411,10 +411,18 @@ def fiches_rechercher(
     scope: str = "upcoming",
     page: int = 1,
     per_page: int = 20,
+    status: Optional[str] = None,
+    final_version: Optional[bool] = None,
 ) -> Any:
-    """Rechercher/lister les fiches. Toujours chercher avant de créer une nouvelle fiche."""
+    """Rechercher/lister les fiches. Toujours chercher avant de créer une nouvelle fiche.
+
+    status (draft/confirmed/printed) et final_version filtrent, ex: status='confirmed'
+    et final_version=False = réservations confirmées dont la fiche n'est pas finalisée.
+    """
+    if status not in (None, "draft", "confirmed", "printed"):
+        return {"ok": False, "error": {"status_code": 422, "detail": "status : draft, confirmed ou printed."}}
     with session_context() as session:
-        return _jsonable(list_fiches(q, service_date, scope, page, per_page, session))
+        return _jsonable(list_fiches(q, service_date, scope, page, per_page, session, status, final_version))
 
 
 @mcp_server.tool()
@@ -467,7 +475,8 @@ def fiche_modifier(reservation_id: str, changes: dict[str, Any]) -> Any:
     utiliser fiche_item_ajouter / fiche_item_retirer). Tout autre champ est refusé.
     status = réservation confirmée ('confirmed', preuve Gmail/Zenchef) ou 'draft'.
     final_version = fiche finalisée pour la cuisine (menus, quantités, infos validés).
-    Les deux sont indépendants. La fiche est relue après écriture : si la réponse
+    Les deux sont indépendants. Changer couverts, date, heure, formule, allergènes ou
+    plats d'une fiche finalisée la repasse en non finalisée (à revalider par le chef). La fiche est relue après écriture : si la réponse
     contient ok=false, la modification a échoué et il faut l'annoncer comme un échec.
     """
     def _run():
@@ -512,11 +521,14 @@ def fiche_dupliquer(reservation_id: str) -> Any:
 
 
 @mcp_server.tool()
-def fiche_supprimer(reservation_id: str) -> Any:
-    """Supprimer une fiche. À appeler uniquement après demande explicite et confirmation."""
+def fiche_supprimer(reservation_id: str, nom_client_confirme: str) -> Any:
+    """Supprimer une fiche. À appeler uniquement après demande explicite et confirmation.
+
+    nom_client_confirme doit reprendre le nom exact de la fiche (la relire avant).
+    """
     def _run():
         with session_context() as session:
-            return delete_fiche(uuid.UUID(reservation_id), session)
+            return delete_fiche(uuid.UUID(reservation_id), nom_client_confirme, session)
 
     return _tool_write_result(_run)
 
