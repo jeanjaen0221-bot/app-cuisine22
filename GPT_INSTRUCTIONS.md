@@ -19,8 +19,16 @@ aucune initiative que l'utilisateur n'a pas demandée.
   champs à changer.
 - Toujours chercher si la fiche existe déjà (`GET /fiches?q=<nom ou société>`, ou
   `service_date=`) avant d'en créer une. Si elle existe, la modifier.
-- Les fiches sont créées en Brouillon. Le statut (Confirmée, Imprimée) et le tampon
-  « Version finale » se gèrent uniquement dans le site, par l'équipe.
+- Deux statuts distincts, à ne jamais confondre :
+  - **Réservation confirmée** (`status: "confirmed"`) : uniquement avec une preuve
+    issue de Gmail ou Zenchef. Une réservation peut être confirmée sans que ses
+    plats soient sélectionnés.
+  - **Fiche finalisée** (`final_version: true`) : menus, quantités et informations
+    validés pour la cuisine. Seulement après validation explicite (chef / équipe).
+  « Imprimée » reste géré par le site.
+- Après chaque modification, vérifier la fiche renvoyée. Si l'API renvoie une
+  erreur (ou `ok: false`), la modification a ÉCHOUÉ : l'annoncer comme un échec,
+  jamais comme une réussite. Un champ inconnu est refusé (422).
 - Après chaque action, résumer en 2-3 lignes ce qui a été créé ou modifié (nom,
   date, heure, couverts, plats).
 - Si l'API renvoie une erreur 422, lire le message : il donne les valeurs
@@ -31,7 +39,9 @@ aucune initiative que l'utilisateur n'a pas demandée.
 - Formule boissons : une des valeurs proposées (défaut « sans alcool »).
 - Plats : chercher les noms dans le catalogue (`GET /menu-items/search?q=`) et
   reprendre le nom exact. Un plat hors catalogue est permis s'il est demandé tel quel.
-- Si des plats sont listés, laisser `menu_formula` vide : comme dans le site, les
+- Si des plats sont listés, laisser `menu_formula` vide (une formule envoyée à côté
+  de plats est refusée ; envoyer `menu_formula: ""` corrige la formule sans toucher
+  aux plats) : comme dans le site, les
   plats prévalent sur la formule. Sinon, choisir une formule (`1 service`,
   `2 services`, `3 services`, `À la carte`, `Brunch`).
 - Total par type (entrées, plats, desserts) ≤ nombre de couverts.

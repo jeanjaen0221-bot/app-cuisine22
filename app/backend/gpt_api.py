@@ -29,12 +29,12 @@ from typing import Any, List, Literal, Optional, get_args
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from . import gmail_service
-from .database import get_session
+from .database import engine, get_session
 from .models import (
     BillingInfo,
     BillingInfoRead,
@@ -73,6 +73,8 @@ DrinkFormula = Literal[
 ]
 MenuFormula = Literal["", "1 service", "2 services", "3 services", "À la carte", "Brunch"]
 ItemType = Literal["entrée", "plat", "dessert", "supplément"]
+# "printed" is only set by the site when the fiche is printed.
+FicheStatus = Literal["draft", "confirmed"]
 
 DISH_TYPES = ("entrée", "plat", "dessert")
 DEFAULT_ALLERGENS = (
@@ -227,6 +229,18 @@ _MENU_DESC = (
     "site, les plats prévalent et la formule est alors vidée. 'Brunch' = buffet, sans "
     "entrée/plat/dessert (uniquement des suppléments)."
 )
+# Two independent states: a booking can be confirmed while its dishes are still
+# pending, and only a validated fiche goes to the kitchen as final.
+_STATUS_DESC = (
+    "Statut de la RÉSERVATION : 'confirmed' = réservation confirmée, preuve issue de "
+    "Gmail ou Zenchef ; 'draft' = brouillon. Ne dit rien des plats : une réservation "
+    "peut être confirmée sans plats sélectionnés. 'printed' est réservé au site."
+)
+_FINAL_DESC = (
+    "Fiche FINALISÉE pour la cuisine (tampon 'Version finale') : menus, quantités et "
+    "informations validés. Indépendant du statut de la réservation. Ne passer à true "
+    "qu'après validation explicite."
+)
 
 
 class GptItem(BaseModel):
@@ -292,6 +306,10 @@ class _FicheFields(BaseModel):
 
 
 class GptFicheCreate(_FicheFields):
+    # An unknown field is refused rather than silently dropped while the call
+    # still reports success.
+    model_config = ConfigDict(extra="forbid")
+
     client_name: str = Field(max_length=200, description="Nom sous lequel la fiche est classée (obligatoire).")
     pax: int = Field(ge=1, le=500, description="Nombre de couverts.")
     service_date: str = Field(description="Date du service, AAAA-MM-JJ (obligatoire, ne jamais deviner).")
@@ -301,10 +319,14 @@ class GptFicheCreate(_FicheFields):
     notes: Optional[str] = Field(default=None, max_length=4000, description=_NOTES_DESC)
     allergens: List[str] = Field(default_factory=list, description=_ALLERGENS_DESC)
     on_invoice: bool = Field(default=False, description="Case 'Sur facture'.")
+    status: FicheStatus = Field(default="draft", description=_STATUS_DESC)
+    final_version: bool = Field(default=False, description=_FINAL_DESC)
     items: List[GptItem] = Field(default_factory=list, description="Plats et suppléments. Total par type (entrée/plat/dessert) ≤ pax.")
 
 
 class GptFichePatch(_FicheFields):
+    model_config = ConfigDict(extra="forbid")
+
     client_name: Optional[str] = Field(default=None, max_length=200)
     pax: Optional[int] = Field(default=None, ge=1, le=500)
     service_date: Optional[str] = Field(default=None, description="AAAA-MM-JJ")
@@ -314,6 +336,8 @@ class GptFichePatch(_FicheFields):
     notes: Optional[str] = Field(default=None, max_length=4000, description=_NOTES_DESC + " Remplace les notes existantes : repartir du texte actuel.")
     allergens: Optional[List[str]] = Field(default=None, description=_ALLERGENS_DESC + " Remplace la liste existante.")
     on_invoice: Optional[bool] = None
+    status: Optional[FicheStatus] = Field(default=None, description=_STATUS_DESC)
+    final_version: Optional[bool] = Field(default=None, description=_FINAL_DESC)
     items: Optional[List[GptItem]] = Field(
         default=None,
         description=(
@@ -515,8 +539,8 @@ def create_fiche(payload: GptFicheCreate, session: Session = Depends(get_session
         notes=payload.notes,
         allergens=_resolve_allergens(payload.allergens, session),
         on_invoice=payload.on_invoice,
-        status="draft",
-        final_version=False,
+        status=payload.status,
+        final_version=payload.final_version,
         items=_items_payload(items),
     )
     try:
@@ -530,12 +554,65 @@ def create_fiche(payload: GptFicheCreate, session: Session = Depends(get_session
         )
 
 
-def _update(reservation_id: uuid.UUID, update: dict, session: Session) -> ReservationRead:
+def _item_key(item: dict) -> tuple:
+    return (_key(item["type"]), _key(item["name"]), int(item["quantity"]), item.get("comment") or None)
+
+
+def _comparable(value: Any) -> Any:
+    if value is None:  # the site stores an emptied text field as ""
+        return ""
+    if hasattr(value, "value"):  # Enum
+        value = value.value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()[:10]
+    if hasattr(value, "strftime"):  # time
+        return value.strftime("%H:%M")
+    if isinstance(value, str):
+        return value.strip()
+    return value
+
+
+def _verify_saved(reservation_id: uuid.UUID, expected: dict, expected_items: Optional[List[dict]]) -> None:
+    """Re-read the fiche from the database in a fresh session and fail loudly if a
+    requested value is not what got stored: a write must never report a success
+    it did not achieve."""
+    with Session(engine) as fresh:
+        row = fresh.get(Reservation, reservation_id)
+        if row is None:
+            raise HTTPException(500, "Échec : la fiche est introuvable à la relecture.")
+        mismatches = {}
+        for field, wanted in expected.items():
+            stored = getattr(row, field, None)
+            if _comparable(stored) != _comparable(wanted):
+                mismatches[field] = {"demande": _comparable(wanted), "enregistre": _comparable(stored)}
+        if expected_items is not None:
+            stored_items = _stored_items(fresh, reservation_id)
+            if sorted(map(_item_key, stored_items)) != sorted(map(_item_key, expected_items)):
+                mismatches["items"] = {"demande": expected_items, "enregistre": stored_items}
+    if mismatches:
+        raise HTTPException(
+            500,
+            {
+                "message": "Échec : la modification n'a pas été enregistrée telle que demandée. "
+                "Ne pas annoncer de réussite.",
+                "champs_non_enregistres": mismatches,
+            },
+        )
+
+
+def _update(
+    reservation_id: uuid.UUID,
+    update: dict,
+    session: Session,
+    expected_items: Optional[List[dict]] = None,
+) -> ReservationRead:
     try:
-        return reservations_router.update_reservation(reservation_id, ReservationUpdate(**update), session)
+        result = reservations_router.update_reservation(reservation_id, ReservationUpdate(**update), session)
     except IntegrityError:
         session.rollback()
         raise HTTPException(409, "Une autre fiche a déjà ce nom, cette date, cette heure et ce nombre de couverts.")
+    _verify_saved(reservation_id, {k: v for k, v in update.items() if k != "items"}, expected_items)
+    return result
 
 
 @gpt_app.patch(
@@ -546,8 +623,11 @@ def _update(reservation_id: uuid.UUID, update: dict, session: Session) -> Reserv
         "Mise à jour partielle : seuls les champs fournis sont modifiés, n'envoyer que "
         "ce que l'utilisateur a demandé de changer. items, si fourni, REMPLACE toute la "
         "liste des plats (les suppléments existants sont conservés si items n'en "
-        "contient aucun) : pour un seul plat, utiliser /fiches/{id}/items. Le statut et "
-        "le tampon 'Version finale' se gèrent uniquement dans le site."
+        "contient aucun) : pour un seul plat, utiliser /fiches/{id}/items. status "
+        "(réservation confirmée) et final_version (fiche finalisée pour la cuisine) sont "
+        "indépendants. Un champ inconnu est refusé (422). La fiche est relue après "
+        "l'écriture : si une valeur demandée n'est pas enregistrée, la réponse est une "
+        "erreur 500, jamais un succès."
     ),
 )
 def update_fiche(reservation_id: uuid.UUID, payload: GptFichePatch, session: Session = Depends(get_session)):
@@ -559,6 +639,7 @@ def update_fiche(reservation_id: uuid.UUID, payload: GptFichePatch, session: Ses
     if "allergens" in update:
         update["allergens"] = _resolve_allergens(update["allergens"] or [], session)
 
+    expected_items = None
     if "items" in update or "menu_formula" in update:
         if update.get("items") is not None:
             catalogue = _catalogue(session)
@@ -571,10 +652,21 @@ def update_fiche(reservation_id: uuid.UUID, payload: GptFichePatch, session: Ses
         if update.get("items") is not None and not any(i["type"] == "supplément" for i in effective):
             # Supplements are preserved by update_reservation when the new list has none.
             effective = effective + [i for i in _stored_items(session, reservation_id) if i["type"] == "supplément"]
+            expected_items = effective
         menu = update["menu_formula"] if "menu_formula" in update else (res.menu_formula or "")
-        update["menu_formula"] = _apply_form_rules(menu or "", effective)
+        stored_menu = _apply_form_rules(menu or "", effective)
+        if update.get("menu_formula") and stored_menu != update["menu_formula"]:
+            # The form would clear it ("les plats prévalent"): refuse instead of
+            # silently storing an empty formula while reporting success.
+            raise HTTPException(
+                422,
+                f"menu_formula '{update['menu_formula']}' ne peut pas être enregistrée : la fiche "
+                "contient des plats, et les plats prévalent. Pour corriger la formule sans "
+                "toucher aux plats, envoyer menu_formula=\"\" (ou retirer les plats d'abord).",
+            )
+        update["menu_formula"] = stored_menu
 
-    return _update(reservation_id, update, session)
+    return _update(reservation_id, update, session, expected_items)
 
 
 @gpt_app.post(
@@ -599,7 +691,7 @@ def add_item(reservation_id: uuid.UUID, payload: GptItem, session: Session = Dep
     else:
         items.append(new)
     menu = _apply_form_rules(res.menu_formula or "", items)
-    return _update(reservation_id, {"menu_formula": menu, "items": _items_payload(items)}, session)
+    return _update(reservation_id, {"menu_formula": menu, "items": _items_payload(items)}, session, items)
 
 
 @gpt_app.delete(
@@ -615,7 +707,7 @@ def remove_item(reservation_id: uuid.UUID, type: ItemType, name: str, session: S
     if len(kept) == len(items):
         raise HTTPException(404, f"Aucun item {type} '{name}' sur cette fiche.")
     menu = _apply_form_rules(res.menu_formula or "", kept)
-    return _update(reservation_id, {"menu_formula": menu, "items": _items_payload(kept)}, session)
+    return _update(reservation_id, {"menu_formula": menu, "items": _items_payload(kept)}, session, kept)
 
 
 @gpt_app.delete("/fiches/{reservation_id}", summary="Supprimer une fiche de réservation")
