@@ -46,9 +46,10 @@ v2/
 │   │   ├── mcp/         connecteur ChatGPT (/mcp) : OAuth en base, droits par connexion, consignes
 │   │   ├── pdf/         fiche salle/cuisine, devis, bon (texte échappé)
 │   │   ├── salle/       plan de salle : géométrie, placement automatique, PDF (repris de l'ancienne version)
+│   │   ├── reprise.py   reprise des données de l'ancienne version
 │   │   └── main.py
 │   ├── alembic/         migrations de la base (alembic upgrade head)
-│   └── tests/           75 tests : règles, parcours complet, droits, ChatGPT de bout en bout
+│   └── tests/           81 tests : règles, parcours complet, droits, ChatGPT de bout en bout
 ├── frontend/            site React (Vite, TypeScript)
 └── Dockerfile
 ```
@@ -96,6 +97,19 @@ ChatGPT ne peut **jamais** : valider ou transmettre un devis ou un bon, toucher 
 changer le statut d'une fiche (sauf annulation en deux temps, avec confirmation), écrire au client. Ces refus sont appliqués
 par le serveur, pas seulement par les consignes. Chaque action de ChatGPT apparaît dans le journal et l'historique de la fiche.
 
-## Pas encore dans la v2
+## Reprendre les données de l'ancienne version
 
-La reprise des données de l'ancienne version (clients, fiches, plats, plaintes, boissons…) : prévue juste avant la bascule.
+Le script lit l'ancienne base (sans jamais la modifier) et remplit la v2 : comptes (mêmes mots de passe), plats et
+suppléments (dans le menu Prix, prix à compléter), clients (avec les coordonnées de facturation), fiches (lignes,
+allergènes, formules, notes, Rooftop), plaintes, notes, boissons, fournisseurs, prix d'achat, bons de commande, plan de
+salle. Il se relance sans créer de doublon.
+
+```bash
+cd v2/backend
+export DATABASE_URL=<base v2> SECRET_KEY=<secret v2>
+alembic upgrade head
+python -m albert.reprise --source <adresse de l'ancienne base>            # essai : affiche le rapport, n'écrit rien
+python -m albert.reprise --source <adresse de l'ancienne base> --ecrire   # reprise réelle
+```
+
+Le rapport liste ce qui est à vérifier (n° TVA illisible, formule inconnue, réservation sans heure…).
