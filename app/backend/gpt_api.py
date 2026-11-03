@@ -214,10 +214,11 @@ def _split_allergens(value: Any) -> Any:
 # ===== Input models exposed to the GPT =====
 
 _NOTES_DESC = (
-    "Texte libre imprimé sur la fiche. Mise en forme du site uniquement : **gras**, "
-    "_italique_, lignes commençant par '- ' pour les listes. Pas de titres ni de "
-    "tableaux. Mettre ici "
-    "les infos sans champ dédié (société, contact, occasion, demandes spéciales)."
+    "Texte imprimé sur la fiche, toujours avec ce modèle (une ligne par info, dans cet "
+    "ordre, omettre les lignes vides) : '**Société :** …', '**Contact :** Prénom Nom – "
+    "téléphone – e-mail', '**Occasion :** …', '**Demandes :**' suivi d'une ligne '- …' "
+    "par demande spéciale. Mise en forme du site uniquement (**gras**, _italique_, "
+    "lignes '- ') : pas de titres, tableaux ni emoji."
 )
 _ALLERGENS_DESC = (
     "Liste de clés d'allergènes : gluten, crustaces, oeufs, poisson, arachides, soja, "
@@ -269,7 +270,8 @@ class _FicheFields(BaseModel):
     def _client_name(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
-        v = v.strip()
+        # Same name spelled the same way every time: no stray or doubled spaces.
+        v = re.sub(r"\s+", " ", v).strip()
         if not v:
             raise ValueError("Le nom du client est obligatoire.")
         return v
@@ -521,7 +523,8 @@ def get_fiche(reservation_id: uuid.UUID, session: Session = Depends(get_session)
     description=(
         "Crée la fiche en Brouillon, comme une saisie manuelle. Nom, couverts, date "
         "et heure sont obligatoires : les demander à l'utilisateur plutôt que de les "
-        "deviner. Il faut au moins un plat ou une menu_formula. Si menu_formula="
+        "deviner. Plats et formule peuvent rester vides tant que le menu n'est pas "
+        "choisi (brouillon). Si menu_formula="
         "'Brunch' (buffet), items ne contient que des suppléments."
     ),
 )

@@ -101,9 +101,15 @@ def test_dishes_win_over_formula(client):
     assert f["menu_formula"] == ""
 
 
-def test_empty_fiche_is_rejected(client):
-    r = client.post("/fiches", json=fiche(menu_formula=""), headers=AUTH)
-    assert r.status_code == 422
+def test_draft_without_menu_is_allowed(client):
+    # Like in the site, a draft may wait for the client's menu choices.
+    f = create(client, menu_formula="")
+    assert f["menu_formula"] == "" and f["items"] == []
+
+
+def test_client_name_spacing_is_normalized(client):
+    f = create(client, client_name="  Marie   Dupont ")
+    assert f["client_name"] == "Marie Dupont"
 
 
 def test_brunch_rejects_dishes(client):
@@ -249,3 +255,56 @@ def test_menu_search_ignores_accents_and_word_order(client):
     assert [i["name"] for i in r.json()] == ["Carpaccio de boeuf"]
     r = client.get("/menu-items/search", params={"type": "Desserts"}, headers=AUTH)
     assert [i["name"] for i in r.json()] == ["Tiramisu"]
+
+
+# ===== MCP connector: same rules and same typed fields as the Custom GPT =====
+
+import asyncio  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from app.backend import mcp_bridge  # noqa: E402
+from app.backend.gpt_rules import FICHE_RULES  # noqa: E402
+
+
+def _mcp_schemas():
+    return {t.name: t.input_schema for t in asyncio.run(mcp_bridge.mcp_server.list_tools())}
+
+
+def test_gpt_instructions_match_mcp_rules():
+    text = (Path(__file__).resolve().parents[3] / "GPT_INSTRUCTIONS.md").read_text(encoding="utf-8")
+    assert FICHE_RULES in text
+    assert mcp_bridge.mcp_server.instructions == FICHE_RULES
+
+
+def test_mcp_schema_lists_allowed_values():
+    schemas = _mcp_schemas()
+    dump = str(schemas["fiche_creer"])
+    for value in ("sans alcool + champ", "3 services", "Brunch", "supplément", "confirmed"):
+        assert value in dump
+    modifier = schemas["fiche_modifier"]["properties"]
+    # Explicit fields instead of a free-form dict ChatGPT had to guess.
+    assert "changes" not in modifier
+    for field in ("client_name", "pax", "notes", "items", "status", "final_version"):
+        assert field in modifier
+    assert "regles_fiches" in schemas
+
+
+def test_mcp_create_and_modify_like_the_site():
+    f = mcp_bridge.fiche_creer(
+        client_name="Deloitte", pax=10, service_date="2030-09-17", arrival_time="19h30",
+        items=[{"type": "plat", "name": "filet de BAR", "quantity": 10}],
+    )
+    assert f["items"][0]["name"] == "Filet de bar" and f["arrival_time"].startswith("19:30")
+    out = mcp_bridge.fiche_modifier(f["id"], status="confirmed", notes="**Société :** Deloitte")
+    assert out["status"] == "confirmed" and out["notes"] == "**Société :** Deloitte"
+    assert out["items"][0]["name"] == "Filet de bar"
+
+
+def test_mcp_errors_are_reported_not_hidden():
+    out = mcp_bridge.fiche_modifier("pas-un-uuid", pax=3)
+    assert out["ok"] is False
+    f = mcp_bridge.fiche_creer(client_name="Dupont", pax=2, service_date="2030-09-17", arrival_time="12:00")
+    assert mcp_bridge.fiche_modifier(f["id"])["ok"] is False
+    bad = mcp_bridge.fiche_creer(client_name="Dupont", pax=2, service_date="2030-09-17", arrival_time="12:00",
+                                 items=[{"type": "plat", "name": "Filet de bar", "quantity": 9}])
+    assert bad["ok"] is False
