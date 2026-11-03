@@ -101,15 +101,15 @@ def test_dishes_win_over_formula(client):
     assert f["menu_formula"] == ""
 
 
-def test_draft_without_menu_is_allowed(client):
-    # Like in the site, a draft may wait for the client's menu choices.
-    f = create(client, menu_formula="")
-    assert f["menu_formula"] == "" and f["items"] == []
-
-
 def test_client_name_spacing_is_normalized(client):
     f = create(client, client_name="  Marie   Dupont ")
     assert f["client_name"] == "Marie Dupont"
+
+
+def test_empty_draft_is_allowed_while_dishes_are_pending(client):
+    # Like the site: a draft may wait for the client's choices.
+    f = create(client, menu_formula="")
+    assert f["status"] == "draft" and f["items"] == [] and f["menu_formula"] == ""
 
 
 def test_brunch_rejects_dishes(client):
@@ -246,7 +246,7 @@ def test_openapi_exposes_choice_lists(client):
 def test_delete_fiche_with_billing(client):
     fid = create(client)["id"]
     client.put(f"/fiches/{fid}/billing", json={"company_name": "ACME", "address_line1": "Rue 1", "zip_code": "1000", "city": "Bruxelles"}, headers=AUTH)
-    assert client.delete(f"/fiches/{fid}", headers=AUTH).status_code == 200
+    assert client.delete(f"/fiches/{fid}?confirm_client_name=Dupont", headers=AUTH).status_code == 200
     assert client.get(f"/fiches/{fid}", headers=AUTH).status_code == 404
 
 
@@ -308,3 +308,90 @@ def test_mcp_errors_are_reported_not_hidden():
     bad = mcp_bridge.fiche_creer(client_name="Dupont", pax=2, service_date="2030-09-17", arrival_time="12:00",
                                  items=[{"type": "plat", "name": "Filet de bar", "quantity": 9}])
     assert bad["ok"] is False
+
+def test_final_version_needs_dishes_or_formula(client):
+    r = client.post("/fiches", json=fiche(menu_formula="", final_version=True), headers=AUTH)
+    assert r.status_code == 422
+    fid = create(client, menu_formula="")["id"]
+    assert client.patch(f"/fiches/{fid}", json={"final_version": True}, headers=AUTH).status_code == 422
+    r = client.patch(f"/fiches/{fid}", json={"menu_formula": "3 services", "final_version": True}, headers=AUTH)
+    assert r.status_code == 200 and r.json()["final_version"] is True
+
+
+def test_printed_fiche_status_is_not_downgraded(client):
+    from app.backend.models import Reservation
+    import uuid as _uuid
+    fid = create(client)["id"]
+    with Session(engine) as s:
+        row = s.get(Reservation, _uuid.UUID(fid))
+        row.status = "printed"
+        s.add(row)
+        s.commit()
+    assert client.patch(f"/fiches/{fid}", json={"status": "confirmed"}, headers=AUTH).status_code == 409
+
+
+def test_billing_unknown_field_is_refused(client):
+    fid = create(client)["id"]
+    body = {"company_name": "ACME", "address_line1": "Rue 1", "zip_code": "1000", "city": "Bruxelles"}
+    r = client.put(f"/fiches/{fid}/billing", json={**body, "tva": "BE0123"}, headers=AUTH)
+    assert r.status_code == 422
+    r = client.put(f"/fiches/{fid}/billing", json=body, headers=AUTH)
+    assert r.status_code == 200 and r.json()["country"] == "Belgique"
+    r = client.put(f"/fiches/{fid}/billing", json={"vat_number": "BE0123"}, headers=AUTH)
+    assert r.status_code == 200 and r.json()["vat_number"] == "BE0123"
+
+
+def _finalized(client):
+    f = create(client, menu_formula="", status="confirmed",
+               items=[{"type": "plat", "name": "Filet de bar", "quantity": 12}, {"type": "dessert", "name": "Tiramisu", "quantity": 12}])
+    r = client.patch(f"/fiches/{f['id']}", json={"final_version": True}, headers=AUTH)
+    assert r.json()["final_version"] is True
+    return f["id"]
+
+
+def test_kitchen_change_unfinalizes_the_fiche(client):
+    fid = _finalized(client)
+    r = client.patch(f"/fiches/{fid}", json={"notes": "Table 4"}, headers=AUTH)
+    assert r.json()["final_version"] is True
+    r = client.post(f"/fiches/{fid}/items", json={"type": "plat", "name": "Filet de bar", "quantity": 11}, headers=AUTH)
+    assert r.status_code == 200 and r.json()["final_version"] is False
+    assert r.json()["status"] == "confirmed"
+    client.patch(f"/fiches/{fid}", json={"final_version": True}, headers=AUTH)
+    assert client.patch(f"/fiches/{fid}", json={"pax": 13}, headers=AUTH).json()["final_version"] is False
+    client.patch(f"/fiches/{fid}", json={"final_version": True}, headers=AUTH)
+    r = client.patch(f"/fiches/{fid}", json={"pax": 14, "final_version": True}, headers=AUTH)
+    assert r.json()["final_version"] is True
+
+
+def test_list_filters_by_status_and_final_version(client):
+    fid = _finalized(client)
+    create(client, client_name="Martin", menu_formula="", status="confirmed")
+    create(client, client_name="Durand")
+    names = lambda r: sorted(f["client_name"] for f in r.json())
+    r = client.get("/fiches?status=confirmed&final_version=false", headers=AUTH)
+    assert names(r) == ["Martin"]
+    r = client.get("/fiches?service_date=2030-09-17&status=confirmed", headers=AUTH)
+    assert names(r) == ["Dupont", "Martin"]
+    assert client.get(f"/fiches/{fid}", headers=AUTH).json()["confirmed_at"] is not None
+
+
+def test_confirmation_survives_printing(client):
+    from app.backend.models import Reservation
+    import uuid as _uuid
+    fid = create(client, status="confirmed")["id"]
+    with Session(engine) as s:
+        row = s.get(Reservation, _uuid.UUID(fid))
+        stamp = row.confirmed_at
+        row.status = "printed"
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+        assert stamp is not None and row.confirmed_at == stamp
+    assert create(client, client_name="Brouillon")["confirmed_at"] is None
+
+
+def test_delete_requires_the_fiche_name(client):
+    fid = create(client)["id"]
+    assert client.delete(f"/fiches/{fid}", headers=AUTH).status_code == 422
+    assert client.delete(f"/fiches/{fid}?confirm_client_name=Martin", headers=AUTH).status_code == 409
+    assert client.delete(f"/fiches/{fid}?confirm_client_name=dupont", headers=AUTH).status_code == 200
