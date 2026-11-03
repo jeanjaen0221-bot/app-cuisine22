@@ -23,6 +23,8 @@ import ChatGPT from './pages/ChatGPT'
 import Salle from './pages/Salle'
 import Plaintes from './pages/Plaintes'
 import PlainteEdition from './pages/PlainteEdition'
+import Achats from './pages/Achats'
+import BonCommandeDetail from './pages/BonCommandeDetail'
 
 export default function App() {
   const [etat, setEtat] = useState<'chargement' | 'configuration' | 'connexion' | 'connecte'>('chargement')
@@ -81,6 +83,7 @@ function Mise() {
           {p.fiches && <Lien vers="/bons">Bons pour facturation</Lien>}
           {p.fiches && <Lien vers="/salle">Salle</Lien>}
           {p.fiches && <Lien vers="/plaintes">Plaintes</Lien>}
+          {p.fiches && <Lien vers="/achats">Achats</Lien>}
           {p.compta && <Lien vers="/compta">Espace compta</Lien>}
           <div className="separateur" />
           <Lien vers="/prix" badge={p.prix ? prixManquants : 0}>Prix</Lien>
@@ -109,6 +112,8 @@ function Mise() {
           {p.fiches && <Route path="/salle" element={<Salle />} />}
           {p.fiches && <Route path="/plaintes" element={<Plaintes />} />}
           {p.fiches && <Route path="/plaintes/:id" element={<PlainteEdition />} />}
+          {p.fiches && <Route path="/achats" element={<Achats />} />}
+          {p.fiches && <Route path="/achats/commandes/:id" element={<BonCommandeDetail />} />}
           <Route path="/bons/:id" element={<BonDetail />} />
           {p.compta && <Route path="/compta" element={<Compta />} />}
           <Route path="/prix" element={<Prix />} />

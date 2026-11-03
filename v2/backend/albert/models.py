@@ -455,3 +455,85 @@ class Note(Base):
     epinglee: Mapped[bool] = mapped_column(Boolean, default=False)
     cree_le: Mapped[datetime] = _cree()
     modifie_le: Mapped[datetime] = _modifie()
+
+
+# ---------------------------------------------------------------- achats (boissons, fournisseurs, commandes)
+
+class Fournisseur(Base):
+    __tablename__ = "fournisseur"
+
+    id: Mapped[uuid.UUID] = _id()
+    nom: Mapped[str] = mapped_column(String(200), unique=True)
+    email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+    telephone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    actif: Mapped[bool] = mapped_column(Boolean, default=True)
+    cree_le: Mapped[datetime] = _cree()
+
+
+class Boisson(Base):
+    """Boisson suivie en stock. Les prix d'achat sont distincts des prix de vente du menu Prix."""
+
+    __tablename__ = "boisson"
+
+    id: Mapped[uuid.UUID] = _id()
+    nom: Mapped[str] = mapped_column(String(200), unique=True)
+    categorie: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    unite: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    stock_min: Mapped[int] = mapped_column(Integer, default=0)
+    stock_max: Mapped[int] = mapped_column(Integer, default=0)
+    colisage: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    reassort: Mapped[bool] = mapped_column(Boolean, default=True)
+    actif: Mapped[bool] = mapped_column(Boolean, default=True)
+    cree_le: Mapped[datetime] = _cree()
+
+
+class BoissonFournisseur(Base):
+    __tablename__ = "boisson_fournisseur"
+
+    boisson_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("boisson.id"), primary_key=True)
+    fournisseur_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("fournisseur.id"), primary_key=True)
+    reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    prix_achat_centimes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    colisage: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    prefere: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    boisson: Mapped[Boisson] = relationship()
+    fournisseur: Mapped[Fournisseur] = relationship()
+
+
+class BonCommande(Base):
+    __tablename__ = "bon_commande"
+
+    id: Mapped[uuid.UUID] = _id()
+    numero: Mapped[str] = mapped_column(String(30), unique=True)  # C-2026-0001
+    fournisseur_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("fournisseur.id"), nullable=True, index=True)
+    statut: Mapped[str] = mapped_column(String(15), default="brouillon", index=True)  # brouillon, envoye, recu, annule
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    envoye_le: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    recu_le: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    cle_idempotence: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, unique=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    cree_le: Mapped[datetime] = _cree()
+    modifie_le: Mapped[datetime] = _modifie()
+
+    fournisseur: Mapped[Optional[Fournisseur]] = relationship()
+    lignes: Mapped[list["BonCommandeLigne"]] = relationship(
+        back_populates="bon", cascade="all, delete-orphan", order_by="BonCommandeLigne.ordre"
+    )
+
+
+class BonCommandeLigne(Base):
+    __tablename__ = "bon_commande_ligne"
+
+    id: Mapped[uuid.UUID] = _id()
+    bon_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bon_commande.id"), index=True)
+    ordre: Mapped[int] = mapped_column(Integer, default=0)
+    boisson_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("boisson.id"), nullable=True)
+    libelle: Mapped[str] = mapped_column(String(200))
+    unite: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    quantite: Mapped[int] = mapped_column(Integer)
+    prix_achat_centimes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    bon: Mapped[BonCommande] = relationship(back_populates="lignes")

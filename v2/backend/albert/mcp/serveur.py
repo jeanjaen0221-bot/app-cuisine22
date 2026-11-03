@@ -26,7 +26,7 @@ from ..config import reglages
 from ..db import session_contexte
 from ..domain.erreurs import ErreurMetier
 from ..models import Utilisateur
-from ..services import bons, catalogue, clients, comptes, devis, fiches, plaintes, salle
+from ..services import achats, bons, catalogue, clients, comptes, devis, fiches, plaintes, salle
 from . import liens
 from .oauth import SCOPES, SCOPES_PERMIS, FournisseurOAuth, url_ressource, utilisateur_autorise
 
@@ -310,6 +310,27 @@ def plainte_preparer(recit: str, date: Optional[str] = None, heure: Optional[str
         p = plaintes.modifier(s, a, plainte_id, donnees, version) if plainte_id else plaintes.creer(s, a, donnees)
         return {"plainte": plaintes.plainte_dict(p)}
     return executer("plaintes:preparer", preparer)
+
+
+# --------------------------------------------------------------- commandes fournisseurs
+
+@serveur.tool(annotations=LECTURE)
+def reassort_lire(restant: Optional[dict] = None) -> dict:
+    """Quantités de boissons à commander, calculées par l'outil. restant : {boisson_id: quantité restante en stock}
+    donnée par l'utilisateur (0 si non précisé). Renvoie aussi le fournisseur préféré de chaque boisson."""
+    def lire(s, a):
+        return {"reassort": [r for r in achats.reassort(s, restant or {}) if r["reassort"]]}
+    return executer("achats:preparer", lire)
+
+
+@serveur.tool(annotations=ECRITURE)
+def achat_preparer(lignes: list[dict], cle_idempotence: str, fournisseur_id: Optional[str] = None,
+                   note: Optional[str] = None) -> dict:
+    """Préparer un bon de commande fournisseur en brouillon. lignes : [{boisson_id ou nom, quantite}] — quantités
+    données par l'utilisateur ou reprises de reassort_lire, jamais inventées. Le bon n'est pas envoyé : l'équipe le
+    relit et l'envoie elle-même au fournisseur."""
+    return executer("achats:preparer", lambda s, a: {"commande": achats.bon_dict(
+        achats.creer_bon(s, a, fournisseur_id, lignes, note, cle_idempotence))})
 
 
 # --------------------------------------------------------------- montage dans FastAPI

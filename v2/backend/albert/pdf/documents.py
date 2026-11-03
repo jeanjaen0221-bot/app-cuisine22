@@ -423,3 +423,27 @@ def pdf_plainte(p: dict[str, Any]) -> bytes:
     SimpleDocTemplate(tampon, pagesize=A4, leftMargin=1.6 * cm, rightMargin=1.6 * cm, topMargin=1.5 * cm,
                       bottomMargin=1.5 * cm, title="Plainte").build(histoire)
     return tampon.getvalue()
+
+
+# --------------------------------------------------------------- bons de commande fournisseur
+
+def pdf_bon_commande(bon: dict[str, Any], restaurant: dict[str, Any]) -> bytes:
+    st = _styles()
+    fournisseur = {"nom": bon.get("fournisseur") or "Fournisseur à préciser"}
+    histoire = _entete_document("Bon de commande", bon["numero"], restaurant, fournisseur,
+                                [("Date", date.fromisoformat(bon["cree_le"][:10]).strftime("%d/%m/%Y"))], st)
+    data = [[Paragraph(f"<b>{h}</b>", st["texte"]) for h in ("Référence", "Article", "Unité", "Quantité")]]
+    for l in bon["lignes"]:
+        data.append([echapper(l.get("reference") or ""), Paragraph(echapper(l["libelle"]), st["texte"]),
+                     echapper(l.get("unite") or ""), str(l["quantite"])])
+    t = Table(data, colWidths=[3 * cm, None, 3 * cm, 2.4 * cm], repeatRows=1)
+    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), FOND), ("LINEBELOW", (0, 0), (-1, 0), 0.8, NOIR),
+                           ("LINEBELOW", (0, 1), (-1, -1), 0.25, BORDURE), ("ALIGN", (3, 1), (3, -1), "CENTER"),
+                           ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    histoire.append(t)
+    if bon.get("note"):
+        histoire += [Spacer(1, 10), Paragraph("Remarques", st["h2"]), Paragraph(notes_html(bon["note"]), st["texte"])]
+    tampon = io.BytesIO()
+    SimpleDocTemplate(tampon, pagesize=A4, leftMargin=1.6 * cm, rightMargin=1.6 * cm, topMargin=1.5 * cm,
+                      bottomMargin=1.5 * cm, title=f"Bon de commande {bon['numero']}").build(histoire)
+    return tampon.getvalue()

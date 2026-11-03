@@ -42,6 +42,7 @@ SCOPES = {
     "fiches:ecrire": "Créer et modifier des clients et des fiches (en brouillon)",
     "devis:preparer": "Préparer des devis et des bons pour facturation en brouillon",
     "plaintes:preparer": "Rédiger des rapports de plainte en brouillon",
+    "achats:preparer": "Préparer des bons de commande fournisseur en brouillon (jamais envoyés)",
 }
 OFFLINE = "offline_access"
 SCOPES_PERMIS = [*SCOPES, OFFLINE]

@@ -20,6 +20,7 @@ Parcours : **Client → Fiche → Devis TVA comprise → transmis à la compta**
 | Salle | Plan de base (tables, zones, réglages) et plan de chaque service : fiches du jour + PDF de réservations, placement automatique ou à la main, PDF du service et PDF annoté ; la table apparaît sur la fiche |
 | Plaintes | Rapport rattaché au client et à la fiche, gravité, brouillon (ChatGPT) → ouverte → traitée, PDF |
 | Notes | Post-it de l'équipe sur le tableau de bord (auteur, épinglage) |
+| Achats | Boissons (stock min/max, colisage), fournisseurs et prix d'achat, réassort → un bon de commande par fournisseur, PDF/CSV, suivi envoyé → reçu ; import d'une carte (texte, CSV, PDF) |
 | ChatGPT | Adresse du connecteur, connexions actives, bouton « Couper » |
 | Journal | Qui a fait quoi, sur le site ou par ChatGPT (admin) |
 | Utilisateurs / Paramètres | Rôles admin / équipe / compta, droits « prix » et « chatgpt » ; coordonnées du restaurant, validité des devis |
@@ -47,7 +48,7 @@ v2/
 │   │   ├── salle/       plan de salle : géométrie, placement automatique, PDF (repris de l'ancienne version)
 │   │   └── main.py
 │   ├── alembic/         migrations de la base (alembic upgrade head)
-│   └── tests/           71 tests : règles, parcours complet, droits, ChatGPT de bout en bout
+│   └── tests/           75 tests : règles, parcours complet, droits, ChatGPT de bout en bout
 ├── frontend/            site React (Vite, TypeScript)
 └── Dockerfile
 ```
@@ -97,6 +98,5 @@ par le serveur, pas seulement par les consignes. Chaque action de ChatGPT appara
 
 ## Pas encore dans la v2
 
-Prévu aux étapes suivantes (voir `docs/REFONTE_ANALYSE.md` §15) : plaintes, commandes de boissons et fournisseurs,
-notes, synchronisation Zenchef, lecture Gmail par ChatGPT, reprise des données de l'ancienne version. En attendant, ces modules
-restent dans l'ancienne version.
+Prévu aux étapes suivantes (voir `docs/REFONTE_ANALYSE.md` §15) : synchronisation Zenchef, lecture Gmail par ChatGPT,
+reprise des données de l'ancienne version. En attendant, ces modules restent dans l'ancienne version.
