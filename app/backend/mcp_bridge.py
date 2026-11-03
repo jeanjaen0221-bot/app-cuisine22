@@ -16,17 +16,18 @@ import os
 import secrets
 import time
 import uuid
-from typing import Any, Optional
+from typing import Annotated, Any, Literal, Optional
 from urllib.parse import urlsplit
 
 import jwt
-from pydantic import AnyHttpUrl
+from pydantic import AnyHttpUrl, Field, ValidationError
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import ToolAnnotations
 from mcp.server.auth.provider import (
     AccessToken,
     AuthorizationCode,
@@ -40,6 +41,17 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
 from .database import session_context
 from .gpt_api import (
+    _ALLERGENS_DESC,
+    _FINAL_DESC,
+    _ITEM_TYPE_ALIASES,
+    _MENU_DESC,
+    _NOTES_DESC,
+    _STATUS_DESC,
+    DrinkFormula,
+    FicheStatus,
+    ItemType,
+    MenuFormula,
+    _normalize_choice,
     GptFicheCreate,
     GptFichePatch,
     GptItem,
@@ -61,6 +73,7 @@ from .gpt_api import (
     update_fiche,
     upsert_billing,
 )
+from .gpt_rules import FICHE_RULES
 from .models import BillingInfoUpdate, Setting, User
 from .security import ALGORITHM, JWT_SECRET, normalize_email, verify_password
 
@@ -114,6 +127,17 @@ def _tool_write_result(fn) -> Any:
                 "detail": exc.detail,
             },
         }
+    except ValidationError as exc:
+        return {
+            "ok": False,
+            "error": {
+                "status_code": 422,
+                "detail": [
+                    {"champ": ".".join(str(p) for p in e["loc"]), "message": e["msg"]}
+                    for e in exc.errors(include_url=False)
+                ],
+            },
+        }
     except ValueError as exc:
         return {
             "ok": False,
@@ -122,6 +146,13 @@ def _tool_write_result(fn) -> Any:
                 "detail": str(exc),
             },
         }
+
+
+def _uuid(value: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        raise ValueError(f"Identifiant de fiche invalide : {value!r}. Utiliser l'id renvoyé par fiches_rechercher.")
 
 
 
@@ -373,10 +404,8 @@ mcp_server = MCPServer(
     name="Restaurant Albert",
     title="Restaurant Albert – Fiches & Gmail",
     description="Gestion des fiches de réservation et de la boîte Gmail du Restaurant Albert.",
-    instructions=(
-        "Utiliser les outils fiches pour lire/mettre à jour les réservations et les outils Gmail "
-        "pour rechercher/lire des échanges ou créer des brouillons. Ne jamais envoyer d'e-mail."
-    ),
+    # Same rules as the Custom GPT (GPT_INSTRUCTIONS.md), so both write fiches alike.
+    instructions=FICHE_RULES,
     auth_server_provider=oauth_provider,
     auth=AuthSettings(
         issuer_url=AnyHttpUrl(_resource_url()),
@@ -403,40 +432,80 @@ async def mcp_login_callback(request: Request) -> Response:
     return await oauth_provider.login_callback(request)
 
 
-@mcp_server.tool()
+_READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
+_WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)
+
+# Typed parameters: the JSON schema ChatGPT receives lists the exact allowed values
+# and explains every field, so it does not have to guess names or spellings.
+ReservationId = Annotated[str, Field(description="UUID de la fiche (champ id renvoyé par fiches_rechercher).")]
+ClientName = Annotated[str, Field(max_length=200, description="Nom de classement : société seule (ex. « Deloitte ») ou « Prénom Nom » pour un particulier. Sans titre, date, couverts ni emoji.")]
+Pax = Annotated[int, Field(ge=1, le=500, description="Nombre de couverts.")]
+ServiceDate = Annotated[str, Field(description="Date du service, AAAA-MM-JJ. Ne jamais deviner.")]
+ArrivalTime = Annotated[str, Field(description="Heure d'arrivée, HH:MM (24 h). Ne jamais deviner.")]
+Notes = Annotated[str, Field(max_length=4000, description=_NOTES_DESC)]
+Allergens = Annotated[list[str], Field(description=_ALLERGENS_DESC)]
+OnInvoice = Annotated[bool, Field(description="Case « Sur facture » : true seulement si le client paie sur facture.")]
+Status = Annotated[FicheStatus, Field(description=_STATUS_DESC)]
+FinalVersion = Annotated[bool, Field(description=_FINAL_DESC)]
+DrinkField = Annotated[DrinkFormula, Field(description="Formule boissons, valeur exacte de la liste (défaut du site : « sans alcool »).")]
+MenuField = Annotated[MenuFormula, Field(description=_MENU_DESC)]
+Items = Annotated[list[GptItem], Field(description="Plats et suppléments. Noms exacts du catalogue (menu_rechercher). Total par type (entrée/plat/dessert) ≤ couverts.")]
+
+
+@mcp_server.tool(annotations=_READ_ONLY)
+def regles_fiches() -> str:
+    """Règles et conventions pour écrire une fiche comme l'équipe la remplit dans le site.
+
+    À lire au début de chaque conversation, avant de créer ou modifier une fiche.
+    """
+    return FICHE_RULES
+
+
+@mcp_server.tool(annotations=_READ_ONLY)
 def fiches_rechercher(
-    q: Optional[str] = None,
-    service_date: Optional[str] = None,
-    scope: str = "upcoming",
-    page: int = 1,
-    per_page: int = 20,
+    q: Annotated[Optional[str], Field(description="Recherche dans le nom, la société et le contact.")] = None,
+    service_date: Annotated[Optional[str], Field(description="Jour précis AAAA-MM-JJ (ignore scope).")] = None,
+    scope: Annotated[Literal["upcoming", "past"], Field(description="upcoming = à venir, past = historique.")] = "upcoming",
+    page: Annotated[int, Field(ge=1)] = 1,
+    per_page: Annotated[int, Field(ge=1, le=50)] = 20,
 ) -> Any:
     """Rechercher/lister les fiches. Toujours chercher avant de créer une nouvelle fiche."""
-    with session_context() as session:
-        return _jsonable(list_fiches(q, service_date, scope, page, per_page, session))
+    def _run():
+        with session_context() as session:
+            return list_fiches(q, service_date, scope, page, per_page, session)
+
+    return _tool_write_result(_run)
 
 
-@mcp_server.tool()
-def fiche_lire(reservation_id: str) -> Any:
-    """Lire une fiche complète par son UUID."""
-    with session_context() as session:
-        return _jsonable(get_fiche(uuid.UUID(reservation_id), session))
+@mcp_server.tool(annotations=_READ_ONLY)
+def fiche_lire(reservation_id: ReservationId) -> Any:
+    """Lire une fiche complète (champs, plats, notes) par son UUID."""
+    def _run():
+        with session_context() as session:
+            return get_fiche(_uuid(reservation_id), session)
+
+    return _tool_write_result(_run)
 
 
-@mcp_server.tool()
+@mcp_server.tool(annotations=_WRITE)
 def fiche_creer(
-    client_name: str,
-    pax: int,
-    service_date: str,
-    arrival_time: str,
-    drink_formula: str = "sans alcool",
-    menu_formula: str = "",
-    notes: Optional[str] = None,
-    allergens: Optional[list[str]] = None,
-    on_invoice: bool = False,
-    items: Optional[list[dict[str, Any]]] = None,
+    client_name: ClientName,
+    pax: Pax,
+    service_date: ServiceDate,
+    arrival_time: ArrivalTime,
+    drink_formula: DrinkField = "sans alcool",
+    menu_formula: MenuField = "",
+    notes: Optional[Notes] = None,
+    allergens: Optional[Allergens] = None,
+    on_invoice: OnInvoice = False,
+    status: Status = "draft",
+    final_version: FinalVersion = False,
+    items: Optional[Items] = None,
 ) -> Any:
-    """Créer une fiche en brouillon. Nom, couverts, date et heure doivent être connus."""
+    """Créer une fiche (brouillon par défaut). Nom, couverts, date et heure doivent être connus.
+
+    Chercher d'abord la fiche avec fiches_rechercher : si elle existe, la modifier.
+    """
     def _run():
         payload = GptFicheCreate(
             client_name=client_name,
@@ -448,6 +517,8 @@ def fiche_creer(
             notes=notes,
             allergens=allergens or [],
             on_invoice=on_invoice,
+            status=status,
+            final_version=final_version,
             items=items or [],
         )
         with session_context() as session:
@@ -456,118 +527,239 @@ def fiche_creer(
     return _tool_write_result(_run)
 
 
-@mcp_server.tool()
-def fiche_modifier(reservation_id: str, changes: dict[str, Any]) -> Any:
-    """Modifier uniquement les champs demandés d'une fiche existante.
+@mcp_server.tool(annotations=_WRITE)
+def fiche_modifier(
+    reservation_id: ReservationId,
+    client_name: Optional[ClientName] = None,
+    pax: Optional[Pax] = None,
+    service_date: Optional[ServiceDate] = None,
+    arrival_time: Optional[ArrivalTime] = None,
+    drink_formula: Optional[DrinkField] = None,
+    menu_formula: Optional[MenuField] = None,
+    notes: Optional[Annotated[str, Field(max_length=4000, description=_NOTES_DESC + " Remplace tout le texte : repartir des notes actuelles.")]] = None,
+    allergens: Optional[Annotated[list[str], Field(description=_ALLERGENS_DESC + " Remplace la liste existante.")]] = None,
+    on_invoice: Optional[OnInvoice] = None,
+    status: Optional[Status] = None,
+    final_version: Optional[FinalVersion] = None,
+    items: Optional[Annotated[list[GptItem], Field(description="REMPLACE toute la liste des plats. Pour un seul plat, utiliser fiche_item_ajouter / fiche_item_retirer.")]] = None,
+) -> Any:
+    """Modifier uniquement les champs demandés d'une fiche existante (ne pas envoyer les autres).
 
     status = réservation confirmée ('confirmed', preuve Gmail/Zenchef) ou 'draft'.
     final_version = fiche finalisée pour la cuisine (menus, quantités, infos validés).
     Les deux sont indépendants. La fiche est relue après écriture : si la réponse
     contient ok=false, la modification a échoué et il faut l'annoncer comme un échec.
     """
+    changes = {
+        k: v
+        for k, v in {
+            "client_name": client_name,
+            "pax": pax,
+            "service_date": service_date,
+            "arrival_time": arrival_time,
+            "drink_formula": drink_formula,
+            "menu_formula": menu_formula,
+            "notes": notes,
+            "allergens": allergens,
+            "on_invoice": on_invoice,
+            "status": status,
+            "final_version": final_version,
+            "items": items,
+        }.items()
+        if v is not None
+    }
+
     def _run():
+        if not changes:
+            raise ValueError("Aucun champ à modifier : préciser au moins un champ.")
         payload = GptFichePatch(**changes)
         with session_context() as session:
-            return update_fiche(uuid.UUID(reservation_id), payload, session)
+            return update_fiche(_uuid(reservation_id), payload, session)
 
     return _tool_write_result(_run)
 
 
-@mcp_server.tool()
+@mcp_server.tool(annotations=_WRITE)
 def fiche_item_ajouter(
-    reservation_id: str, type: str, name: str, quantity: int, comment: Optional[str] = None
+    reservation_id: ReservationId,
+    type: Annotated[ItemType, Field(description="entrée, plat, dessert, ou supplément (extras : Champagne, Planche apéro, Privatisation…).")],
+    name: Annotated[str, Field(min_length=1, max_length=200, description="Nom exact du plat du catalogue (menu_rechercher).")],
+    quantity: Annotated[int, Field(ge=1, le=500, description="Nombre de portions.")],
+    comment: Annotated[Optional[str], Field(max_length=500)] = None,
 ) -> Any:
     """Ajouter un plat/supplément ou modifier sa quantité sans remplacer les autres items."""
     def _run():
         payload = GptItem(type=type, name=name, quantity=quantity, comment=comment)
         with session_context() as session:
-            return add_item(uuid.UUID(reservation_id), payload, session)
+            return add_item(_uuid(reservation_id), payload, session)
 
     return _tool_write_result(_run)
 
 
-@mcp_server.tool()
-def fiche_item_retirer(reservation_id: str, type: str, name: str) -> Any:
+@mcp_server.tool(annotations=_WRITE)
+def fiche_item_retirer(
+    reservation_id: ReservationId,
+    type: Annotated[ItemType, Field(description="Type de l'item à retirer.")],
+    name: Annotated[str, Field(min_length=1, description="Nom de l'item tel qu'il figure sur la fiche.")],
+) -> Any:
     """Retirer un seul plat ou supplément sans toucher au reste."""
     def _run():
         with session_context() as session:
-            return remove_item(uuid.UUID(reservation_id), type, name, session)
+            return remove_item(_uuid(reservation_id), _normalize_choice(type, _ITEM_TYPE_ALIASES), name, session)
 
     return _tool_write_result(_run)
 
 
-@mcp_server.tool()
-def fiche_dupliquer(reservation_id: str) -> Any:
+@mcp_server.tool(annotations=_WRITE)
+def fiche_dupliquer(reservation_id: ReservationId) -> Any:
     """Dupliquer une fiche existante."""
-    with session_context() as session:
-        return _jsonable(duplicate_fiche(uuid.UUID(reservation_id), session))
+    def _run():
+        with session_context() as session:
+            return duplicate_fiche(_uuid(reservation_id), session)
+
+    return _tool_write_result(_run)
 
 
-@mcp_server.tool()
-def fiche_supprimer(reservation_id: str) -> Any:
+@mcp_server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+def fiche_supprimer(reservation_id: ReservationId) -> Any:
     """Supprimer une fiche. À appeler uniquement après demande explicite et confirmation."""
-    with session_context() as session:
-        return _jsonable(delete_fiche(uuid.UUID(reservation_id), session))
+    def _run():
+        with session_context() as session:
+            return delete_fiche(_uuid(reservation_id), session)
+
+    return _tool_write_result(_run)
 
 
-@mcp_server.tool()
-def menu_rechercher(q: Optional[str] = None, type: Optional[str] = None) -> Any:
-    """Rechercher les noms/types exacts des plats actifs du catalogue."""
-    with session_context() as session:
-        return _jsonable(search_menu_items(q, type, session))
+@mcp_server.tool(annotations=_READ_ONLY)
+def menu_rechercher(
+    q: Annotated[Optional[str], Field(description="Mots du nom du plat (accents et ordre des mots ignorés).")] = None,
+    type: Annotated[Optional[Literal["entrée", "plat", "dessert"]], Field(description="Filtrer par type.")] = None,
+) -> Any:
+    """Rechercher les noms/types exacts des plats actifs du catalogue. Reprendre le nom renvoyé tel quel."""
+    def _run():
+        with session_context() as session:
+            return search_menu_items(q, type, session)
+
+    return _tool_write_result(_run)
 
 
-@mcp_server.tool()
-def facturation_lire(reservation_id: str) -> Any:
+@mcp_server.tool(annotations=_READ_ONLY)
+def facturation_lire(reservation_id: ReservationId) -> Any:
     """Lire les informations de facturation d'une fiche."""
-    with session_context() as session:
-        return _jsonable(get_billing(uuid.UUID(reservation_id), session))
+    def _run():
+        with session_context() as session:
+            return get_billing(_uuid(reservation_id), session)
+
+    return _tool_write_result(_run)
 
 
-@mcp_server.tool()
-def facturation_mettre_a_jour(reservation_id: str, changes: dict[str, Any]) -> Any:
-    """Créer ou mettre à jour la facturation. À la création, société/adresse/CP/ville sont obligatoires."""
-    payload = BillingInfoUpdate(**changes)
-    with session_context() as session:
-        return _jsonable(upsert_billing(uuid.UUID(reservation_id), payload, session))
+@mcp_server.tool(annotations=_WRITE)
+def facturation_mettre_a_jour(
+    reservation_id: ReservationId,
+    company_name: Annotated[Optional[str], Field(description="Raison sociale (obligatoire à la création).")] = None,
+    address_line1: Annotated[Optional[str], Field(description="Adresse (obligatoire à la création).")] = None,
+    address_line2: Annotated[Optional[str], Field(description="Complément d'adresse.")] = None,
+    zip_code: Annotated[Optional[str], Field(description="Code postal (obligatoire à la création).")] = None,
+    city: Annotated[Optional[str], Field(description="Ville (obligatoire à la création).")] = None,
+    country: Annotated[Optional[str], Field(description="Pays (défaut du site : « Belgique »).")] = None,
+    vat_number: Annotated[Optional[str], Field(description="Numéro de TVA (ex. BE0123456789).")] = None,
+    po_reference: Annotated[Optional[str], Field(description="Référence de bon de commande du client.")] = None,
+    email: Annotated[Optional[str], Field(description="E-mail de facturation.")] = None,
+    phone: Annotated[Optional[str], Field(description="Téléphone de facturation.")] = None,
+    payment_terms: Annotated[Optional[str], Field(description="Conditions de paiement (défaut du site : « Paiement à 30 jours »).")] = None,
+    notes: Annotated[Optional[str], Field(description="Remarques de facturation.")] = None,
+) -> Any:
+    """Créer ou mettre à jour la facturation. À la création, société/adresse/CP/ville sont obligatoires.
+
+    N'envoyer que les champs à créer ou changer.
+    """
+    changes = {
+        k: v
+        for k, v in {
+            "company_name": company_name,
+            "address_line1": address_line1,
+            "address_line2": address_line2,
+            "zip_code": zip_code,
+            "city": city,
+            "country": country,
+            "vat_number": vat_number,
+            "po_reference": po_reference,
+            "email": email,
+            "phone": phone,
+            "payment_terms": payment_terms,
+            "notes": notes,
+        }.items()
+        if v is not None
+    }
+
+    def _run():
+        payload = BillingInfoUpdate(**changes)
+        with session_context() as session:
+            return upsert_billing(_uuid(reservation_id), payload, session)
+
+    return _tool_write_result(_run)
 
 
-@mcp_server.tool()
-def gmail_rechercher(q: str, max_results: int = 10) -> Any:
+@mcp_server.tool(annotations=_READ_ONLY)
+def gmail_rechercher(
+    q: Annotated[str, Field(description="Requête Gmail, ex. 'from:client@exemple.com newer_than:30d'.")],
+    max_results: Annotated[int, Field(ge=1, le=50)] = 10,
+) -> Any:
     """Rechercher des e-mails avec la syntaxe Gmail."""
-    with session_context() as session:
-        return _jsonable(search_gmail(q, max_results, session))
+    def _run():
+        with session_context() as session:
+            return search_gmail(q, max_results, session)
+
+    return _tool_write_result(_run)
 
 
-@mcp_server.tool()
-def gmail_messages_client(email: str, max_results: int = 10) -> Any:
+@mcp_server.tool(annotations=_READ_ONLY)
+def gmail_messages_client(
+    email: Annotated[str, Field(description="Adresse e-mail du client.")],
+    max_results: Annotated[int, Field(ge=1, le=50)] = 10,
+) -> Any:
     """Récupérer les derniers e-mails échangés avec une adresse cliente."""
-    with session_context() as session:
-        return _jsonable(gmail_client_messages(email, max_results, session))
+    def _run():
+        with session_context() as session:
+            return gmail_client_messages(email, max_results, session)
+
+    return _tool_write_result(_run)
 
 
-@mcp_server.tool()
+@mcp_server.tool(annotations=_READ_ONLY)
 def gmail_lire_fil(thread_id: str) -> Any:
     """Lire un fil Gmail complet."""
-    with session_context() as session:
-        return _jsonable(get_gmail_thread(thread_id, session))
+    def _run():
+        with session_context() as session:
+            return get_gmail_thread(thread_id, session)
+
+    return _tool_write_result(_run)
 
 
-@mcp_server.tool()
+@mcp_server.tool(annotations=_READ_ONLY)
 def gmail_lire_message(message_id: str) -> Any:
     """Lire un message Gmail précis."""
-    with session_context() as session:
-        return _jsonable(get_gmail_message(message_id, session))
+    def _run():
+        with session_context() as session:
+            return get_gmail_message(message_id, session)
+
+    return _tool_write_result(_run)
 
 
-@mcp_server.tool()
+@mcp_server.tool(annotations=_WRITE)
 def gmail_creer_brouillon(
-    to: str, subject: str, body: str, thread_id: Optional[str] = None
+    to: Annotated[str, Field(description="Destinataire.")],
+    subject: Annotated[str, Field(description="Objet.")],
+    body: Annotated[str, Field(description="Texte du message.")],
+    thread_id: Annotated[Optional[str], Field(description="Fil Gmail existant où placer le brouillon.")] = None,
 ) -> Any:
     """Créer un brouillon Gmail, sans jamais envoyer le message."""
-    payload = DraftCreate(to=to, subject=subject, body=body, thread_id=thread_id)
-    with session_context() as session:
-        return _jsonable(create_gmail_draft(payload, session))
+    def _run():
+        payload = DraftCreate(to=to, subject=subject, body=body, thread_id=thread_id)
+        with session_context() as session:
+            return create_gmail_draft(payload, session)
+
+    return _tool_write_result(_run)
 
 
 
