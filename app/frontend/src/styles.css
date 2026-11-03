@@ -3465,3 +3465,48 @@ img, video, canvas, svg { max-width: 100%; }
   .analytics-control { min-width: 100%; }
   .analytics-summary { min-width: 100%; }
 }
+
+/* Aperçu des notes sous l'éditeur (fiche) : un bloc lisible, une ligne par info.
+   Classes sans "text-" pour échapper à la règle globale [class*="text-"] { display: inline }. */
+.notes-preview {
+  display: block;
+  margin-top: 0.75rem;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-left: 3px solid var(--primary, #693381);
+  border-radius: 8px;
+  background: #fafafa;
+  overflow: hidden;
+}
+.notes-preview-label {
+  display: block;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6b7280;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  background: #fff;
+}
+.notes-preview-body {
+  display: block;
+  padding: 0.6rem 0.75rem;
+  max-height: 260px;
+  overflow-y: auto;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: #374151;
+  word-break: break-word;
+}
+.notes-preview-body p { display: block; margin: 0 0 0.15rem; }
+.notes-preview-body p.notes-gap { height: 0.4rem; margin: 0; }
+.notes-preview-body ul { display: block; list-style: disc; padding-left: 1.25rem; margin: 0.1rem 0 0.3rem; }
+.notes-preview-body li { display: list-item; margin: 0.05rem 0; }
+.notes-preview-body strong { font-weight: 600; color: #111827; }
+
+/* Notes sur les cartes de la liste des fiches */
+.card-notes { display: block; margin-top: 0.5rem; }
+.card-notes-line { display: block; font-size: 0.875rem; line-height: 1.45; color: #374151; margin: 0.1rem 0; word-break: break-word; }
+.card-notes-line strong { font-weight: 600; color: #111827; }
+.card-notes ul { display: block; list-style: disc; padding-left: 1.1rem; margin: 0.1rem 0 0.25rem; }
+.card-notes li { display: list-item; font-size: 0.875rem; line-height: 1.45; color: #374151; }

@@ -34,6 +34,36 @@ const cleanNotesPreview = (s: string | undefined, max = 120) => {
     .slice(0, max);
 };
 
+// Notes des cartes : une ligne par info, "- …" en puces, **gras** et _italique_ rendus.
+type NoteLine = { text: string; bullet: boolean }
+const noteLines = (s?: string): NoteLine[] =>
+  String(s || '')
+    .replace(/\[color=[^\]]+\]|\[\/color\]|\[size=[^\]]+\]|\[\/size\]/g, '')
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean)
+    .map(l => {
+      const m = l.match(/^[-•*]\s+(.*)$/)
+      return m ? { text: m[1], bullet: true } : { text: l, bullet: false }
+    })
+
+const groupNoteLines = (lines: NoteLine[]) => {
+  const groups: { bullets: boolean; lines: string[] }[] = []
+  for (const l of lines) {
+    const last = groups[groups.length - 1]
+    if (last && last.bullets === l.bullet) last.lines.push(l.text)
+    else groups.push({ bullets: l.bullet, lines: [l.text] })
+  }
+  return groups
+}
+
+const renderNoteInline = (text: string) =>
+  text.split(/(\*\*[^*]+\*\*|_[^_]+_)/g).filter(Boolean).map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) return <strong key={i}>{part.slice(2, -2)}</strong>
+    if (part.startsWith('_') && part.endsWith('_') && part.length > 2) return <em key={i}>{part.slice(1, -1)}</em>
+    return <span key={i}>{part}</span>
+  })
+
 const splitAllergens = (csv?: string) => (csv ? csv.split(',').map(s=>s.trim()).filter(Boolean) : []);
 type AllergenMeta = { key: string; label: string; icon_url?: string }
 
@@ -427,33 +457,29 @@ export default function ReservationList() {
                   {/* Formule boisson */}
                   <DrinkBadge value={r.drink_formula} />
                   {/* Notes */}
-                  {r.notes && (
-                    <div className="text-gray-700">
-                      <span className="section-label">Notes</span>{': '}
-                      {(() => {
-                        const lines = String(r.notes || '')
-                          .split(/\r?\n|\s*-\s+/g)
-                          .map(s => s.trim())
-                          .filter(Boolean)
-                        const isOpen = !!expanded[r.id]?.notes
-                        const shown = isOpen ? lines : lines.slice(0, 5)
-                        return lines.length === 0 ? (
-                          <>-</>
+                  {r.notes && (() => {
+                    const lines = noteLines(r.notes)
+                    if (lines.length === 0) return null
+                    const isOpen = !!expanded[r.id]?.notes
+                    const shown = isOpen ? lines : lines.slice(0, 6)
+                    return (
+                      <div className="card-notes">
+                        <span className="section-label">Notes</span>
+                        {groupNoteLines(shown).map((g, gi) => g.bullets ? (
+                          <ul key={`nl-${gi}`}>
+                            {g.lines.map((l, i) => <li key={i}>{renderNoteInline(l)}</li>)}
+                          </ul>
                         ) : (
-                          <>
-                            <ul className="menu-list note-list">
-                              {shown.map((l, i) => (<li key={`n-${i}`} className="menu-line">{l}</li>))}
-                            </ul>
-                            {(lines.length > 5 || isOpen) && (
-                              <button className="section-toggle" onClick={e => { e.stopPropagation(); toggle(r.id, 'notes') }}>
-                                {isOpen ? 'Réduire' : 'Voir tout'}
-                              </button>
-                            )}
-                          </>
-                        )
-                      })()}
-                    </div>
-                  )}
+                          g.lines.map((l, i) => <div key={`np-${gi}-${i}`} className="card-notes-line">{renderNoteInline(l)}</div>)
+                        ))}
+                        {(lines.length > 6 || isOpen) && (
+                          <button className="section-toggle" onClick={e => { e.stopPropagation(); toggle(r.id, 'notes') }}>
+                            {isOpen ? 'Réduire' : 'Voir tout'}
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })()}
                   {/* Allergènes */}
                   {/* Allergènes déplacés pleine largeur sous la grille */}
                   </div>
