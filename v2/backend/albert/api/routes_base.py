@@ -145,3 +145,45 @@ def journal(objet_type: Optional[str] = None, objet_id: Optional[str] = None, ca
              "action": a.action, "objet_type": a.objet_type, "objet_id": a.objet_id, "resume": a.resume,
              "avant": a.avant, "apres": a.apres} for a in lignes]
 
+
+
+# --------------------------------------------------------------- connexions ChatGPT
+
+@router.get("/chatgpt")
+def chatgpt(acteur: Acteur = Depends(acteur_connecte), session: Session = Depends(session_db)):
+    from ..mcp.oauth import SCOPES, url_ressource, utilisateur_autorise
+    from ..models import ConnexionChatGPT
+
+    acteur.exiger("lecture")
+    stmt = select(ConnexionChatGPT).order_by(ConnexionChatGPT.cree_le.desc())
+    if not acteur.peut("admin"):
+        stmt = stmt.where(ConnexionChatGPT.utilisateur_id == acteur.utilisateur_id)
+    u = session.get(Utilisateur, acteur.utilisateur_id)
+    return {
+        "url_connecteur": url_ressource(),
+        "droits": [{"cle": k, "libelle": v} for k, v in SCOPES.items()],
+        "autorise": utilisateur_autorise(u),
+        "connexions": [{
+            "id": str(c.id), "utilisateur": c.utilisateur.email, "application": c.client_nom, "droits": c.scopes,
+            "cree_le": c.cree_le.isoformat(), "revoquee": c.revoquee,
+            "derniere_utilisation": c.derniere_utilisation.isoformat() if c.derniere_utilisation else None,
+        } for c in session.scalars(stmt.limit(100))],
+    }
+
+
+@router.post("/chatgpt/connexions/{connexion_id}/revoquer")
+def revoquer_connexion(connexion_id: str, acteur: Acteur = Depends(acteur_connecte),
+                       session: Session = Depends(session_db)):
+    import uuid
+
+    from ..domain.erreurs import introuvable
+    from ..models import ConnexionChatGPT
+    from ..services.contexte import journaliser
+
+    c = session.get(ConnexionChatGPT, uuid.UUID(connexion_id))
+    if c is None or (c.utilisateur_id != acteur.utilisateur_id and not acteur.peut("admin")):
+        raise introuvable("Connexion")
+    c.revoquee = True
+    journaliser(session, acteur, "chatgpt.revoquer", "connexion_chatgpt", c.id, f"{c.client_nom} ({c.utilisateur.email})")
+    session.commit()
+    return {"ok": True}

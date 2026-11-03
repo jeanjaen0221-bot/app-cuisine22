@@ -300,7 +300,7 @@ def _table_lignes(lignes: list[dict[str, Any]], st: dict[str, ParagraphStyle], a
     entete = ["Désignation", "Qté", "Unité", "Prix unitaire", "Total"]
     if avec_devis:
         entete.insert(1, "Prévu")
-    data = [[Paragraph(f"<b>{h}</b>", st["texte"]) for h in entete]]
+    data = [[Paragraph(f"<b>{h}</b>", st["droite"] if h in ("Prix unitaire", "Total") else st["texte"]) for h in entete]]
     for l in lignes:
         ligne = [Paragraph(echapper(l["libelle"]), st["texte"]), str(l["quantite"]),
                  LIBELLES_UNITES.get(l["unite"], l["unite"]),

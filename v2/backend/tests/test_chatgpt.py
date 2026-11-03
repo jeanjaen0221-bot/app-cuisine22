@@ -185,3 +185,17 @@ def test_compte_sans_droit_chatgpt(app_mcp, session):
     _utilisateur(session, "serveur@albert.test", "equipe")
     with pytest.raises(AssertionError):
         connecter(app_mcp, "serveur@albert.test", ["lecture"])
+
+
+def test_revocation_depuis_le_site(app_mcp, admin, session):
+    jeton, _ = connecter(app_mcp, admin.email, ["lecture"])
+    mcp = Mcp(app_mcp, jeton)
+    from .conftest import _connecte
+
+    site = _connecte(session, admin.email)
+    infos = site.get("/api/chatgpt").json()
+    assert infos["autorise"] and infos["url_connecteur"] == f"{BASE}/mcp"
+    [connexion] = infos["connexions"]
+    assert site.post(f"/api/chatgpt/connexions/{connexion['id']}/revoquer").status_code == 200
+    r = app_mcp.post("/mcp/", headers=mcp.entetes, json={"jsonrpc": "2.0", "id": 7, "method": "tools/list"})
+    assert r.status_code == 401

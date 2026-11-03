@@ -1,0 +1,39 @@
+name: v2
+
+on:
+  push:
+    paths: ["v2/**", ".github/workflows/v2.yml"]
+  pull_request:
+    paths: ["v2/**", ".github/workflows/v2.yml"]
+
+jobs:
+  serveur:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v2/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+      - name: Migrations à jour
+        env:
+          DATABASE_URL: sqlite:///./ci.db
+          SECRET_KEY: secret-de-ci-suffisamment-long-pour-les-tests
+        run: alembic upgrade head && alembic check
+
+  site:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v2/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npm run build
