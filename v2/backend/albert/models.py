@@ -341,3 +341,43 @@ class Audit(Base):
     resume: Mapped[str] = mapped_column(String(500), default="")
     avant: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     apres: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+# ---------------------------------------------------------------- connecteur ChatGPT (OAuth)
+
+class OAuthClient(Base):
+    """Client OAuth enregistré dynamiquement par ChatGPT."""
+
+    __tablename__ = "oauth_client"
+
+    client_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    donnees: Mapped[dict] = mapped_column(JSON)
+    cree_le: Mapped[datetime] = _cree()
+
+
+class OAuthAttente(Base):
+    """Demande d'autorisation en cours ou code à usage unique (courte durée)."""
+
+    __tablename__ = "oauth_attente"
+
+    cle: Mapped[str] = mapped_column(String(200), primary_key=True)
+    genre: Mapped[str] = mapped_column(String(20))  # demande | code
+    donnees: Mapped[dict] = mapped_column(JSON)
+    expire_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class ConnexionChatGPT(Base):
+    """Une connexion accordée à ChatGPT ; la révoquer coupe immédiatement ses jetons."""
+
+    __tablename__ = "connexion_chatgpt"
+
+    id: Mapped[uuid.UUID] = _id()
+    utilisateur_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("utilisateur.id"), index=True)
+    client_id: Mapped[str] = mapped_column(String(200))
+    client_nom: Mapped[str] = mapped_column(String(200), default="")
+    scopes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    revoquee: Mapped[bool] = mapped_column(Boolean, default=False)
+    cree_le: Mapped[datetime] = _cree()
+    derniere_utilisation: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    utilisateur: Mapped[Utilisateur] = relationship()

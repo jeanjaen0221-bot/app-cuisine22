@@ -6,12 +6,13 @@ import uuid
 os.environ.setdefault("SECRET_KEY", "secret-de-test-" + "x" * 40)
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("COOKIE_SECURE", "0")
+os.environ["PUBLIC_BASE_URL"] = "http://localhost"
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 
-from albert import db
+from albert import db, models  # noqa: F401
 from albert.db import Base, FabriqueSession
 from albert.main import creer_app
 from albert.services import comptes

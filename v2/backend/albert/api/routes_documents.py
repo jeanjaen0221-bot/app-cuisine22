@@ -165,3 +165,25 @@ def espace_compta(acteur: Acteur = Depends(acteur_connecte), session: Session = 
                              for d in devis_service.lister(session, "accepte,refuse")][:100],
         "historique_bons": [bons_service.bon_dict(session, b) for b in bons_service.lister(session, "facture")][:100],
     }
+
+
+# --------------------------------------------------------------- liens PDF temporaires (ChatGPT)
+
+@router.get("/pdf/{jeton}")
+def pdf_par_lien(jeton: str, session: Session = Depends(session_db)):
+    from ..mcp.liens import lire_lien
+    from ..pdf.documents import pdf_fiches
+    from ..services import fiches
+    from .routes_metier import _pour_pdf
+
+    genre, identifiant = lire_lien(jeton)
+    if genre.startswith("fiche_"):
+        fiche = fiches.obtenir(session, identifiant)
+        variante = genre.removeprefix("fiche_")
+        return reponse_pdf(pdf_fiches([_pour_pdf(session, fiche)], variante),
+                           nom_fichier("fiche", variante, fiche.date, fiche.client.nom))
+    if genre == "devis":
+        d = devis_service.obtenir(session, identifiant)
+        return reponse_pdf(devis_service.generer_pdf(session, d), nom_fichier("devis", d.numero, f"v{d.version}"))
+    b = bons_service.obtenir(session, identifiant)
+    return reponse_pdf(bons_service.generer_pdf(session, b), nom_fichier("bon", b.numero))
