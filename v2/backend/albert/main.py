@@ -36,7 +36,7 @@ def creer_app(avec_mcp: bool = True, au_demarrage: bool = False) -> FastAPI:
 
     @app.middleware("http")
     async def protection_csrf(request: Request, call_next):
-        # Le cookie de session est SameSite=Strict ; en plus, toute écriture sur /api doit porter
+        # Le cookie de session est SameSite=Lax ; en plus, toute écriture sur /api doit porter
         # l'en-tête X-Albert, qu'un autre site ne peut pas ajouter sans autorisation CORS.
         if request.url.path.startswith("/api/") and request.method not in METHODES_SURES:
             if request.headers.get("x-albert") != "1":

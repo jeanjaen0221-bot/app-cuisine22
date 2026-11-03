@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api")
 
 def _avec_cookie(utilisateur: Utilisateur) -> JSONResponse:
     reponse = JSONResponse({"ok": True, "utilisateur": comptes.utilisateur_dict(utilisateur)})
-    reponse.set_cookie(COOKIE_SESSION, comptes.emettre_jeton(utilisateur), httponly=True, samesite="strict",
+    reponse.set_cookie(COOKIE_SESSION, comptes.emettre_jeton(utilisateur), httponly=True, samesite="lax",
                        secure=reglages.cookie_securise, max_age=reglages.session_heures * 3600, path="/")
     return reponse
 

@@ -177,3 +177,14 @@ def test_formule_boissons_composee_dans_le_menu(session, acteur_admin):
     with pytest.raises(ErreurMetier) as e:
         catalogue.enregistrer_formule_boissons(session, acteur_admin, {"nom": "Avec alcool", "mode": "formule"})
     assert e.value.code == "doublon_probable"
+
+
+def test_fiche_modifiee_apres_validation(session, acteur_admin):
+    fiche, _ = creer_fiche(session, acteur_admin, formule_repas="2 services")
+    d = total(session, acteur_admin, fiche)
+    devis.valider(session, acteur_admin, d.id)
+    fiches.modifier(session, acteur_admin, fiche.id, {"couverts": 30})
+    with pytest.raises(ErreurMetier):
+        devis.transmettre(session, acteur_admin, d.id)
+    d, _ = devis.actualiser(session, acteur_admin, d.id)
+    assert d.statut == "brouillon" and d.couverts == 30

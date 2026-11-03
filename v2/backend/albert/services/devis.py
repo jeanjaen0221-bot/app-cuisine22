@@ -232,6 +232,11 @@ def transmettre(session: Session, acteur: Acteur, devis_id: Any) -> Devis:
     acteur.exiger("devis_valider")
     devis = obtenir(session, devis_id)
     _exiger_statut(devis, "valide")
+    if devis.signature_fiche != signature_fiche(devis.fiche):
+        raise ErreurMetier("regle_metier", "La fiche a changé depuis la validation : « Actualiser » puis valider à nouveau.")
+    restants = manques(devis)
+    if restants:
+        raise ErreurMetier("regle_metier", "Le devis ne peut pas être transmis : " + " ".join(restants))
     params = lire_parametres(session)
     client = clients.client_dict(devis.client)
     devis.statut = "transmis"
