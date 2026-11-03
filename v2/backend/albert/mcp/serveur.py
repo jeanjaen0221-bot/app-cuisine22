@@ -26,7 +26,7 @@ from ..config import reglages
 from ..db import session_contexte
 from ..domain.erreurs import ErreurMetier
 from ..models import Utilisateur
-from ..services import bons, catalogue, clients, comptes, devis, fiches
+from ..services import bons, catalogue, clients, comptes, devis, fiches, salle
 from . import liens
 from .oauth import SCOPES, SCOPES_PERMIS, FournisseurOAuth, url_ressource, utilisateur_autorise
 
@@ -172,6 +172,19 @@ def pdf_lien(type: str, id: str) -> dict:
             bons.obtenir(s, id)
         return {"lien": liens.lien_pdf(type, id), "valable": "15 minutes"}
     return executer("lecture", lien)
+
+
+@serveur.tool(annotations=LECTURE)
+def salle_lire(date: str, service: str) -> dict:
+    """Plan de salle d'un service (date AAAA-MM-JJ, service midi ou soir) : réservations et tables attribuées.
+    Lecture seule : le placement se fait dans l'outil."""
+    def lire(s, a):
+        svc = salle.obtenir_service(s, date, service, creer=False)
+        if svc is None:
+            return {"service": None, "message": "Aucun plan de salle pour ce service."}
+        d = salle.service_dict(s, svc)
+        return {"service": {k: d[k] for k in ("date", "service", "reservations", "alertes", "totaux")}}
+    return executer("lecture", lire)
 
 
 # --------------------------------------------------------------- clients et fiches

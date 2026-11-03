@@ -36,7 +36,7 @@ from ..domain.regles import (
     verifier_transition,
 )
 from ..models import BonFacturation, Devis, Fiche, FicheLigne, Produit
-from . import catalogue, clients
+from . import catalogue, clients, salle
 from .contexte import Acteur, journaliser, verifier_version
 
 
@@ -102,6 +102,7 @@ def fiche_dict(session: Session, f: Fiche, complet: bool = True) -> dict[str, An
             "contact_sur_place": f.contact_sur_place, "telephone_sur_place": f.telephone_sur_place,
             "motif_annulation": f.motif_annulation,
             "dernier_pdf_le": f.dernier_pdf_le.isoformat() if f.dernier_pdf_le else None,
+            "tables_salle": salle.tables_de_la_fiche(session, f),
         })
         devis = devis_courant(session, f.id)
         if devis is not None:

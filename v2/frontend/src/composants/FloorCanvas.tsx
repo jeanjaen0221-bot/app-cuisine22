@@ -1,0 +1,1797 @@
+// Éditeur visuel du plan de salle, repris de l'ancienne version (app/frontend/src/components/FloorCanvas.tsx).
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import type { AssignmentMap, FloorCircle, FloorPlanData, FloorRect, FloorTable, FloorZone } from '../typesSalle'
+
+type Props = {
+  data: FloorPlanData
+  assignments?: AssignmentMap
+  editable?: boolean
+  showGrid?: boolean
+  onChange?: (data: FloorPlanData) => void
+  className?: string
+  drawNoGoMode?: boolean
+  drawRoundOnlyMode?: boolean
+  drawRectOnlyMode?: boolean
+  drawZoneMode?: { label: string; color: string }
+  initialScale?: number
+  initialOffset?: { x: number; y: number }
+  onViewChange?: (view: { scale: number; offset: { x: number; y: number } }) => void
+  resetTrigger?: number
+  onSelectionChange?: (tableIds: string[]) => void
+}
+
+export default function FloorCanvas({ data, assignments, editable = true, showGrid = true, onChange, className, drawNoGoMode = false, drawRoundOnlyMode = false, drawRectOnlyMode = false, drawZoneMode, initialScale, initialOffset, onViewChange, resetTrigger, onSelectionChange }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const [size, setSize] = useState({ w: 0, h: 0 })
+  const [scale, setScale] = useState(0.8)
+  const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 100, y: 100 })
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [isPanning, setIsPanning] = useState(false)
+  const [panMode, setPanMode] = useState<boolean>(false)
+  const dragDelta = useRef({ x: 0, y: 0 })
+  const [resizeHandle, setResizeHandle] = useState<'none' | 'right' | 'bottom' | 'corner'>('none')
+  const [fixtureDraggingId, setFixtureDraggingId] = useState<string | null>(null)
+  const [fixtureResize, setFixtureResize] = useState<{
+    id: string
+    shape: 'rect' | 'round'
+    handle: 'right' | 'bottom' | 'corner' | 'radius'
+  } | null>(null)
+  const [noGoDraggingId, setNoGoDraggingId] = useState<string | null>(null)
+  const [noGoResize, setNoGoResize] = useState<{ id: string; handle: 'right' | 'bottom' | 'corner' } | null>(null)
+  const [roundZoneDraggingId, setRoundZoneDraggingId] = useState<string | null>(null)
+  const [roundZoneResize, setRoundZoneResize] = useState<{ id: string; handle: 'right' | 'bottom' | 'corner' } | null>(null)
+  const [rectZoneDraggingId, setRectZoneDraggingId] = useState<string | null>(null)
+  const [rectZoneResize, setRectZoneResize] = useState<{ id: string; handle: 'right' | 'bottom' | 'corner' } | null>(null)
+  const [namedZoneDraggingId, setNamedZoneDraggingId] = useState<string | null>(null)
+  const [namedZoneResize, setNamedZoneResize] = useState<{ id: string; handle: 'right' | 'bottom' | 'corner' } | null>(null)
+  const [draftZone, setDraftZone] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null)
+  const drawStartZone = useRef<{ x: number; y: number } | null>(null)
+  const dragStart = useRef<{ x: number; y: number } | null>(null)
+  const lastValid = useRef<{ x: number; y: number } | null>(null)
+  const dragInvalid = useRef(false)
+  const hasInteracted = useRef(false)
+  const isPinchingRef = useRef(false)
+  const activePointers = useRef(new Map<number, { x: number; y: number }>())
+  const pinchStart = useRef<{ dist: number; mid: { x: number; y: number }; scale: number; offset: { x: number; y: number } } | null>(null)
+  const initialApplied = useRef(false)
+  const [draftNoGo, setDraftNoGo] = useState<FloorRect | null>(null)
+  const drawStartNoGo = useRef<{ x: number; y: number } | null>(null)
+  const [draftRoundZone, setDraftRoundZone] = useState<FloorRect | null>(null)
+  const drawStartRoundZone = useRef<{ x: number; y: number } | null>(null)
+  const [draftRectZone, setDraftRectZone] = useState<FloorRect | null>(null)
+  const drawStartRectZone = useRef<{ x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; target: any } | null>(null)
+  const [hoveredItem, setHoveredItem] = useState<{ type: string; id: string } | null>(null)
+  const lastHoveredRef = useRef<string | null>(null)
+  const [selectedTableIds, setSelectedTableIds] = useState<string[]>([])
+
+  const room = data.room || { width: 1200, height: 800, grid: 50 }
+  const tables = data.tables || []
+  const walls = data.walls || []
+  const cols = data.columns || []
+  const noGo = data.no_go || []
+  const fixtures = data.fixtures || []
+  const roundOnlyZones = (data as any).round_only_zones || []
+  const rectOnlyZones = (data as any).rect_only_zones || []
+  const zones: FloorZone[] = data.zones || []
+
+  function updateSelection(next: string[]) {
+    setSelectedTableIds(next)
+    onSelectionChange && onSelectionChange(next)
+  }
+
+  useEffect(() => {
+    const el = canvasRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      setSize({ w: el.clientWidth, h: el.clientHeight })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // Apply initial view if provided (and before any user interaction)
+  useEffect(() => {
+    if (hasInteracted.current) return
+    if (initialApplied.current) return
+    let changed = false
+    if (typeof initialScale === 'number' && initialScale !== scale) {
+      setScale(initialScale)
+      changed = true
+    }
+    if (initialOffset && typeof initialOffset.x === 'number' && typeof initialOffset.y === 'number') {
+      if (initialOffset.x !== offset.x || initialOffset.y !== offset.y) {
+        setOffset(initialOffset)
+        changed = true
+      }
+    }
+    if (changed) {
+      initialApplied.current = true
+    }
+  }, [initialScale, initialOffset])
+
+  useEffect(() => {
+    const el = canvasRef.current
+    if (!el) return
+    if (size.w <= 0 || size.h <= 0) return
+    if (hasInteracted.current) return
+    fitToRoom()
+  }, [size.w, size.h, room.width, room.height])
+
+  function fitToRoom() {
+    const el = canvasRef.current
+    if (!el) return
+    const pad = 40
+    const fit = Math.min(
+      (size.w - pad) / (room.width || 1),
+      (size.h - pad) / (room.height || 1)
+    )
+    if (isFinite(fit) && fit > 0) {
+      const nextScale = Math.min(5, Math.max(0.1, fit))
+      const nextOffset = { x: (size.w - (room.width * fit)) / 2, y: (size.h - (room.height * fit)) / 2 }
+      setScale(nextScale)
+      setOffset(nextOffset)
+    }
+  }
+
+  // External reset trigger: re-fit view and clear interaction guard
+  useEffect(() => {
+    if (typeof resetTrigger === 'number') {
+      hasInteracted.current = false
+      initialApplied.current = false
+      fitToRoom()
+    }
+  }, [resetTrigger])
+
+  // Notify view changes for persistence
+  useEffect(() => {
+    onViewChange && onViewChange({ scale, offset })
+  }, [scale, offset])
+
+  // Menu contextuel state tracking
+  useEffect(() => {
+    if (contextMenu) {
+      console.log('[ContextMenu] Menu opened at:', contextMenu.x, contextMenu.y)
+    }
+  }, [contextMenu])
+
+  function worldToScreen(x: number, y: number) {
+    return { x: x * scale + offset.x, y: y * scale + offset.y }
+  }
+
+  function noGoHandleAt(sx: number, sy: number): { id: string; handle: 'right' | 'bottom' | 'corner' } | null {
+    const M = 12
+    const list = [...noGo].reverse()
+    for (const r of list) {
+      const cr = worldToScreen(r.x + r.w, r.y + r.h)
+      if (Math.abs(sx - cr.x) <= M && Math.abs(sy - cr.y) <= M) return { id: r.id, handle: 'corner' }
+      const rr = worldToScreen(r.x + r.w, r.y + r.h / 2)
+      if (Math.abs(sx - rr.x) <= M && Math.abs(sy - rr.y) <= M) return { id: r.id, handle: 'right' }
+      const bb = worldToScreen(r.x + r.w / 2, r.y + r.h)
+      if (Math.abs(sx - bb.x) <= M && Math.abs(sy - bb.y) <= M) return { id: r.id, handle: 'bottom' }
+    }
+    return null
+  }
+
+  function noGoHit(x: number, y: number) {
+    const list = [...noGo].reverse()
+    for (const r of list) {
+      if (rectHit(x, y, r)) return r
+    }
+    return null
+  }
+
+  function roundZoneHandleAt(sx: number, sy: number): { id: string; handle: 'right' | 'bottom' | 'corner' } | null {
+    const M = 12
+    const list = [...roundOnlyZones].reverse()
+    for (const r of list) {
+      const cr = worldToScreen(r.x + r.w, r.y + r.h)
+      if (Math.abs(sx - cr.x) <= M && Math.abs(sy - cr.y) <= M) return { id: r.id, handle: 'corner' }
+      const rr = worldToScreen(r.x + r.w, r.y + r.h / 2)
+      if (Math.abs(sx - rr.x) <= M && Math.abs(sy - rr.y) <= M) return { id: r.id, handle: 'right' }
+      const bb = worldToScreen(r.x + r.w / 2, r.y + r.h)
+      if (Math.abs(sx - bb.x) <= M && Math.abs(sy - bb.y) <= M) return { id: r.id, handle: 'bottom' }
+    }
+    return null
+  }
+
+  function roundZoneHit(x: number, y: number) {
+    const list = [...roundOnlyZones].reverse()
+    for (const r of list) {
+      if (rectHit(x, y, r)) return r
+    }
+    return null
+  }
+
+  function rectZoneHandleAt(sx: number, sy: number): { id: string; handle: 'right' | 'bottom' | 'corner' } | null {
+    const M = 12
+    const list = [...rectOnlyZones].reverse()
+    for (const r of list) {
+      const cr = worldToScreen(r.x + r.w, r.y + r.h)
+      if (Math.abs(sx - cr.x) <= M && Math.abs(sy - cr.y) <= M) return { id: r.id, handle: 'corner' }
+      const rr = worldToScreen(r.x + r.w, r.y + r.h / 2)
+      if (Math.abs(sx - rr.x) <= M && Math.abs(sy - rr.y) <= M) return { id: r.id, handle: 'right' }
+      const bb = worldToScreen(r.x + r.w / 2, r.y + r.h)
+      if (Math.abs(sx - bb.x) <= M && Math.abs(sy - bb.y) <= M) return { id: r.id, handle: 'bottom' }
+    }
+    return null
+  }
+
+  function rectZoneHit(x: number, y: number) {
+    const list = [...rectOnlyZones].reverse()
+    for (const r of list) {
+      if (rectHit(x, y, r)) return r
+    }
+    return null
+  }
+
+  function namedZoneHandleAt(sx: number, sy: number): { id: string; handle: 'right' | 'bottom' | 'corner' } | null {
+    const M = 12
+    const list = [...zones].reverse()
+    for (const z of list) {
+      const cr = worldToScreen(z.x + z.w, z.y + z.h)
+      if (Math.abs(sx - cr.x) <= M && Math.abs(sy - cr.y) <= M) return { id: z.id, handle: 'corner' }
+      const rr = worldToScreen(z.x + z.w, z.y + z.h / 2)
+      if (Math.abs(sx - rr.x) <= M && Math.abs(sy - rr.y) <= M) return { id: z.id, handle: 'right' }
+      const bb = worldToScreen(z.x + z.w / 2, z.y + z.h)
+      if (Math.abs(sx - bb.x) <= M && Math.abs(sy - bb.y) <= M) return { id: z.id, handle: 'bottom' }
+    }
+    return null
+  }
+
+  function namedZoneHit(x: number, y: number) {
+    const list = [...zones].reverse()
+    for (const z of list) {
+      if (rectHit(x, y, { id: z.id, x: z.x, y: z.y, w: z.w, h: z.h })) return z
+    }
+    return null
+  }
+  function screenToWorld(x: number, y: number) {
+    return { x: (x - offset.x) / scale, y: (y - offset.y) / scale }
+  }
+
+  function hexToRgba(hex: string, alpha: number): string {
+    try {
+      const r = parseInt(hex.slice(1, 3), 16)
+      const g = parseInt(hex.slice(3, 5), 16)
+      const b = parseInt(hex.slice(5, 7), 16)
+      return `rgba(${r},${g},${b},${alpha})`
+    } catch {
+      return `rgba(59,130,246,${alpha})`
+    }
+  }
+
+  function rectHit(px: number, py: number, r: FloorRect) {
+    return px >= r.x && py >= r.y && px <= r.x + r.w && py <= r.y + r.h
+  }
+  function circleHit(px: number, py: number, c: FloorCircle) {
+    const dx = px - c.x
+    const dy = py - c.y
+    return dx * dx + dy * dy <= (c.r || 0) * (c.r || 0)
+  }
+  function tableHit(px: number, py: number, t: FloorTable) {
+    if (t.r) return circleHit(px, py, { id: t.id, x: t.x, y: t.y, r: t.r })
+    const w = t.w || 120
+    const h = t.h || 60
+    return rectHit(px, py, { id: t.id, x: t.x, y: t.y, w, h })
+  }
+
+  function handleAt(sx: number, sy: number): 'none' | 'right' | 'bottom' | 'corner' {
+    const M = 12
+    const br = worldToScreen(room.width, room.height)
+    if (Math.abs(sx - br.x) <= M && Math.abs(sy - br.y) <= M) return 'corner'
+    const rmid = worldToScreen(room.width, room.height / 2)
+    if (Math.abs(sx - rmid.x) <= M && Math.abs(sy - rmid.y) <= M) return 'right'
+    const bmid = worldToScreen(room.width / 2, room.height)
+    if (Math.abs(sx - bmid.x) <= M && Math.abs(sy - bmid.y) <= M) return 'bottom'
+    return 'none'
+  }
+
+  function fixtureHandleAt(sx: number, sy: number): { id: string; shape: 'rect' | 'round'; handle: 'right' | 'bottom' | 'corner' | 'radius' } | null {
+    const M = 12
+    const list = [...fixtures].reverse() as any[]
+    for (const fx of list) {
+      if ((fx as any).locked) continue
+      if ('r' in fx) {
+        const p = worldToScreen(fx.x + fx.r, fx.y)
+        if (Math.abs(sx - p.x) <= M && Math.abs(sy - p.y) <= M) return { id: fx.id, shape: 'round', handle: 'radius' }
+      } else {
+        const cr = worldToScreen(fx.x + fx.w, fx.y + fx.h)
+        if (Math.abs(sx - cr.x) <= M && Math.abs(sy - cr.y) <= M) return { id: fx.id, shape: 'rect', handle: 'corner' }
+        const rr = worldToScreen(fx.x + fx.w, fx.y + fx.h / 2)
+        if (Math.abs(sx - rr.x) <= M && Math.abs(sy - rr.y) <= M) return { id: fx.id, shape: 'rect', handle: 'right' }
+        const bb = worldToScreen(fx.x + fx.w / 2, fx.y + fx.h)
+        if (Math.abs(sx - bb.x) <= M && Math.abs(sy - bb.y) <= M) return { id: fx.id, shape: 'rect', handle: 'bottom' }
+      }
+    }
+    return null
+  }
+
+  function fixtureHit(x: number, y: number) {
+    const list = [...fixtures].reverse() as any[]
+    for (const fx of list) {
+      if ('r' in fx) {
+        if (circleHit(x, y, { id: fx.id, x: fx.x, y: fx.y, r: fx.r })) return fx
+      } else {
+        if (rectHit(x, y, { id: fx.id, x: fx.x, y: fx.y, w: fx.w, h: fx.h })) return fx
+      }
+    }
+    return null
+  }
+
+  function intersectsRectRect(a: FloorRect, b: FloorRect) {
+    return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y)
+  }
+  function intersectsCircleRect(c: FloorCircle, r: FloorRect) {
+    const cx = Math.max(r.x, Math.min(c.x, r.x + r.w))
+    const cy = Math.max(r.y, Math.min(c.y, r.y + r.h))
+    const dx = c.x - cx
+    const dy = c.y - cy
+    return dx * dx + dy * dy <= (c.r || 0) * (c.r || 0)
+  }
+  function intersectsCircleCircle(a: FloorCircle, b: FloorCircle) {
+    const dx = a.x - b.x
+    const dy = a.y - b.y
+    const ra = a.r || 0
+    const rb = b.r || 0
+    const rr = ra + rb
+    return dx * dx + dy * dy <= rr * rr
+  }
+
+  function tableCollides(t: FloorTable) {
+    if (t.r) {
+      const c: FloorCircle = { id: t.id, x: t.x, y: t.y, r: t.r }
+      // bounds
+      if (c.x - (c.r || 0) < 0 || c.y - (c.r || 0) < 0 || c.x + (c.r || 0) > room.width || c.y + (c.r || 0) > room.height) return true
+      for (const r of noGo) if (intersectsCircleRect(c, r)) return true
+      for (const r of walls) if (intersectsCircleRect(c, r)) return true
+      for (const col of cols) { if (intersectsCircleCircle(c, col)) return true }
+      for (const f of fixtures) {
+        if ('r' in (f as any)) { if (intersectsCircleCircle(c, f as any)) return true }
+        else { if (intersectsCircleRect(c, f as any)) return true }
+      }
+      // collide with other tables
+      for (const ot of tables) {
+        if (ot.id === t.id) continue
+        if (ot.r) {
+          if (intersectsCircleCircle(c, { id: ot.id, x: ot.x, y: ot.y, r: ot.r })) return true
+        } else {
+          const rr: FloorRect = { id: ot.id, x: ot.x, y: ot.y, w: ot.w || 120, h: ot.h || 60 }
+          if (intersectsCircleRect(c, rr)) return true
+        }
+      }
+      return false
+    } else {
+      const w = t.w || 120
+      const h = t.h || 60
+      const rr: FloorRect = { id: t.id, x: t.x, y: t.y, w, h }
+      // bounds
+      if (rr.x < 0 || rr.y < 0 || rr.x + rr.w > room.width || rr.y + rr.h > room.height) return true
+      for (const r of noGo) if (intersectsRectRect(rr, r)) return true
+      for (const r of walls) if (intersectsRectRect(rr, r)) return true
+      for (const col of cols) if (intersectsCircleRect(col, rr)) return true
+      for (const f of fixtures) {
+        if ('r' in (f as any)) { if (intersectsCircleRect(f as any, rr)) return true }
+        else { if (intersectsRectRect(rr, f as any)) return true }
+      }
+      // collide with other tables
+      for (const ot of tables) {
+        if (ot.id === t.id) continue
+        if (ot.r) {
+          const oc: FloorCircle = { id: ot.id, x: ot.x, y: ot.y, r: ot.r }
+          if (intersectsCircleRect(oc, rr)) return true
+        } else {
+          const orr: FloorRect = { id: ot.id, x: ot.x, y: ot.y, w: ot.w || 120, h: ot.h || 60 }
+          if (intersectsRectRect(rr, orr)) return true
+        }
+      }
+      return false
+    }
+  }
+
+  function draw() {
+    const el = canvasRef.current
+    if (!el) return
+    const ctx = el.getContext('2d')
+    if (!ctx) return
+    const dpr = (window.devicePixelRatio || 1)
+    const cssW = el.clientWidth
+    const cssH = el.clientHeight
+    el.width = Math.max(1, Math.floor(cssW * dpr))
+    el.height = Math.max(1, Math.floor(cssH * dpr))
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, cssW, cssH)
+    ctx.scale(dpr, dpr)
+    const W = cssW
+    const H = cssH
+
+    if (showGrid) {
+      const g = room.grid || 50
+      ctx.save()
+      ctx.translate(offset.x % (g * scale), offset.y % (g * scale))
+      // Grille principale
+      ctx.strokeStyle = 'rgba(200,210,220,0.3)'
+      ctx.lineWidth = 1
+      for (let x = 0; x < W + g * scale; x += g * scale) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke()
+      }
+      for (let y = 0; y < H + g * scale; y += g * scale) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke()
+      }
+      // Grille secondaire (tous les 5 carreaux)
+      ctx.strokeStyle = 'rgba(180,190,200,0.5)'
+      ctx.lineWidth = 1.5
+      for (let x = 0; x < W + g * scale * 5; x += g * scale * 5) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke()
+      }
+      for (let y = 0; y < H + g * scale * 5; y += g * scale * 5) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke()
+      }
+      ctx.restore()
+    }
+
+    ctx.save()
+    ctx.translate(offset.x, offset.y)
+    ctx.scale(scale, scale)
+
+    // Ombre de la salle
+    ctx.save()
+    ctx.shadowColor = 'rgba(0,0,0,0.15)'
+    ctx.shadowBlur = 20 / scale
+    ctx.shadowOffsetX = 4 / scale
+    ctx.shadowOffsetY = 4 / scale
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, room.width, room.height)
+    ctx.restore()
+    
+    // Bordure de la salle
+    ctx.strokeStyle = '#2c3e50'
+    ctx.lineWidth = 3 / scale
+    ctx.strokeRect(0, 0, room.width, room.height)
+
+    // Zones nommées (Terrasse, Salle, Mezzanine…)
+    for (const z of zones) {
+      const isHovered = hoveredItem?.type === 'zone' && hoveredItem?.id === z.id
+      const col = z.color || '#3b82f6'
+      ctx.save()
+      ctx.fillStyle = hexToRgba(col, isHovered ? 0.22 : 0.10)
+      ctx.fillRect(z.x, z.y, z.w, z.h)
+      ctx.strokeStyle = hexToRgba(col, isHovered ? 0.9 : 0.55)
+      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
+      ctx.setLineDash([14 / scale, 6 / scale])
+      ctx.strokeRect(z.x, z.y, z.w, z.h)
+      ctx.setLineDash([])
+      ctx.fillStyle = hexToRgba(col, 0.65)
+      ctx.font = `bold ${22 / scale}px sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(z.label, z.x + z.w / 2, z.y + z.h / 2)
+      if (editable) {
+        const hs2 = 6 / scale
+        ctx.fillStyle = hexToRgba(col, 0.8)
+        ctx.fillRect(z.x + z.w - hs2 / 2, z.y + z.h - hs2 / 2, hs2, hs2)
+        ctx.fillRect(z.x + z.w - hs2 / 2, z.y + z.h / 2 - hs2 / 2, hs2, hs2)
+        ctx.fillRect(z.x + z.w / 2 - hs2 / 2, z.y + z.h - hs2 / 2, hs2, hs2)
+      }
+      ctx.restore()
+    }
+
+    if (draftZone && drawZoneMode) {
+      ctx.save()
+      const col = drawZoneMode.color || '#3b82f6'
+      ctx.fillStyle = hexToRgba(col, 0.18)
+      ctx.fillRect(draftZone.x, draftZone.y, draftZone.w, draftZone.h)
+      ctx.strokeStyle = col
+      ctx.setLineDash([8 / scale, 4 / scale])
+      ctx.lineWidth = 2 / scale
+      ctx.strokeRect(draftZone.x, draftZone.y, draftZone.w, draftZone.h)
+      if (drawZoneMode.label) {
+        ctx.fillStyle = hexToRgba(col, 0.7)
+        ctx.font = `bold ${18 / scale}px sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(drawZoneMode.label, draftZone.x + draftZone.w / 2, draftZone.y + draftZone.h / 2)
+      }
+      ctx.setLineDash([])
+      ctx.restore()
+    }
+
+    const hs = 8 / scale
+    ctx.fillStyle = '#222'
+    ctx.fillRect(room.width - hs / 2, room.height - hs / 2, hs, hs)
+    ctx.fillRect(room.width - hs / 2, room.height / 2 - hs / 2, hs, hs)
+    ctx.fillRect(room.width / 2 - hs / 2, room.height - hs / 2, hs, hs)
+
+    // Murs avec ombre
+    ctx.save()
+    ctx.shadowColor = 'rgba(0,0,0,0.2)'
+    ctx.shadowBlur = 8 / scale
+    ctx.fillStyle = '#7f8c8d'
+    for (const w of walls) ctx.fillRect(w.x, w.y, w.w, w.h)
+    ctx.restore()
+
+    // Colonnes avec ombre
+    ctx.save()
+    ctx.shadowColor = 'rgba(0,0,0,0.25)'
+    ctx.shadowBlur = 10 / scale
+    ctx.fillStyle = '#34495e'
+    for (const c of cols) { ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.fill() }
+    ctx.restore()
+
+    // Zones interdites
+    ctx.save()
+    for (const r of noGo) {
+      const isHovered = hoveredItem?.type === 'ng' && hoveredItem?.id === r.id
+      ctx.fillStyle = isHovered ? 'rgba(231, 76, 60, 0.28)' : 'rgba(231, 76, 60, 0.15)'
+      ctx.fillRect(r.x, r.y, r.w, r.h)
+      // Bordure
+      ctx.strokeStyle = isHovered ? 'rgba(192, 57, 43, 0.8)' : 'rgba(192, 57, 43, 0.5)'
+      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
+      ctx.setLineDash([8 / scale, 4 / scale])
+      ctx.strokeRect(r.x, r.y, r.w, r.h)
+      ctx.setLineDash([])
+      if (editable) {
+        const hs2 = 6 / scale
+        ctx.fillStyle = '#555'
+        ctx.fillRect(r.x + r.w - hs2 / 2, r.y + r.h - hs2 / 2, hs2, hs2)
+        ctx.fillRect(r.x + r.w - hs2 / 2, r.y + r.h / 2 - hs2 / 2, hs2, hs2)
+        ctx.fillRect(r.x + r.w / 2 - hs2 / 2, r.y + r.h - hs2 / 2, hs2, hs2)
+        ctx.fillStyle = '#bbb'
+      }
+    }
+
+    if (draftNoGo) {
+      ctx.save()
+      ctx.globalAlpha = 0.35
+      ctx.fillStyle = '#c66'
+      ctx.fillRect(draftNoGo.x, draftNoGo.y, draftNoGo.w, draftNoGo.h)
+      ctx.restore()
+      ctx.save()
+      ctx.strokeStyle = '#c00'
+      ctx.setLineDash([6 / scale, 6 / scale])
+      ctx.lineWidth = 2 / scale
+      ctx.strokeRect(draftNoGo.x, draftNoGo.y, draftNoGo.w, draftNoGo.h)
+      ctx.restore()
+    }
+    ctx.restore()
+
+    // Zones round-only (tables rondes uniquement)
+    ctx.save()
+    for (const r of roundOnlyZones) {
+      const isHovered = hoveredItem?.type === 'rz' && hoveredItem?.id === r.id
+      ctx.fillStyle = isHovered ? 'rgba(52, 152, 219, 0.25)' : 'rgba(52, 152, 219, 0.12)'
+      ctx.fillRect(r.x, r.y, r.w, r.h)
+      // Bordure bleue
+      ctx.strokeStyle = isHovered ? 'rgba(41, 128, 185, 0.9)' : 'rgba(41, 128, 185, 0.6)'
+      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
+      ctx.setLineDash([10 / scale, 5 / scale])
+      ctx.strokeRect(r.x, r.y, r.w, r.h)
+      ctx.setLineDash([])
+      
+      // Label "R" au centre
+      ctx.fillStyle = 'rgba(41, 128, 185, 0.8)'
+      ctx.font = `bold ${24/scale}px sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('R', r.x + r.w/2, r.y + r.h/2)
+      
+      if (editable) {
+        const hs2 = 6 / scale
+        ctx.fillStyle = '#2980b9'
+        ctx.fillRect(r.x + r.w - hs2 / 2, r.y + r.h - hs2 / 2, hs2, hs2)
+        ctx.fillRect(r.x + r.w - hs2 / 2, r.y + r.h / 2 - hs2 / 2, hs2, hs2)
+        ctx.fillRect(r.x + r.w / 2 - hs2 / 2, r.y + r.h - hs2 / 2, hs2, hs2)
+      }
+    }
+
+    if (draftRoundZone) {
+      ctx.save()
+      ctx.globalAlpha = 0.3
+      ctx.fillStyle = '#3498db'
+      ctx.fillRect(draftRoundZone.x, draftRoundZone.y, draftRoundZone.w, draftRoundZone.h)
+      ctx.restore()
+      ctx.save()
+      ctx.strokeStyle = '#2980b9'
+      ctx.setLineDash([6 / scale, 6 / scale])
+      ctx.lineWidth = 2 / scale
+      ctx.strokeRect(draftRoundZone.x, draftRoundZone.y, draftRoundZone.w, draftRoundZone.h)
+      ctx.restore()
+    }
+    ctx.restore()
+
+    // Zones rect-only (tables rectangulaires uniquement)
+    ctx.save()
+    for (const r of rectOnlyZones) {
+      const isHovered = hoveredItem?.type === 'tz' && hoveredItem?.id === r.id
+      ctx.fillStyle = isHovered ? 'rgba(46, 204, 113, 0.25)' : 'rgba(46, 204, 113, 0.12)'
+      ctx.fillRect(r.x, r.y, r.w, r.h)
+      // Bordure verte
+      ctx.strokeStyle = isHovered ? 'rgba(39, 174, 96, 0.9)' : 'rgba(39, 174, 96, 0.6)'
+      ctx.lineWidth = isHovered ? 3 / scale : 2 / scale
+      ctx.setLineDash([10 / scale, 5 / scale])
+      ctx.strokeRect(r.x, r.y, r.w, r.h)
+      ctx.setLineDash([])
+      
+      // Label "T" au centre
+      ctx.fillStyle = 'rgba(39, 174, 96, 0.8)'
+      ctx.font = `bold ${24/scale}px sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('T', r.x + r.w/2, r.y + r.h/2)
+      
+      if (editable) {
+        const hs2 = 6 / scale
+        ctx.fillStyle = '#27ae60'
+        ctx.fillRect(r.x + r.w - hs2 / 2, r.y + r.h - hs2 / 2, hs2, hs2)
+        ctx.fillRect(r.x + r.w - hs2 / 2, r.y + r.h / 2 - hs2 / 2, hs2, hs2)
+        ctx.fillRect(r.x + r.w / 2 - hs2 / 2, r.y + r.h - hs2 / 2, hs2, hs2)
+      }
+    }
+
+    if (draftRectZone) {
+      ctx.save()
+      ctx.globalAlpha = 0.3
+      ctx.fillStyle = '#2ecc71'
+      ctx.fillRect(draftRectZone.x, draftRectZone.y, draftRectZone.w, draftRectZone.h)
+      ctx.restore()
+      ctx.save()
+      ctx.strokeStyle = '#27ae60'
+      ctx.setLineDash([6 / scale, 6 / scale])
+      ctx.lineWidth = 2 / scale
+      ctx.strokeRect(draftRectZone.x, draftRectZone.y, draftRectZone.w, draftRectZone.h)
+      ctx.restore()
+    }
+    ctx.restore()
+
+    // Fixtures (décorations) avec ombre
+    for (const fx of fixtures) {
+      ctx.save()
+      ctx.shadowColor = 'rgba(0,0,0,0.15)'
+      ctx.shadowBlur = 6 / scale
+      ctx.fillStyle = '#27ae60'
+      if ('r' in fx) { ctx.beginPath(); ctx.arc((fx as any).x, (fx as any).y, (fx as any).r, 0, Math.PI * 2); ctx.fill() }
+      else ctx.fillRect((fx as any).x, (fx as any).y, (fx as any).w, (fx as any).h)
+      ctx.restore()
+      const label = (fx as any).label
+      if (label) {
+        ctx.fillStyle = '#111'
+        ctx.font = `${12/scale}px sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        const cx = 'r' in fx ? (fx as any).x : (fx as any).x + (fx as any).w/2
+        const cy = 'r' in fx ? (fx as any).y : (fx as any).y + (fx as any).h/2
+        ctx.fillText(label, cx, cy)
+      }
+      if (!(fx as any).locked && editable) {
+        const hs2 = 6 / scale
+        ctx.fillStyle = '#444'
+        if ('r' in fx) {
+          ctx.fillRect((fx as any).x + (fx as any).r - hs2 / 2, (fx as any).y - hs2 / 2, hs2, hs2)
+        } else {
+          ctx.fillRect((fx as any).x + (fx as any).w - hs2 / 2, (fx as any).y + (fx as any).h - hs2 / 2, hs2, hs2)
+          ctx.fillRect((fx as any).x + (fx as any).w - hs2 / 2, (fx as any).y + (fx as any).h / 2 - hs2 / 2, hs2, hs2)
+          ctx.fillRect((fx as any).x + (fx as any).w / 2 - hs2 / 2, (fx as any).y + (fx as any).h - hs2 / 2, hs2, hs2)
+        }
+      }
+    }
+
+    for (const t of tables) {
+      const isSelected = selectedTableIds.includes(t.id)
+      const assigned = assignments?.tables?.[t.id]
+      const isLocked = !!t.locked
+      const coll = tableCollides(t)
+      let color = '#2c7'  // fixed default
+      if (t.kind === 'rect') color = '#39f'
+      else if (t.kind === 'round') color = '#f93'
+      else if (t.kind === 'sofa') color = '#9c27b0'  // violet pour canapé
+      else if (t.kind === 'standing') color = '#ff5722'  // orange pour mange-debout
+      if (isLocked) color = '#2a5'
+      ctx.fillStyle = color
+      ctx.strokeStyle = coll ? '#e00' : '#111'
+      ctx.lineWidth = 2 / scale
+      if (t.r) {
+        // Round tables and standing (mange-debout)
+        ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+      } else {
+        // Rect tables, fixed, and sofa (canapé)
+        const w = t.w || 120, h = t.h || 60
+        ctx.fillRect(t.x, t.y, w, h)
+        ctx.strokeRect(t.x, t.y, w, h)
+      }
+      if (isSelected) {
+        ctx.save()
+        ctx.strokeStyle = '#111827'
+        ctx.lineWidth = 4 / scale
+        if (t.r) {
+          ctx.beginPath(); ctx.arc(t.x, t.y, (t.r as number) + (3 / scale), 0, Math.PI * 2); ctx.stroke()
+        } else {
+          const w = t.w || 120, h = t.h || 60
+          ctx.strokeRect(t.x - (2 / scale), t.y - (2 / scale), w + (4 / scale), h + (4 / scale))
+        }
+        ctx.restore()
+      }
+      // Indicateur visuel: cadenas pour tables fixes/verrouillées (sans texte)
+      if (t.kind === 'fixed' || isLocked) {
+        const pad = 6 / scale
+        const lx = t.r ? (t.x - (t.r as number) + pad) : (t.x + pad)
+        const ly = t.r ? (t.y - (t.r as number) + pad) : (t.y + pad)
+        const s = 12 / scale
+        ctx.save()
+        // corps du cadenas
+        ctx.fillStyle = 'rgba(255,255,255,0.9)'
+        ctx.strokeStyle = '#0f5132'
+        ctx.lineWidth = 1 / scale
+        ctx.fillRect(lx, ly + s * 0.45, s, s * 0.55)
+        ctx.strokeRect(lx, ly + s * 0.45, s, s * 0.55)
+        // anse
+        ctx.beginPath()
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 1.5 / scale
+        ctx.arc(lx + s / 2, ly + s * 0.5, s * 0.35, Math.PI, 0)
+        ctx.stroke()
+        ctx.restore()
+      }
+      const cx = t.r ? t.x : t.x + (t.w || 120) / 2
+      const cy = t.r ? t.y : t.y + (t.h || 60) / 2
+      let defaultCap = 2
+      if (t.kind === 'rect') defaultCap = 6
+      else if (t.kind === 'round') defaultCap = 10
+      else if (t.kind === 'sofa') defaultCap = 5
+      else if (t.kind === 'standing') defaultCap = 8
+      else if (t.kind === 'fixed') defaultCap = 4
+      const cap = (t.capacity || defaultCap) + ''
+      let lbl = (t.label || '').toString()
+      // Mirror the backend's _numbering_kind: a table with no kind is drawn as
+      // a rectangle, so it must accept a T label rather than show none.
+      const k = (t.kind as string) || 'rect'
+      const validLabel = (
+        (k === 'fixed' && /^\d+$/.test(lbl)) ||
+        (k === 'rect' && /^T\d+$/.test(lbl)) ||
+        (k === 'round' && /^R\d+$/.test(lbl)) ||
+        (k === 'sofa' && /^C\d+$/.test(lbl)) ||
+        (k === 'standing' && /^D\d+$/.test(lbl))
+      )
+      if (!validLabel) lbl = ''
+      ctx.textAlign = 'center'
+      ctx.fillStyle = '#fff'
+      
+      if (assigned) {
+        // Afficher 3 lignes: nom, couverts, numéro (numéro ancré en bas intérieur)
+        const pad = 4 / scale
+        const nameSize = 12 / scale
+        const paxSize = 11 / scale
+        const numSize = 13 / scale
+        // Bornes verticales intérieures selon forme
+        const yTopInner = t.r ? (t.y - ((t.r as number) - pad)) : (t.y + pad)
+        const yBottomInner = t.r ? (t.y + ((t.r as number) - pad)) : (t.y + (t.h || 60) - pad)
+
+        // Nom (centre haut léger)
+        ctx.font = `bold ${nameSize}px sans-serif`
+        ctx.textBaseline = 'middle'
+        let name = assigned.name
+        if (name.length > 15) name = name.substring(0, 13) + '...'
+        ctx.fillText(name, cx, Math.max(yTopInner + nameSize/2, cy - 6/scale))
+
+        // Couverts (centre bas léger)
+        ctx.font = `${paxSize}px sans-serif`
+        ctx.textBaseline = 'middle'
+        ctx.fillText(`${assigned.pax} pax`, cx, Math.min(yBottomInner - numSize - 2/scale, cy + 8/scale))
+
+        // Numéro (ancré bas intérieur)
+        ctx.font = `bold ${numSize}px sans-serif`
+        ctx.textBaseline = 'bottom'
+        ctx.fillText(lbl || cap, cx, yBottomInner)
+      } else {
+        // Pas d'assignation: juste numéro ou capacité
+        ctx.textBaseline = 'middle'
+        ctx.font = lbl ? `${16/scale}px sans-serif` : `${14/scale}px sans-serif`
+        ctx.fillText(lbl || cap, cx, cy)
+      }
+    }
+
+    ctx.restore()
+  }
+
+  useEffect(() => { draw() }, [size, scale, offset, data, assignments, showGrid, draftNoGo, draftRoundZone, draftRectZone, draftZone, draggingId, fixtureDraggingId, noGoDraggingId, roundZoneDraggingId, rectZoneDraggingId, namedZoneDraggingId, resizeHandle, fixtureResize, noGoResize, roundZoneResize, rectZoneResize, namedZoneResize, drawNoGoMode, drawRoundOnlyMode, drawRectOnlyMode, drawZoneMode, hoveredItem, selectedTableIds])
+
+  function onPointerDown(e: React.PointerEvent) {
+    // Ignorer le clic droit (bouton 2) - il est géré par onContextMenu
+    if (e.button === 2) return
+    hasInteracted.current = true
+    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
+    const sx = e.clientX - rect.left
+    const sy = e.clientY - rect.top
+
+    // Pan au clic molette ou en mode déplacement
+    if (e.button === 1 || panMode) {
+      setIsPanning(true)
+      dragStart.current = { x: sx, y: sy }
+      const el = canvasRef.current
+      if (el) el.style.cursor = 'grabbing'
+      return
+    }
+
+    activePointers.current.set(e.pointerId, { x: sx, y: sy })
+    ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+    if (activePointers.current.size === 2) {
+      // Start pinch
+      const pts = Array.from(activePointers.current.values())
+      const dx = pts[0].x - pts[1].x
+      const dy = pts[0].y - pts[1].y
+      const dist = Math.max(1, Math.hypot(dx, dy))
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }
+      pinchStart.current = { dist, mid, scale, offset: { ...offset } }
+      isPinchingRef.current = true
+      return
+    }
+    
+    // Single-pointer path continues below
+    const rect2 = (e.target as HTMLCanvasElement).getBoundingClientRect()
+    const sx2 = e.clientX - rect2.left
+    const sy2 = e.clientY - rect2.top
+    const { x, y } = screenToWorld(sx2, sy2)
+    const fr = fixtureHandleAt(sx2, sy2)
+    if (editable && fr) {
+      const fx: any = (fixtures as any[]).find(f => f.id === fr.id)
+      if (fx && !fx.locked) {
+        setFixtureResize(fr)
+      }
+      return
+    }
+    // Tables on top: drag tables before zones/fixtures
+    const tHit = [...tables].reverse().find(t => tableHit(x, y, t))
+    if (tHit) {
+      const toggle = e.shiftKey || e.ctrlKey || e.metaKey
+      if (toggle) {
+        const next = selectedTableIds.includes(tHit.id)
+          ? selectedTableIds.filter(id => id !== tHit.id)
+          : [...selectedTableIds, tHit.id]
+        updateSelection(next)
+        return
+      }
+      if (!selectedTableIds.includes(tHit.id) || selectedTableIds.length !== 1) {
+        const next = [tHit.id]
+        updateSelection(next)
+      }
+      if (editable && !tHit.locked) {
+        setDraggingId(tHit.id)
+        dragStart.current = { x: tHit.x, y: tHit.y }
+        lastValid.current = { x: tHit.x, y: tHit.y }
+        dragInvalid.current = false
+        dragDelta.current = { x: x - tHit.x, y: y - tHit.y }
+      }
+      return
+    }
+    // Vérifier les handles de redimensionnement des zones (priorité sur le déplacement)
+    const ngr = noGoHandleAt(sx, sy)
+    if (editable && ngr && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
+      setNoGoResize(ngr)
+      return
+    }
+    const rzr = roundZoneHandleAt(sx, sy)
+    if (editable && rzr && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
+      setRoundZoneResize(rzr)
+      return
+    }
+    const tzr = rectZoneHandleAt(sx, sy)
+    if (editable && tzr && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
+      setRectZoneResize(tzr)
+      return
+    }
+    
+    // Vérifier le déplacement des zones
+    const ng = noGoHit(x, y)
+    if (editable && ng && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
+      setNoGoDraggingId(ng.id)
+      dragDelta.current = { x: x - ng.x, y: y - ng.y }
+      return
+    }
+    const rz = roundZoneHit(x, y)
+    if (editable && rz && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
+      setRoundZoneDraggingId(rz.id)
+      dragDelta.current = { x: x - rz.x, y: y - rz.y }
+      return
+    }
+    const tz = rectZoneHit(x, y)
+    if (editable && tz && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode) {
+      setRectZoneDraggingId(tz.id)
+      dragDelta.current = { x: x - tz.x, y: y - tz.y }
+      return
+    }
+    // If no table, allow fixture dragging (below tables visually)
+    const f = fixtureHit(x, y)
+    if (editable && f) {
+      if (!(f as any).locked) {
+        setFixtureDraggingId((f as any).id)
+        dragDelta.current = { x: x - (f as any).x, y: y - (f as any).y }
+      }
+      return
+    }
+    const nzHandle = namedZoneHandleAt(sx, sy)
+    if (editable && nzHandle && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode && !drawZoneMode) {
+      setNamedZoneResize(nzHandle)
+      return
+    }
+    const nzHit = namedZoneHit(x, y)
+    if (editable && nzHit && !drawNoGoMode && !drawRoundOnlyMode && !drawRectOnlyMode && !drawZoneMode) {
+      setNamedZoneDraggingId(nzHit.id)
+      dragDelta.current = { x: x - nzHit.x, y: y - nzHit.y }
+      return
+    }
+    const h = handleAt(sx, sy)
+    if (editable && h !== 'none') {
+      setResizeHandle(h)
+      return
+    }
+    if (editable && drawNoGoMode) {
+      if (x >= 0 && y >= 0 && x <= room.width && y <= room.height) {
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const sx0 = snapGrid ? snap(x) : x
+        const sy0 = snapGrid ? snap(y) : y
+        drawStartNoGo.current = { x: sx0, y: sy0 }
+        setDraftNoGo({ id: 'draft', x: sx0, y: sy0, w: 0, h: 0 })
+        return
+      }
+    }
+    if (editable && drawRoundOnlyMode) {
+      if (x >= 0 && y >= 0 && x <= room.width && y <= room.height) {
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const sx0 = snapGrid ? snap(x) : x
+        const sy0 = snapGrid ? snap(y) : y
+        drawStartRoundZone.current = { x: sx0, y: sy0 }
+        setDraftRoundZone({ id: 'draft', x: sx0, y: sy0, w: 0, h: 0 })
+        return
+      }
+    }
+    if (editable && drawRectOnlyMode) {
+      if (x >= 0 && y >= 0 && x <= room.width && y <= room.height) {
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const sx0 = snapGrid ? snap(x) : x
+        const sy0 = snapGrid ? snap(y) : y
+        drawStartRectZone.current = { x: sx0, y: sy0 }
+        setDraftRectZone({ id: 'draft', x: sx0, y: sy0, w: 0, h: 0 })
+        return
+      }
+    }
+    if (editable && drawZoneMode) {
+      if (x >= 0 && y >= 0 && x <= room.width && y <= room.height) {
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const sx0 = snapGrid ? snap(x) : x
+        const sy0 = snapGrid ? snap(y) : y
+        drawStartZone.current = { x: sx0, y: sy0 }
+        setDraftZone({ id: 'draft', x: sx0, y: sy0, w: 0, h: 0 })
+        return
+      }
+    }
+    // Plan fixe: ne pas déplacer le fond
+    if (selectedTableIds.length > 0) {
+      updateSelection([])
+    }
+  }
+
+  function onContextMenu(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
+    const sx = e.clientX - rect.left
+    const sy = e.clientY - rect.top
+    const { x, y } = screenToWorld(sx, sy)
+    
+    // Ajuster la position pour que le menu reste visible
+    const menuWidth = 200
+    const menuHeight = 100
+    let menuX = e.clientX
+    let menuY = e.clientY
+    
+    // Si trop à droite, afficher à gauche du curseur
+    if (menuX + menuWidth > window.innerWidth) {
+      menuX = window.innerWidth - menuWidth - 10
+    }
+    // Si trop en bas, afficher au-dessus du curseur
+    if (menuY + menuHeight > window.innerHeight) {
+      menuY = window.innerHeight - menuHeight - 10
+    }
+    
+    console.log('[ContextMenu] Window size:', window.innerWidth, window.innerHeight)
+    console.log('[ContextMenu] Original click:', e.clientX, e.clientY)
+    console.log('[ContextMenu] Adjusted position:', menuX, menuY)
+    
+    // Détecter ce qui est cliqué (priorité visuelle: tables > fixtures > zones > no-go)
+    const table = [...tables].reverse().find(t => tableHit(x, y, t))
+    if (table) {
+      if (!selectedTableIds.includes(table.id) || selectedTableIds.length !== 1) {
+        const next = [table.id]
+        updateSelection(next)
+      }
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'table', data: table } })
+      return
+    }
+    const fx = fixtureHit(x, y)
+    if (fx) {
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'fixture', data: fx } })
+      return
+    }
+    const rz = roundZoneHit(x, y)
+    if (rz) {
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'roundZone', data: rz } })
+      return
+    }
+    const tz = rectZoneHit(x, y)
+    if (tz) {
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'rectZone', data: tz } })
+      return
+    }
+    const ng = noGoHit(x, y)
+    if (ng) {
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'noGo', data: ng } })
+      return
+    }
+    const nzone = namedZoneHit(x, y)
+    if (nzone) {
+      setContextMenu({ x: menuX, y: menuY, target: { type: 'namedZone', data: nzone } })
+      return
+    }
+  }
+
+  function snap(v: number) {
+    const g = room.grid || 50
+    return Math.round(v / g) * g
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
+    const sx = e.clientX - rect.left
+    const sy = e.clientY - rect.top
+    // Track active pointers for pinch
+    if (activePointers.current.has(e.pointerId)) {
+      activePointers.current.set(e.pointerId, { x: sx, y: sy })
+    }
+    if (isPinchingRef.current && activePointers.current.size >= 2) {
+      const pts = Array.from(activePointers.current.values()).slice(0, 2)
+      const dx = pts[0].x - pts[1].x
+      const dy = pts[0].y - pts[1].y
+      const dist = Math.max(1, Math.hypot(dx, dy))
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }
+      const st = pinchStart.current
+      if (st) {
+        const newScale = Math.min(5, Math.max(0.1, st.scale * (dist / st.dist)))
+        // Keep world point under mid fixed
+        const wx = (mid.x - st.offset.x) / st.scale
+        const wy = (mid.y - st.offset.y) / st.scale
+        const newOffset = { x: mid.x - wx * newScale, y: mid.y - wy * newScale }
+        setScale(newScale)
+        setOffset(newOffset)
+      }
+      return
+    }
+
+    if (isPanning && dragStart.current) {
+      const dx = sx - dragStart.current.x
+      const dy = sy - dragStart.current.y
+      setOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }))
+      dragStart.current = { x: sx, y: sy }
+      const el = canvasRef.current
+      if (el) el.style.cursor = 'grabbing'
+      return
+    }
+    const { x, y } = screenToWorld(sx, sy)
+    if (fixtureResize && editable) {
+      const idx = (fixtures as any[]).findIndex(f => f.id === fixtureResize.id)
+      if (idx >= 0) {
+        const fx: any = (fixtures as any[])[idx]
+        if (fixtureResize.shape === 'round') {
+          const dx = x - fx.x
+          const dy = y - fx.y
+          let nr = Math.max(5, Math.sqrt(dx * dx + dy * dy))
+          if (showGrid && room.grid && room.grid > 0) nr = snap(nr)
+          fx.r = nr
+        } else {
+          let nw = fx.w
+          let nh = fx.h
+          if (fixtureResize.handle === 'right' || fixtureResize.handle === 'corner') nw = Math.max(10, x - fx.x)
+          if (fixtureResize.handle === 'bottom' || fixtureResize.handle === 'corner') nh = Math.max(10, y - fx.y)
+          if (showGrid && room.grid && room.grid > 0) {
+            nw = snap(nw); nh = snap(nh)
+          }
+          fx.w = nw; fx.h = nh
+        }
+        onChange && onChange({ ...data, fixtures: [...(fixtures as any[])] })
+      }
+      return
+    }
+    if (fixtureDraggingId) {
+      const fx: any = (fixtures as any[]).find(f => f.id === fixtureDraggingId)
+      if (fx) {
+        const nx = x - dragDelta.current.x
+        const ny = y - dragDelta.current.y
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        fx.x = snapGrid ? snap(nx) : nx
+        fx.y = snapGrid ? snap(ny) : ny
+        onChange && onChange({ ...data, fixtures: [...(fixtures as any[])] })
+      }
+      return
+    }
+    if (noGoResize && editable) {
+      const idx = noGo.findIndex(r => r.id === noGoResize.id)
+      if (idx >= 0) {
+        const r = { ...noGo[idx] }
+        let nw = r.w
+        let nh = r.h
+        if (noGoResize.handle === 'right' || noGoResize.handle === 'corner') nw = Math.max(10, x - r.x)
+        if (noGoResize.handle === 'bottom' || noGoResize.handle === 'corner') nh = Math.max(10, y - r.y)
+        if (showGrid && room.grid && room.grid > 0) { nw = snap(nw); nh = snap(nh) }
+        const next = [...noGo]
+        next[idx] = { ...r, w: nw, h: nh }
+        onChange && onChange({ ...data, no_go: next })
+      }
+      return
+    }
+    if (noGoDraggingId) {
+      const idx = noGo.findIndex(r => r.id === noGoDraggingId)
+      if (idx >= 0) {
+        const r = { ...noGo[idx] }
+        const nx = x - dragDelta.current.x
+        const ny = y - dragDelta.current.y
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const next = [...noGo]
+        next[idx] = { ...r, x: snapGrid ? snap(nx) : nx, y: snapGrid ? snap(ny) : ny }
+        onChange && onChange({ ...data, no_go: next })
+      }
+      return
+    }
+    if (roundZoneResize && editable) {
+      const idx = roundOnlyZones.findIndex((r: any) => r.id === roundZoneResize.id)
+      if (idx >= 0) {
+        const r = { ...roundOnlyZones[idx] }
+        let nw = r.w
+        let nh = r.h
+        if (roundZoneResize.handle === 'right' || roundZoneResize.handle === 'corner') nw = Math.max(10, x - r.x)
+        if (roundZoneResize.handle === 'bottom' || roundZoneResize.handle === 'corner') nh = Math.max(10, y - r.y)
+        if (showGrid && room.grid && room.grid > 0) { nw = snap(nw); nh = snap(nh) }
+        const next = [...roundOnlyZones]
+        next[idx] = { ...r, w: nw, h: nh }
+        onChange && onChange({ ...data, round_only_zones: next } as any)
+      }
+      return
+    }
+    if (roundZoneDraggingId) {
+      const idx = roundOnlyZones.findIndex((r: any) => r.id === roundZoneDraggingId)
+      if (idx >= 0) {
+        const r = { ...roundOnlyZones[idx] }
+        const nx = x - dragDelta.current.x
+        const ny = y - dragDelta.current.y
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const next = [...roundOnlyZones]
+        next[idx] = { ...r, x: snapGrid ? snap(nx) : nx, y: snapGrid ? snap(ny) : ny }
+        onChange && onChange({ ...data, round_only_zones: next } as any)
+      }
+      return
+    }
+    if (rectZoneResize && editable) {
+      const idx = rectOnlyZones.findIndex((r: any) => r.id === rectZoneResize.id)
+      if (idx >= 0) {
+        const r = { ...rectOnlyZones[idx] }
+        let nw = r.w
+        let nh = r.h
+        if (rectZoneResize.handle === 'right' || rectZoneResize.handle === 'corner') nw = Math.max(10, x - r.x)
+        if (rectZoneResize.handle === 'bottom' || rectZoneResize.handle === 'corner') nh = Math.max(10, y - r.y)
+        if (showGrid && room.grid && room.grid > 0) { nw = snap(nw); nh = snap(nh) }
+        const next = [...rectOnlyZones]
+        next[idx] = { ...r, w: nw, h: nh }
+        onChange && onChange({ ...data, rect_only_zones: next } as any)
+      }
+      return
+    }
+    if (rectZoneDraggingId) {
+      const idx = rectOnlyZones.findIndex((r: any) => r.id === rectZoneDraggingId)
+      if (idx >= 0) {
+        const r = { ...rectOnlyZones[idx] }
+        const nx = x - dragDelta.current.x
+        const ny = y - dragDelta.current.y
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const next = [...rectOnlyZones]
+        next[idx] = { ...r, x: snapGrid ? snap(nx) : nx, y: snapGrid ? snap(ny) : ny }
+        onChange && onChange({ ...data, rect_only_zones: next } as any)
+      }
+      return
+    }
+    if (namedZoneResize && editable) {
+      const idx = zones.findIndex(z => z.id === namedZoneResize.id)
+      if (idx >= 0) {
+        const z = { ...zones[idx] }
+        let nw = z.w
+        let nh = z.h
+        if (namedZoneResize.handle === 'right' || namedZoneResize.handle === 'corner') nw = Math.max(10, x - z.x)
+        if (namedZoneResize.handle === 'bottom' || namedZoneResize.handle === 'corner') nh = Math.max(10, y - z.y)
+        if (showGrid && room.grid && room.grid > 0) { nw = snap(nw); nh = snap(nh) }
+        const next = [...zones]
+        next[idx] = { ...z, w: nw, h: nh }
+        onChange && onChange({ ...data, zones: next })
+      }
+      return
+    }
+    if (namedZoneDraggingId) {
+      const idx = zones.findIndex(z => z.id === namedZoneDraggingId)
+      if (idx >= 0) {
+        const z = { ...zones[idx] }
+        const nx = x - dragDelta.current.x
+        const ny = y - dragDelta.current.y
+        const snapGrid = showGrid && room.grid && room.grid > 0
+        const next = [...zones]
+        next[idx] = { ...z, x: snapGrid ? snap(nx) : nx, y: snapGrid ? snap(ny) : ny }
+        onChange && onChange({ ...data, zones: next })
+      }
+      return
+    }
+    if (resizeHandle !== 'none' && editable) {
+      let nw = room.width
+      let nh = room.height
+      if (resizeHandle === 'right' || resizeHandle === 'corner') nw = Math.max(100, x)
+      if (resizeHandle === 'bottom' || resizeHandle === 'corner') nh = Math.max(100, y)
+      const snapGrid = showGrid && room.grid && room.grid > 0
+      if (snapGrid) {
+        nw = snap(nw)
+        nh = snap(nh)
+      }
+      onChange && onChange({ ...data, room: { ...(room as any), width: nw, height: nh } })
+      return
+    }
+    if (drawStartNoGo.current && editable && drawNoGoMode) {
+      const p0 = drawStartNoGo.current
+      let x0 = p0.x, y0 = p0.y
+      let x1 = x, y1 = y
+      if (showGrid && room.grid && room.grid > 0) { x1 = snap(x1); y1 = snap(y1) }
+      const left = Math.min(x0, x1)
+      const top = Math.min(y0, y1)
+      const w = Math.abs(x1 - x0)
+      const h = Math.abs(y1 - y0)
+      setDraftNoGo({ id: 'draft', x: left, y: top, w, h })
+      return
+    }
+    if (drawStartRoundZone.current && editable && drawRoundOnlyMode) {
+      const p0 = drawStartRoundZone.current
+      let x0 = p0.x, y0 = p0.y
+      let x1 = x, y1 = y
+      if (showGrid && room.grid && room.grid > 0) { x1 = snap(x1); y1 = snap(y1) }
+      const left = Math.min(x0, x1)
+      const top = Math.min(y0, y1)
+      const w = Math.abs(x1 - x0)
+      const h = Math.abs(y1 - y0)
+      setDraftRoundZone({ id: 'draft', x: left, y: top, w, h })
+      return
+    }
+    if (drawStartRectZone.current && editable && drawRectOnlyMode) {
+      const p0 = drawStartRectZone.current
+      let x0 = p0.x, y0 = p0.y
+      let x1 = x, y1 = y
+      if (showGrid && room.grid && room.grid > 0) { x1 = snap(x1); y1 = snap(y1) }
+      const left = Math.min(x0, x1)
+      const top = Math.min(y0, y1)
+      const w = Math.abs(x1 - x0)
+      const h = Math.abs(y1 - y0)
+      setDraftRectZone({ id: 'draft', x: left, y: top, w, h })
+      return
+    }
+    if (drawStartZone.current && editable && drawZoneMode) {
+      const p0 = drawStartZone.current
+      let x0 = p0.x, y0 = p0.y
+      let x1 = x, y1 = y
+      if (showGrid && room.grid && room.grid > 0) { x1 = snap(x1); y1 = snap(y1) }
+      const left = Math.min(x0, x1)
+      const top = Math.min(y0, y1)
+      const w = Math.abs(x1 - x0)
+      const h = Math.abs(y1 - y0)
+      setDraftZone({ id: 'draft', x: left, y: top, w, h })
+      return
+    }
+    if (draggingId) {
+      const t = tables.find(t => t.id === draggingId)
+      if (!t) return
+      if (isPanning && dragStart.current) {
+        const dx = sx - dragStart.current.x
+        const dy = sy - dragStart.current.y
+        setOffset({ x: offset.x + dx, y: offset.y + dy })
+        dragStart.current = { x: sx, y: sy }
+        const el = canvasRef.current
+        if (el) el.style.cursor = 'grabbing'
+        return
+      }
+      const nx = x - dragDelta.current.x
+      const ny = y - dragDelta.current.y
+      const snapGrid = showGrid && room.grid && room.grid > 0
+      if (t.r) {
+        t.x = snapGrid ? snap(nx) : nx
+        t.y = snapGrid ? snap(ny) : ny
+      } else {
+        t.x = snapGrid ? snap(nx) : nx
+        t.y = snapGrid ? snap(ny) : ny
+      }
+      const invalidNow = tableCollides(t)
+      dragInvalid.current = invalidNow
+      if (!invalidNow) {
+        lastValid.current = { x: t.x, y: t.y }
+      }
+      onChange && onChange({ ...data, tables: [...tables] })
+      return
+    }
+    // Détecter les objets sous le curseur (désactiver pendant pinch)
+    if (isPinchingRef.current) return
+    const table = [...tables].reverse().find(t => tableHit(x, y, t))
+    const fx = fixtureHit(x, y)
+    const rz = roundZoneHit(x, y)
+    const tz = rectZoneHit(x, y)
+    const ng = noGoHit(x, y)
+    const nz = namedZoneHit(x, y)
+    
+    // Update hovered item only if changed (prevent re-render loop)
+    let newHoveredKey: string | null = null
+    if (table) newHoveredKey = `t-${table.id}`
+    else if (fx) newHoveredKey = `fx-${(fx as any).id}`
+    else if (rz) newHoveredKey = `rz-${rz.id}`
+    else if (tz) newHoveredKey = `tz-${tz.id}`
+    else if (ng) newHoveredKey = `ng-${ng.id}`
+    else if (nz) newHoveredKey = `zone-${nz.id}`
+    
+    if (newHoveredKey !== lastHoveredRef.current) {
+      lastHoveredRef.current = newHoveredKey
+      if (newHoveredKey) {
+        const [type, id] = newHoveredKey.split('-')
+        setHoveredItem({ type, id })
+      } else {
+        setHoveredItem(null)
+      }
+    }
+    
+    const fr = fixtureHandleAt(sx, sy)
+    const ngr = noGoHandleAt(sx, sy)
+    const rzr = roundZoneHandleAt(sx, sy)
+    const tzr = rectZoneHandleAt(sx, sy)
+    const nzr = namedZoneHandleAt(sx, sy)
+    const h = handleAt(sx, sy)
+    const el = canvasRef.current
+    if (el) {
+      if (fr) {
+        el.style.cursor = fr.handle === 'corner' ? 'nwse-resize' : fr.handle === 'right' ? 'ew-resize' : fr.handle === 'bottom' ? 'ns-resize' : 'ew-resize'
+      } else if (ngr) {
+        el.style.cursor = ngr.handle === 'corner' ? 'nwse-resize' : ngr.handle === 'right' ? 'ew-resize' : 'ns-resize'
+      } else if (rzr) {
+        el.style.cursor = rzr.handle === 'corner' ? 'nwse-resize' : rzr.handle === 'right' ? 'ew-resize' : 'ns-resize'
+      } else if (tzr) {
+        el.style.cursor = tzr.handle === 'corner' ? 'nwse-resize' : tzr.handle === 'right' ? 'ew-resize' : 'ns-resize'
+      } else if (nzr) {
+        el.style.cursor = nzr.handle === 'corner' ? 'nwse-resize' : nzr.handle === 'right' ? 'ew-resize' : 'ns-resize'
+      } else if (drawNoGoMode || drawRoundOnlyMode || drawRectOnlyMode || drawZoneMode) {
+        el.style.cursor = 'crosshair'
+      } else if (rz || tz || ng || fx || table || nz) {
+        el.style.cursor = 'context-menu'  // Indique qu'un clic droit est possible
+      } else {
+        el.style.cursor = h === 'corner' ? 'nwse-resize' : h === 'right' ? 'ew-resize' : h === 'bottom' ? 'ns-resize' : 'default'
+      }
+    }
+  }
+
+  function onPointerUp(e?: React.PointerEvent) {
+    if (e) {
+      if (activePointers.current.has(e.pointerId)) {
+        activePointers.current.delete(e.pointerId)
+      }
+      if (activePointers.current.size < 2) {
+        isPinchingRef.current = false
+        pinchStart.current = null
+      }
+    } else {
+      activePointers.current.clear()
+      isPinchingRef.current = false
+      pinchStart.current = null
+    }
+    const currentDraggingId = draggingId
+    if (drawStartNoGo.current && draftNoGo && editable && drawNoGoMode) {
+      const minSize = 10
+      if (draftNoGo.w >= minSize && draftNoGo.h >= minSize) {
+        const id = `ng_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
+        const next = [...noGo, { id, x: draftNoGo.x, y: draftNoGo.y, w: draftNoGo.w, h: draftNoGo.h }]
+        onChange && onChange({ ...data, no_go: next })
+      }
+      drawStartNoGo.current = null
+      setDraftNoGo(null)
+    }
+    if (drawStartRoundZone.current && draftRoundZone && editable && drawRoundOnlyMode) {
+      const minSize = 10
+      if (draftRoundZone.w >= minSize && draftRoundZone.h >= minSize) {
+        const id = `rz_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
+        const next = [...roundOnlyZones, { id, x: draftRoundZone.x, y: draftRoundZone.y, w: draftRoundZone.w, h: draftRoundZone.h }]
+        onChange && onChange({ ...data, round_only_zones: next } as any)
+      }
+      drawStartRoundZone.current = null
+      setDraftRoundZone(null)
+    }
+    if (drawStartRectZone.current && draftRectZone && editable && drawRectOnlyMode) {
+      const minSize = 10
+      if (draftRectZone.w >= minSize && draftRectZone.h >= minSize) {
+        const id = `tz_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
+        const next = [...rectOnlyZones, { id, x: draftRectZone.x, y: draftRectZone.y, w: draftRectZone.w, h: draftRectZone.h }]
+        onChange && onChange({ ...data, rect_only_zones: next } as any)
+      }
+      drawStartRectZone.current = null
+      setDraftRectZone(null)
+    }
+    if (drawStartZone.current && draftZone && editable && drawZoneMode) {
+      const minSize = 10
+      if (draftZone.w >= minSize && draftZone.h >= minSize) {
+        const id = `zone_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
+        const newZone: FloorZone = {
+          id,
+          label: drawZoneMode.label,
+          color: drawZoneMode.color,
+          x: draftZone.x,
+          y: draftZone.y,
+          w: draftZone.w,
+          h: draftZone.h
+        }
+        const next = [...zones, newZone]
+        onChange && onChange({ ...data, zones: next })
+      }
+      drawStartZone.current = null
+      setDraftZone(null)
+    }
+    // Revert invalid drop before clearing ids/state
+    if (dragStart.current && lastValid.current && dragInvalid.current && editable && currentDraggingId) {
+      const t = tables.find(tt => tt.id === currentDraggingId)
+      if (t) {
+        t.x = lastValid.current.x
+        t.y = lastValid.current.y
+        onChange && onChange({ ...data, tables: [...tables] })
+      }
+    }
+    setDraggingId(null)
+    setIsPanning(false)
+    setResizeHandle('none')
+    setFixtureDraggingId(null)
+    setFixtureResize(null)
+    dragStart.current = null
+    lastValid.current = null
+    dragInvalid.current = false
+    setNoGoDraggingId(null)
+    setNoGoResize(null)
+    setRoundZoneDraggingId(null)
+    setRoundZoneResize(null)
+    setRectZoneDraggingId(null)
+    setRectZoneResize(null)
+    setNamedZoneDraggingId(null)
+    setNamedZoneResize(null)
+    const el = canvasRef.current
+    if (el) el.style.cursor = 'default'
+  }
+
+  function onDoubleClick(e: React.MouseEvent) {
+    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
+    const sx = e.clientX - rect.left
+    const sy = e.clientY - rect.top
+    const { x, y } = screenToWorld(sx, sy)
+    const tHit = [...tables].reverse().find(t => tableHit(x, y, t))
+    if (tHit && tHit.kind === 'fixed') {
+      tHit.locked = !tHit.locked
+      onChange && onChange({ ...data, tables: [...tables] })
+      return
+    }
+    const fHit = [...fixtures].reverse().find(f => ('r' in (f as any))
+      ? circleHit(x, y, { id: (f as any).id, x: (f as any).x, y: (f as any).y, r: (f as any).r })
+      : rectHit(x, y, { id: (f as any).id, x: (f as any).x, y: (f as any).y, w: (f as any).w, h: (f as any).h })
+    ) as any
+    if (fHit) {
+      if (e.altKey || e.shiftKey) {
+        const name = window.prompt('Nom de l\'objet', fHit.label || '')
+        if (name !== null) {
+          fHit.label = name
+          onChange && onChange({ ...data, fixtures: [...fixtures] })
+        }
+      } else {
+        fHit.locked = !fHit.locked
+        onChange && onChange({ ...data, fixtures: [...fixtures] })
+      }
+    }
+  }
+
+  function onWheel(e: React.WheelEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    hasInteracted.current = true
+    const delta = -e.deltaY
+    const factor = delta > 0 ? 1.15 : 0.85
+    const newScale = Math.min(5, Math.max(0.1, scale * factor))
+    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
+    const sx = e.clientX - rect.left
+    const sy = e.clientY - rect.top
+    const wx1 = (sx - offset.x) / scale
+    const wy1 = (sy - offset.y) / scale
+    const wx2 = (sx - offset.x) / newScale
+    const wy2 = (sy - offset.y) / newScale
+    setOffset({ x: offset.x + (wx2 - wx1) * newScale, y: offset.y + (wy2 - wy1) * newScale })
+    setScale(newScale)
+  }
+
+  function zoomIn() {
+    hasInteracted.current = true
+    const newScale = Math.min(5, scale * 1.3)
+    const cx = size.w / 2
+    const cy = size.h / 2
+    const wx1 = (cx - offset.x) / scale
+    const wy1 = (cy - offset.y) / scale
+    const wx2 = (cx - offset.x) / newScale
+    const wy2 = (cy - offset.y) / newScale
+    setOffset({ x: offset.x + (wx2 - wx1) * newScale, y: offset.y + (wy2 - wy1) * newScale })
+    setScale(newScale)
+  }
+
+  function zoomOut() {
+    hasInteracted.current = true
+    const newScale = Math.max(0.1, scale * 0.7)
+    const cx = size.w / 2
+    const cy = size.h / 2
+    const wx1 = (cx - offset.x) / scale
+    const wy1 = (cy - offset.y) / scale
+    const wx2 = (cx - offset.x) / newScale
+    const wy2 = (cy - offset.y) / newScale
+    setOffset({ x: offset.x + (wx2 - wx1) * newScale, y: offset.y + (wy2 - wy1) * newScale })
+    setScale(newScale)
+  }
+
+  function resetView() {
+    const pad = 40
+    const sw = size.w || 0
+    const sh = size.h || 0
+    const fit = Math.min(
+      (sw - pad) / (room.width || 1),
+      (sh - pad) / (room.height || 1)
+    )
+    const nextScale = isFinite(fit) && fit > 0 ? Math.min(5, Math.max(0.1, fit)) : 0.8
+    const nextOffset = { x: (sw - room.width * nextScale) / 2, y: (sh - room.height * nextScale) / 2 }
+    if (nextScale !== scale) setScale(nextScale)
+    if (nextOffset.x !== offset.x || nextOffset.y !== offset.y) setOffset(nextOffset)
+    hasInteracted.current = false
+  }
+
+  return (
+    <div 
+      className={className} 
+      style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
+      onContextMenu={onContextMenu}
+    >
+      <canvas
+        ref={canvasRef}
+        style={{ 
+          width: '100%', 
+          height: '100%', 
+          touchAction: 'none', 
+          background: 'linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%)',
+          cursor: isPanning ? 'grabbing' : (panMode ? 'grab' : (draggingId || fixtureDraggingId || noGoDraggingId || roundZoneDraggingId || rectZoneDraggingId ? 'move' : 'default'))
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
+        onContextMenu={onContextMenu}
+        onWheel={onWheel}
+        onDoubleClick={onDoubleClick}
+      />
+      
+      {/* Contrôles de navigation */}
+      <div className="canevas-outils">
+        <button
+          onClick={zoomIn}
+          className="canevas-bouton"
+          title="Zoom avant (molette souris)"
+        >
+          ＋
+        </button>
+        <button
+          onClick={zoomOut}
+          className="canevas-bouton"
+          title="Zoom arrière (molette souris)"
+        >
+          －
+        </button>
+        <button
+          onClick={() => setPanMode(v => !v)}
+          className={`canevas-bouton${panMode ? ' actif' : ''}`}
+          title={panMode ? 'Mode déplacement activé' : 'Activer le mode déplacement (pan)'}
+        >
+          ✥
+        </button>
+        <button
+          onClick={resetView}
+          className="canevas-bouton"
+          title="Réinitialiser la vue"
+        >
+          ⤢
+        </button>
+        <div className="canevas-trait" />
+        <div className="canevas-zoom">
+          {Math.round(scale * 100)}%
+        </div>
+      </div>
+
+      {/* Indicateur de mode */}
+      {drawNoGoMode && (
+        <div className="canevas-mode" style={{ backgroundColor: '#f97316' }}>
+          Mode dessin zone interdite
+        </div>
+      )}
+      {drawRoundOnlyMode && (
+        <div className="canevas-mode" style={{ backgroundColor: '#3b82f6' }}>
+          Mode dessin zone tables rondes (R)
+        </div>
+      )}
+      {drawRectOnlyMode && (
+        <div className="canevas-mode" style={{ backgroundColor: '#22c55e' }}>
+          Mode dessin zone tables rectangulaires (T)
+        </div>
+      )}
+      {drawZoneMode && (
+        <div
+          className="canevas-mode"
+          style={{ backgroundColor: drawZoneMode.color || '#3b82f6' }}
+        >
+          ✏️ Dessiner zone : {drawZoneMode.label}
+        </div>
+      )}
+
+      {/* Légende */}
+      <div className="canevas-legende">
+        <strong>Contrôles</strong>
+        <div>
+          <div>• <strong>Molette</strong>: Zoom</div>
+          <div>• <strong>Clic droit</strong>: Menu contextuel</div>
+          <div>• <strong>Double-clic</strong>: Verrouiller/Déverrouiller</div>
+          {editable && <div>• <strong>Glisser</strong>: Déplacer/Redimensionner</div>}
+        </div>
+      </div>
+
+      {/* Menu contextuel - Rendu via Portal pour éviter overflow:hidden */}
+      {contextMenu && createPortal(
+        <>
+          <div 
+            style={{ 
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 9998,
+              backgroundColor: 'transparent'
+            }}
+            onClick={() => setContextMenu(null)}
+          />
+          <div 
+            style={{ 
+              position: 'fixed',
+              left: contextMenu.x, 
+              top: contextMenu.y, 
+              zIndex: 9999,
+              backgroundColor: 'white',
+              borderRadius: '8px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              border: '2px solid #d1d5db',
+              paddingTop: '4px',
+              paddingBottom: '4px',
+              minWidth: '180px'
+            }}
+          >
+            <div style={{ padding: '12px', fontSize: '12px', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #f3f4f6' }}>
+              {contextMenu.target.type === 'roundZone' && 'Zone Tables Rondes (R)'}
+              {contextMenu.target.type === 'rectZone' && 'Zone Tables Rect (T)'}
+              {contextMenu.target.type === 'noGo' && 'Zone Interdite'}
+              {contextMenu.target.type === 'namedZone' && `Zone : ${contextMenu.target.data.label}`}
+              {contextMenu.target.type === 'fixture' && 'Objet'}
+              {contextMenu.target.type === 'table' && `Table ${contextMenu.target.data.label || contextMenu.target.data.id}`}
+            </div>
+            {contextMenu.target.type === 'roundZone' && (
+              <button
+                style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                onClick={() => {
+                  const next = roundOnlyZones.filter((z: any) => z.id !== contextMenu.target.data.id)
+                  onChange && onChange({ ...data, round_only_zones: next } as any)
+                  setContextMenu(null)
+                }}
+              >
+                🗑️ Supprimer la zone R
+              </button>
+            )}
+            {contextMenu.target.type === 'rectZone' && (
+              <button
+                style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                onClick={() => {
+                  const next = rectOnlyZones.filter((z: any) => z.id !== contextMenu.target.data.id)
+                  onChange && onChange({ ...data, rect_only_zones: next } as any)
+                  setContextMenu(null)
+                }}
+              >
+                🗑️ Supprimer la zone T
+              </button>
+            )}
+            {contextMenu.target.type === 'noGo' && (
+              <button
+                style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                onClick={() => {
+                  const next = noGo.filter(z => z.id !== contextMenu.target.data.id)
+                  onChange && onChange({ ...data, no_go: next })
+                  setContextMenu(null)
+                }}
+              >
+                🗑️ Supprimer la zone interdite
+              </button>
+            )}
+            {contextMenu.target.type === 'namedZone' && (
+              <button
+                style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                onClick={() => {
+                  const next = zones.filter(z => z.id !== contextMenu.target.data.id)
+                  onChange && onChange({ ...data, zones: next })
+                  setContextMenu(null)
+                }}
+              >
+                🗑️ Supprimer la zone
+              </button>
+            )}
+            {contextMenu.target.type === 'fixture' && (
+              <button
+                style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                onClick={() => {
+                  const next = fixtures.filter((f: any) => f.id !== contextMenu.target.data.id)
+                  onChange && onChange({ ...data, fixtures: next })
+                  setContextMenu(null)
+                }}
+              >
+                🗑️ Supprimer l'objet
+              </button>
+            )}
+            {contextMenu.target.type === 'table' && (
+              <>
+                <button
+                  style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#2563eb', border: 'none', background: 'none', cursor: 'pointer' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#eff6ff'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  onClick={() => {
+                    const t = tables.find(tt => tt.id === contextMenu.target.data.id)
+                    if (t) {
+                      t.locked = !t.locked
+                      onChange && onChange({ ...data, tables: [...tables] })
+                    }
+                    setContextMenu(null)
+                  }}
+                >
+                  {contextMenu.target.data.locked ? '🔓 Déverrouiller' : '🔒 Verrouiller'}
+                </button>
+                <button
+                  style={{ width: '100%', padding: '8px 12px', textAlign: 'left', fontSize: '14px', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  onClick={() => {
+                    const next = tables.filter(t => t.id !== contextMenu.target.data.id)
+                    onChange && onChange({ ...data, tables: next })
+                    setContextMenu(null)
+                  }}
+                >
+                  🗑️ Supprimer la table
+                </button>
+              </>
+            )}
+          </div>
+        </>,
+        document.body
+      )}
+    </div>
+  )
+}

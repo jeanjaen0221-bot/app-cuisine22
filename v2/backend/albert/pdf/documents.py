@@ -148,6 +148,8 @@ def _page_fiche(fiche: dict[str, Any], st: dict[str, ParagraphStyle], cuisine: b
              ("Espace", echapper(fiche["espace"]))]
     if fiche.get("formule_repas"):
         infos.append(("Formule repas", f"<b>{echapper(fiche['formule_repas'])}</b>"))
+    if fiche.get("tables_salle"):
+        infos.append(("Table(s)", f"<b>{echapper(', '.join(fiche['tables_salle']))}</b>"))
     if fiche.get("privatisation") and not cuisine:
         infos.append(("Privatisation", echapper(fiche["privatisation"])))
     if fiche.get("contact_sur_place") and not cuisine:

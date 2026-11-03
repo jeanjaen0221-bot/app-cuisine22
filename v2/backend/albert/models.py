@@ -381,3 +381,32 @@ class ConnexionChatGPT(Base):
     derniere_utilisation: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     utilisateur: Mapped[Utilisateur] = relationship()
+
+
+# ---------------------------------------------------------------- plan de salle
+
+class PlanSalle(Base):
+    """Plan de base de la salle (une seule ligne) : murs, colonnes, zones, tables fixes."""
+
+    __tablename__ = "plan_salle"
+
+    id: Mapped[uuid.UUID] = _id()
+    donnees: Mapped[dict] = mapped_column(JSON, default=dict)
+    modifie_le: Mapped[datetime] = _modifie()
+
+
+class ServiceSalle(Base):
+    """Plan d'un service (midi ou soir d'une date) : copie du plan de base + tables ajoutées + placement."""
+
+    __tablename__ = "service_salle"
+
+    id: Mapped[uuid.UUID] = _id()
+    date: Mapped[date] = mapped_column(Date, index=True)
+    service: Mapped[str] = mapped_column(String(10))  # midi | soir
+    donnees: Mapped[dict] = mapped_column(JSON, default=dict)
+    affectations: Mapped[dict] = mapped_column(JSON, default=dict)  # {"tables": {table_id: {res_id, name, pax}}, "alerts": [...]}
+    reservations_importees: Mapped[list] = mapped_column(JSON, default=list)  # lignes du PDF de réservations
+    cree_le: Mapped[datetime] = _cree()
+    modifie_le: Mapped[datetime] = _modifie()
+
+    __table_args__ = (UniqueConstraint("date", "service", name="uq_service_salle"),)

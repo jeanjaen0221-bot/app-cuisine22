@@ -14,7 +14,7 @@ from .config import reglages
 from .db import session_contexte
 from .domain.erreurs import ErreurMetier
 from .services.initialisation import initialiser_catalogue
-from .api import routes_base, routes_documents, routes_metier
+from .api import routes_base, routes_documents, routes_metier, routes_salle
 
 journal = logging.getLogger("albert")
 
@@ -64,6 +64,7 @@ def creer_app(avec_mcp: bool = True, au_demarrage: bool = False) -> FastAPI:
     app.include_router(routes_base.router)
     app.include_router(routes_metier.router)
     app.include_router(routes_documents.router)
+    app.include_router(routes_salle.router)
 
     @app.get("/sante")
     def sante():
