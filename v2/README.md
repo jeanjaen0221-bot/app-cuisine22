@@ -49,7 +49,7 @@ v2/
 │   │   ├── reprise.py   reprise des données de l'ancienne version
 │   │   └── main.py
 │   ├── alembic/         migrations de la base (alembic upgrade head)
-│   └── tests/           81 tests : règles, parcours complet, droits, ChatGPT de bout en bout
+│   └── tests/           79 tests : règles, parcours complet, droits, ChatGPT de bout en bout
 ├── frontend/            site React (Vite, TypeScript)
 └── Dockerfile
 ```

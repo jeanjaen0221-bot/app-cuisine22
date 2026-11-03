@@ -8,6 +8,8 @@ Il a deux usages :
 
 Analyse complète et décisions : [`REFONTE_ANALYSE.md`](./REFONTE_ANALYSE.md).
 
+> **Implémenté** dans `v2/backend/albert/mcp/` : les outils ci-dessous et les droits `lecture`, `fiches:ecrire`, `devis:preparer`, `plaintes:preparer`, `achats:preparer`, `gmail:lire`. Les consignes réellement envoyées à ChatGPT sont dans `v2/backend/albert/mcp/consignes.txt` (version à jour de la §6).
+
 Rappel des décisions :
 - **D1** L'outil prépare des **devis**, il ne fait pas de factures.
 - **D2** La **comptabilité envoie** elle-même les devis et factures aux clients.
@@ -135,7 +137,7 @@ Formules boissons « + cava » / « + champ » = formule de base + coupe, en deu
 2. Les **prix viennent uniquement du catalogue**. ChatGPT ne fixe, n'estime ni ne négocie jamais un prix 🔒.
 2 bis. **Il n'y a ni remise ni acompte** : si on en demande, ChatGPT répond que le restaurant n'en fait pas 🔒.
 3. Les **totaux sont calculés par le serveur** (en centimes) ; ChatGPT recopie les montants renvoyés, il ne calcule pas lui-même 🔒.
-4. ChatGPT peut **préparer** un devis en `brouillon` à partir d'une fiche (`devis_preparer`) et le mettre à jour tant qu'il est en brouillon (`devis_actualiser`, qui le recalcule depuis la fiche) 🔒.
+4. ChatGPT peut **préparer** un devis en `brouillon` à partir d'une fiche (`devis_preparer`) et le mettre à jour tant qu'il est en brouillon (rappeler `devis_preparer`, qui le recalcule depuis la fiche) 🔒.
 5. Si un produit n'a pas de prix (plat hors catalogue, produit sans prix), le serveur le signale dans `manques` : ChatGPT le dit à l'utilisateur, qui complète le prix dans l'outil 🔒.
 6. La **validation** du devis et sa **transmission à la comptabilité** sont faites **dans l'outil par une personne** 🔒. C'est ensuite **la comptabilité qui l'envoie au client**.
 7. Un devis déjà transmis ne se modifie pas : si le client demande un changement, ChatGPT met à jour la fiche puis propose `devis_nouvelle_version` (nouvelle version en brouillon) 🔒.
@@ -202,14 +204,13 @@ Conventions 🔒 :
 | Outil | Paramètres | Règles |
 |---|---|---|
 | `devis_preparer` | `fiche_id`, `validite_jours?`, `remarques_client?` | brouillon ; lignes et prix TVAC depuis la fiche et le catalogue ; total serveur ; `manques` listés |
-| `devis_actualiser` | `devis_id`, `version` | recalcule un brouillon depuis la fiche actuelle |
 | `devis_nouvelle_version` | `devis_id` | nouvelle version en brouillon d'un devis transmis/refusé |
 | `bon_facturation_preparer` | `devis_id`, `couverts_reels?`, `extras?` (`nom`, `quantite`) | brouillon ; prix du devis, extras au prix du catalogue ; écart calculé |
 
 ### Autres modules
 | Outil | Scope | Paramètres | Règles |
 |---|---|---|---|
-| `salle_lire` | `salle:lire` | `date`, `service?` (`midi`/`soir`) | tables et fiches affectées |
+| `salle_lire` | `lecture` | `date`, `service?` (`midi`/`soir`) | tables et fiches affectées |
 | `plainte_preparer` | `plaintes:preparer` | `recit`, `client_id?`, `fiche_id?`, `date?`, `heure?` | brouillon ; §3.5.3 |
 | `reassort_lire` | `achats:preparer` | `restant?` (quantités restantes par boisson) | suggestions calculées par l'outil |
 | `achat_preparer` | `achats:preparer` | `fournisseur_id`, `lignes` (`boisson_id`, `quantite`), `note?`, `cle_idempotence` | brouillon ; aucun envoi |
@@ -297,7 +298,7 @@ REMPLIR UNE FICHE
 - Les fiches que tu crées sont en brouillon.
 
 DEVIS
-- Prépare le devis avec devis_preparer à partir de la fiche. Si la fiche change, utilise devis_actualiser tant que le devis est en brouillon, sinon propose devis_nouvelle_version.
+- Prépare le devis avec devis_preparer à partir de la fiche. Si la fiche change, rappelle devis_preparer tant que le devis est en brouillon, sinon propose devis_nouvelle_version.
 - Si le serveur signale des manques, dis à l'utilisateur ce qu'il doit compléter : un prix manquant se complète dans le menu « Prix », une adresse incomplète sur la fiche client.
 - Tu ne modifies jamais les menus « Prix » et « Formules ».
 - Donne le total TVA comprise renvoyé par le serveur et le lien PDF (pdf_lien).

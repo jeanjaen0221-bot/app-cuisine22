@@ -7,7 +7,7 @@ Objectif de la refonte : un outil centré sur **les clients, les fiches cuisine/
 
 Document compagnon : [`REGLES_CHATGPT.md`](./REGLES_CHATGPT.md) (règles et contrat d'outils pour ChatGPT).
 
-> **Construction : la nouvelle version est dans le dossier [`v2/`](../v2/README.md)**, séparée de l'ancienne (`app/`). Étapes 1 à 6 du plan (§15) réalisées pour les clients, fiches, prix, formules, devis, bons, espace compta et connecteur ChatGPT ; modules conservés (§13.4) et reprise des données à venir.
+> **Construction : la nouvelle version est dans le dossier [`v2/`](../v2/README.md)**, séparée de l'ancienne (`app/`). Étapes 1 à 6 du plan (§15) réalisées : clients, fiches, prix, formules, devis, bons, espace compta, connecteur ChatGPT, plan de salle, plaintes, notes, achats, Zenchef, Gmail en lecture, script de reprise des données. Reste l'étape 7 (bascule en production).
 
 ---
 
