@@ -52,6 +52,7 @@ from .gpt_api import (
     ItemType,
     MenuFormula,
     _normalize_choice,
+    GptBillingPatch,
     GptFicheCreate,
     GptFichePatch,
     GptItem,
@@ -74,7 +75,7 @@ from .gpt_api import (
     upsert_billing,
 )
 from .gpt_rules import FICHE_RULES
-from .models import BillingInfoUpdate, Setting, User
+from .models import Setting, User
 from .security import ALGORITHM, JWT_SECRET, normalize_email, verify_password
 
 MCP_SCOPE = "albert"
@@ -468,11 +469,17 @@ def fiches_rechercher(
     scope: Annotated[Literal["upcoming", "past"], Field(description="upcoming = à venir, past = historique.")] = "upcoming",
     page: Annotated[int, Field(ge=1)] = 1,
     per_page: Annotated[int, Field(ge=1, le=50)] = 20,
+    status: Annotated[Optional[Literal["draft", "confirmed", "printed"]], Field(description="Filtrer par statut de la réservation.")] = None,
+    final_version: Annotated[Optional[bool], Field(description="Filtrer par fiche finalisée (true) ou non (false).")] = None,
 ) -> Any:
-    """Rechercher/lister les fiches. Toujours chercher avant de créer une nouvelle fiche."""
+    """Rechercher/lister les fiches. Toujours chercher avant de créer une nouvelle fiche.
+
+    status='confirmed' et final_version=false = réservations confirmées dont la fiche
+    n'est pas encore finalisée.
+    """
     def _run():
         with session_context() as session:
-            return list_fiches(q, service_date, scope, page, per_page, session)
+            return list_fiches(q, service_date, scope, page, per_page, session, status, final_version)
 
     return _tool_write_result(_run)
 
@@ -547,7 +554,9 @@ def fiche_modifier(
 
     status = réservation confirmée ('confirmed', preuve Gmail/Zenchef) ou 'draft'.
     final_version = fiche finalisée pour la cuisine (menus, quantités, infos validés).
-    Les deux sont indépendants. La fiche est relue après écriture : si la réponse
+    Les deux sont indépendants. Changer couverts, date, heure, formule, allergènes ou
+    plats d'une fiche finalisée la repasse en non finalisée (à revalider par le chef).
+    La fiche est relue après écriture : si la réponse
     contient ok=false, la modification a échoué et il faut l'annoncer comme un échec.
     """
     changes = {
@@ -621,11 +630,14 @@ def fiche_dupliquer(reservation_id: ReservationId) -> Any:
 
 
 @mcp_server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
-def fiche_supprimer(reservation_id: ReservationId) -> Any:
+def fiche_supprimer(
+    reservation_id: ReservationId,
+    nom_client_confirme: Annotated[str, Field(description="Nom exact de la fiche (client_name), relu avant suppression.")],
+) -> Any:
     """Supprimer une fiche. À appeler uniquement après demande explicite et confirmation."""
     def _run():
         with session_context() as session:
-            return delete_fiche(_uuid(reservation_id), session)
+            return delete_fiche(_uuid(reservation_id), nom_client_confirme, session)
 
     return _tool_write_result(_run)
 
@@ -693,7 +705,7 @@ def facturation_mettre_a_jour(
     }
 
     def _run():
-        payload = BillingInfoUpdate(**changes)
+        payload = GptBillingPatch(**changes)
         with session_context() as session:
             return upsert_billing(_uuid(reservation_id), payload, session)
 

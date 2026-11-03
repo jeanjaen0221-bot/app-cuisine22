@@ -64,6 +64,14 @@ def _matches_search(reservation: Reservation, q: str) -> bool:
     )
 
 
+def _status_filters(stmt, status: Optional[str], final_version: Optional[bool]):
+    if status:
+        stmt = stmt.where(Reservation.status == status)
+    if final_version is not None:
+        stmt = stmt.where(Reservation.final_version == final_version)
+    return stmt
+
+
 @router.get("", response_model=List[ReservationRead])
 def list_reservations(
     q: Optional[str] = None,
@@ -109,6 +117,8 @@ def list_upcoming_reservations(
     page: int = 1,
     per_page: int = 50,
     session: Session = Depends(get_session),
+    status: Optional[str] = None,
+    final_version: Optional[bool] = None,
 ):
     tz_name = os.getenv("TZ", "Europe/Paris")
     now_local = datetime.now(ZoneInfo(tz_name))
@@ -127,6 +137,7 @@ def list_upcoming_reservations(
     )
     if q:
         stmt = stmt.where(_search_condition(q))
+    stmt = _status_filters(stmt, status, final_version)
     if page < 1:
         page = 1
     if per_page < 1:
@@ -146,6 +157,8 @@ def list_past_reservations(
     page: int = 1,
     per_page: int = 50,
     session: Session = Depends(get_session),
+    status: Optional[str] = None,
+    final_version: Optional[bool] = None,
 ):
     tz_name = os.getenv("TZ", "Europe/Paris")
     now_local = datetime.now(ZoneInfo(tz_name))
@@ -164,6 +177,7 @@ def list_past_reservations(
     )
     if q:
         stmt = stmt.where(_search_condition(q))
+    stmt = _status_filters(stmt, status, final_version)
     if page < 1:
         page = 1
     if per_page < 1:
@@ -313,7 +327,8 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
         try:
             update_data["service_date"] = date.fromisoformat(update_data["service_date"][:10])
         except Exception:
-            del update_data["service_date"]
+            # Never drop a requested change and still answer 200.
+            raise HTTPException(422, "Invalid service_date")
     if isinstance(update_data.get("arrival_time"), str):
         try:
             t = update_data["arrival_time"]
@@ -321,7 +336,7 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
                 t = f"{t}:00"
             update_data["arrival_time"] = dtime.fromisoformat(t)
         except Exception:
-            del update_data["arrival_time"]
+            raise HTTPException(422, "Invalid arrival_time")
     # Sanitize/validate updates
     # str(None) is "None": always coalesce before converting, or the literal
     # word ends up stored and printed on the fiche.
@@ -360,29 +375,24 @@ def update_reservation(reservation_id: uuid.UUID, payload: ReservationUpdate, se
     # Server-side guard: per-type totals must not exceed pax (using incoming items or existing ones)
     def _norm_item_type_upd(t: str) -> str:
         return (t or "").lower().replace("é", "e").replace("è", "e").strip()
-    try:
-        check_pax = update_data.get('pax', res.pax)
-        totals = { 'entree': 0, 'plat': 0, 'dessert': 0 }
-        source_items = payload.items if payload.items is not None else \
-            session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
-        for it in source_items:
-            nt = _norm_item_type_upd(it.type)
-            if nt.startswith('entree'):
-                totals['entree'] += int(it.quantity or 0)
-            elif nt == 'plat':
-                totals['plat'] += int(it.quantity or 0)
-            elif nt == 'dessert':
-                totals['dessert'] += int(it.quantity or 0)
-        offenders = [
-            f"{k}={v}" for k, v in totals.items() if v > (check_pax or 0)
-        ]
-        if offenders:
-            raise HTTPException(422, f"Le total par type dépasse le nombre de couverts ({check_pax}): " + ", ".join(offenders))
-    except HTTPException:
-        raise
-    except Exception:
-        # if any unexpected error during guard, fail safe to proceed
-        pass
+    # No catch-all here: a guard that cannot run must stop the save, not wave it through.
+    check_pax = update_data.get('pax', res.pax)
+    totals = { 'entree': 0, 'plat': 0, 'dessert': 0 }
+    source_items = payload.items if payload.items is not None else \
+        session.exec(select(ReservationItem).where(ReservationItem.reservation_id == res.id)).all()
+    for it in source_items:
+        nt = _norm_item_type_upd(it.type)
+        if nt.startswith('entree'):
+            totals['entree'] += int(it.quantity or 0)
+        elif nt == 'plat':
+            totals['plat'] += int(it.quantity or 0)
+        elif nt == 'dessert':
+            totals['dessert'] += int(it.quantity or 0)
+    offenders = [
+        f"{k}={v}" for k, v in totals.items() if v > (check_pax or 0)
+    ]
+    if offenders:
+        raise HTTPException(422, f"Le total par type dépasse le nombre de couverts ({check_pax}): " + ", ".join(offenders))
 
     # Atomic update with items replacement (stay on the same session)
     session.add(res)
