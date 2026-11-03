@@ -199,3 +199,11 @@ def test_revocation_depuis_le_site(app_mcp, admin, session):
     assert site.post(f"/api/chatgpt/connexions/{connexion['id']}/revoquer").status_code == 200
     r = app_mcp.post("/mcp/", headers=mcp.entetes, json={"jsonrpc": "2.0", "id": 7, "method": "tools/list"})
     assert r.status_code == 401
+
+
+def test_chatgpt_redige_une_plainte(app_mcp, admin):
+    jeton, _ = connecter(app_mcp, admin.email, ["lecture", "plaintes:preparer"])
+    mcp = Mcp(app_mcp, jeton)
+    r = mcp.appeler("plainte_preparer", recit="Un client s'est plaint d'un plat froid hier soir.", date="2030-04-04",
+                    gravite="moyen")
+    assert r["ok"] and r["plainte"]["statut"] == "brouillon" and r["plainte"]["heure"] is None

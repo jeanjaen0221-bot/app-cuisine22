@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { api, formatJour } from '../api'
 import { Chargement, EnTete, Erreur, Statut, useCharger } from '../composants/ui'
 import { useSession } from '../contexte'
+import Notes from '../composants/Notes'
 import type { Devis, Fiche } from '../types'
 
 type Tableau = {
@@ -33,6 +34,8 @@ export default function TableauDeBord() {
             <Tuile chiffre={t.bons_a_faire.length} libelle="bons pour facturation à faire" alerte vers="/devis?statut=accepte" />
             {moi.peut.prix && <Tuile chiffre={t.prix_manquants} libelle="prix manquants" alerte vers="/prix?manquants=1" />}
           </div>
+
+          <Notes />
 
           <section className="carte">
             <h2>Les 7 prochains jours</h2>

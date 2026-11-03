@@ -26,7 +26,7 @@ from ..config import reglages
 from ..db import session_contexte
 from ..domain.erreurs import ErreurMetier
 from ..models import Utilisateur
-from ..services import bons, catalogue, clients, comptes, devis, fiches, salle
+from ..services import bons, catalogue, clients, comptes, devis, fiches, plaintes, salle
 from . import liens
 from .oauth import SCOPES, SCOPES_PERMIS, FournisseurOAuth, url_ressource, utilisateur_autorise
 
@@ -285,6 +285,31 @@ def bon_facturation_preparer(devis_id: str, couverts_reels: Optional[int] = None
         b, alertes = bons.preparer(s, a, devis_id, couverts_reels, extras, remarques_compta)
         return {"bon": {**bons.bon_dict(s, b), "lien_pdf": liens.lien_pdf("bon", b.id)}, "alertes": alertes}
     return executer("devis:preparer", preparer)
+
+
+# --------------------------------------------------------------- plaintes
+
+@serveur.tool(annotations=ECRITURE)
+def plainte_preparer(recit: str, date: Optional[str] = None, heure: Optional[str] = None,
+                     lieu: Optional[str] = None, employes: Optional[str] = None, client_nom: Optional[str] = None,
+                     client_id: Optional[str] = None, fiche_id: Optional[str] = None,
+                     contexte: Optional[str] = None, description: Optional[str] = None,
+                     reaction_personnel: Optional[str] = None, consequences: Optional[str] = None,
+                     mesures_prises: Optional[str] = None, observations: Optional[str] = None,
+                     gravite: str = "faible", plainte_id: Optional[str] = None, version: Optional[int] = None) -> dict:
+    """Rédiger (ou corriger, avec plainte_id et version) un rapport de plainte en brouillon. recit = récit de
+    l'utilisateur tel quel. Ton neutre et factuel, ordre chronologique, rien d'inventé : une donnée inconnue reste
+    vide. gravite : faible, moyen ou eleve. L'équipe relit et valide la plainte dans l'outil."""
+    donnees = {k: v for k, v in {
+        "recit_brut": recit, "date": date, "heure": heure, "lieu": lieu, "employes": employes,
+        "client_nom": client_nom, "client_id": client_id, "fiche_id": fiche_id, "contexte": contexte,
+        "description": description, "reaction_personnel": reaction_personnel, "consequences": consequences,
+        "mesures_prises": mesures_prises, "observations": observations, "gravite": gravite}.items() if v is not None}
+
+    def preparer(s, a):
+        p = plaintes.modifier(s, a, plainte_id, donnees, version) if plainte_id else plaintes.creer(s, a, donnees)
+        return {"plainte": plaintes.plainte_dict(p)}
+    return executer("plaintes:preparer", preparer)
 
 
 # --------------------------------------------------------------- montage dans FastAPI

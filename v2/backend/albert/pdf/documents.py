@@ -397,3 +397,29 @@ def pdf_bon(bon: dict[str, Any], client: dict[str, Any], evenement: dict[str, An
         histoire += [Spacer(1, 10), Paragraph("Remarques pour la comptabilité", st["h2"]),
                      Paragraph(notes_html(bon["remarques_compta"]), st["texte"])]
     return _construire(histoire, brouillon, f"Bon {bon['numero']}")
+
+
+# --------------------------------------------------------------- plaintes
+
+def pdf_plainte(p: dict[str, Any]) -> bytes:
+    st = _styles()
+    d = date.fromisoformat(p["date"])
+    histoire: list = [
+        Paragraph(f"Rapport de plainte – {date_longue(d)}", st["titre"]),
+        _table_infos([
+            ("Heure", echapper(p.get("heure") or "Non précisé")), ("Lieu", echapper(p.get("lieu") or "Non précisé")),
+            ("Client", echapper(p.get("client_nom") or "Non précisé")),
+            ("Employé(s)", echapper(p.get("employes") or "Non précisé")),
+            ("Gravité", f"<b>{echapper(p['gravite_libelle'])}</b>"), ("Statut", echapper(p["statut_libelle"])),
+        ], st),
+        Spacer(1, 8),
+    ]
+    for cle_texte, titre in (("recit_brut", "Récit"), ("contexte", "Contexte"), ("description", "Description de l'incident"),
+                             ("reaction_personnel", "Réaction du personnel"), ("consequences", "Conséquences"),
+                             ("mesures_prises", "Mesures prises"), ("observations", "Observations")):
+        if p.get(cle_texte):
+            histoire += [Paragraph(titre, st["h2"]), Paragraph(notes_html(p[cle_texte]), st["texte"])]
+    tampon = io.BytesIO()
+    SimpleDocTemplate(tampon, pagesize=A4, leftMargin=1.6 * cm, rightMargin=1.6 * cm, topMargin=1.5 * cm,
+                      bottomMargin=1.5 * cm, title="Plainte").build(histoire)
+    return tampon.getvalue()

@@ -18,6 +18,8 @@ Parcours : **Client → Fiche → Devis TVA comprise → transmis à la compta**
 | Prix | Tout ce qui se vend, TVA comprise, avec le filtre « Prix manquants » et un compteur rouge |
 | Formules | Formules repas et boissons : ce qu'on choisit sur une fiche ; le prix vient du menu Prix |
 | Salle | Plan de base (tables, zones, réglages) et plan de chaque service : fiches du jour + PDF de réservations, placement automatique ou à la main, PDF du service et PDF annoté ; la table apparaît sur la fiche |
+| Plaintes | Rapport rattaché au client et à la fiche, gravité, brouillon (ChatGPT) → ouverte → traitée, PDF |
+| Notes | Post-it de l'équipe sur le tableau de bord (auteur, épinglage) |
 | ChatGPT | Adresse du connecteur, connexions actives, bouton « Couper » |
 | Journal | Qui a fait quoi, sur le site ou par ChatGPT (admin) |
 | Utilisateurs / Paramètres | Rôles admin / équipe / compta, droits « prix » et « chatgpt » ; coordonnées du restaurant, validité des devis |
@@ -45,7 +47,7 @@ v2/
 │   │   ├── salle/       plan de salle : géométrie, placement automatique, PDF (repris de l'ancienne version)
 │   │   └── main.py
 │   ├── alembic/         migrations de la base (alembic upgrade head)
-│   └── tests/           66 tests : règles, parcours complet, droits, ChatGPT de bout en bout
+│   └── tests/           71 tests : règles, parcours complet, droits, ChatGPT de bout en bout
 ├── frontend/            site React (Vite, TypeScript)
 └── Dockerfile
 ```

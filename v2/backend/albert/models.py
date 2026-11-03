@@ -410,3 +410,48 @@ class ServiceSalle(Base):
     modifie_le: Mapped[datetime] = _modifie()
 
     __table_args__ = (UniqueConstraint("date", "service", name="uq_service_salle"),)
+
+
+# ---------------------------------------------------------------- plaintes et notes
+
+class Plainte(Base):
+    """Rapport de plainte ou d'incident client."""
+
+    __tablename__ = "plainte"
+
+    id: Mapped[uuid.UUID] = _id()
+    date: Mapped[date] = mapped_column(Date, index=True)
+    heure: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
+    lieu: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    employes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    client_nom: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    client_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("client.id"), nullable=True, index=True)
+    fiche_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("fiche.id"), nullable=True, index=True)
+    recit_brut: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    contexte: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reaction_personnel: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    consequences: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    mesures_prises: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    observations: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    gravite: Mapped[str] = mapped_column(String(10), default="faible")  # faible | moyen | eleve
+    statut: Mapped[str] = mapped_column(String(15), default="ouverte", index=True)  # brouillon | ouverte | traitee
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    cree_le: Mapped[datetime] = _cree()
+    modifie_le: Mapped[datetime] = _modifie()
+
+    client: Mapped[Optional[Client]] = relationship()
+    fiche: Mapped[Optional[Fiche]] = relationship()
+
+
+class Note(Base):
+    """Post-it partagé de l'équipe."""
+
+    __tablename__ = "note"
+
+    id: Mapped[uuid.UUID] = _id()
+    auteur: Mapped[str] = mapped_column(String(320))
+    contenu: Mapped[str] = mapped_column(Text)
+    epinglee: Mapped[bool] = mapped_column(Boolean, default=False)
+    cree_le: Mapped[datetime] = _cree()
+    modifie_le: Mapped[datetime] = _modifie()
