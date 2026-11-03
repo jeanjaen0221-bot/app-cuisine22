@@ -282,10 +282,22 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     html = html
       .replace(/\*\*([^*]+)\*\*|\*([^*]+)\*/g, (_m, p1, p2) => `<strong>${p1 || p2}</strong>`)
       .replace(/_([^_]+)_/g, '<em>$1</em>')
-      .replace(/\n-\s+/g, '<br/>• ')
-      .replace(/\n/g, '<br/>')
       .replace(/&amp;(?=#?\w+;)/g, '&');
-    return html;
+    // Une ligne par info ; les lignes "- …" deviennent une vraie liste à puces.
+    const out: string[] = [];
+    let inList = false;
+    for (const line of html.split('\n')) {
+      const bullet = line.match(/^\s*[-•]\s+(.*)$/);
+      if (bullet) {
+        if (!inList) { out.push('<ul>'); inList = true; }
+        out.push(`<li>${bullet[1]}</li>`);
+        continue;
+      }
+      if (inList) { out.push('</ul>'); inList = false; }
+      out.push(line.trim() ? `<p>${line}</p>` : '<p class="notes-gap"></p>');
+    }
+    if (inList) out.push('</ul>');
+    return out.join('');
   };
 
   useEffect(() => {
@@ -836,11 +848,10 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
                     />
                   </div>
                   {notes && (
-                    <div className="mt-3">
-                      <p className="text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Aperçu</p>
+                    <div className="notes-preview">
+                      <div className="notes-preview-label">Aperçu</div>
                       <div
-                        className="rich-text-preview p-3 bg-white border border-gray-200 rounded-md text-sm"
-                        style={{ minHeight: '48px', maxHeight: '200px', overflowY: 'auto' }}
+                        className="notes-preview-body"
                         dangerouslySetInnerHTML={{ __html: formatPreview(notes) }}
                       />
                     </div>
