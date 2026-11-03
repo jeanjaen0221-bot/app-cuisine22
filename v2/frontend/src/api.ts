@@ -52,6 +52,7 @@ export const api = {
   },
   post: <T,>(chemin: string, corps: unknown = {}) => appeler<T>('POST', chemin, corps),
   patch: <T,>(chemin: string, corps: unknown) => appeler<T>('PATCH', chemin, corps),
+  put: <T,>(chemin: string, corps: unknown) => appeler<T>('PUT', chemin, corps),
   delete: <T,>(chemin: string) => appeler<T>('DELETE', chemin),
 }
 

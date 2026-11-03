@@ -17,6 +17,7 @@ Parcours : **Client → Fiche → Devis TVA comprise → transmis à la compta**
 | Espace compta | « À envoyer », « En attente de réponse », « À facturer », historique (rôle `compta`) |
 | Prix | Tout ce qui se vend, TVA comprise, avec le filtre « Prix manquants » et un compteur rouge |
 | Formules | Formules repas et boissons : ce qu'on choisit sur une fiche ; le prix vient du menu Prix |
+| Salle | Plan de base (tables, zones, réglages) et plan de chaque service : fiches du jour + PDF de réservations, placement automatique ou à la main, PDF du service et PDF annoté ; la table apparaît sur la fiche |
 | ChatGPT | Adresse du connecteur, connexions actives, bouton « Couper » |
 | Journal | Qui a fait quoi, sur le site ou par ChatGPT (admin) |
 | Utilisateurs / Paramètres | Rôles admin / équipe / compta, droits « prix » et « chatgpt » ; coordonnées du restaurant, validité des devis |
@@ -41,9 +42,10 @@ v2/
 │   │   ├── api/         API du site (/api), session en cookie HttpOnly, en-tête anti-CSRF X-Albert
 │   │   ├── mcp/         connecteur ChatGPT (/mcp) : OAuth en base, droits par connexion, consignes
 │   │   ├── pdf/         fiche salle/cuisine, devis, bon (texte échappé)
+│   │   ├── salle/       plan de salle : géométrie, placement automatique, PDF (repris de l'ancienne version)
 │   │   └── main.py
 │   ├── alembic/         migrations de la base (alembic upgrade head)
-│   └── tests/           59 tests : règles, parcours complet, droits, ChatGPT de bout en bout
+│   └── tests/           66 tests : règles, parcours complet, droits, ChatGPT de bout en bout
 ├── frontend/            site React (Vite, TypeScript)
 └── Dockerfile
 ```
@@ -93,6 +95,6 @@ par le serveur, pas seulement par les consignes. Chaque action de ChatGPT appara
 
 ## Pas encore dans la v2
 
-Prévu aux étapes suivantes (voir `docs/REFONTE_ANALYSE.md` §15) : plan de salle, plaintes, commandes de boissons et fournisseurs,
+Prévu aux étapes suivantes (voir `docs/REFONTE_ANALYSE.md` §15) : plaintes, commandes de boissons et fournisseurs,
 notes, synchronisation Zenchef, lecture Gmail par ChatGPT, reprise des données de l'ancienne version. En attendant, ces modules
 restent dans l'ancienne version.

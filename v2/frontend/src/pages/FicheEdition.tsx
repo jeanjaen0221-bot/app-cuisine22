@@ -191,6 +191,12 @@ export default function FicheEdition() {
                 </select>
               </Champ>
             </fieldset>
+            {fiche && fiche.espace === 'salle' && (
+              <p className="aide">
+                Table(s) : {fiche.tables_salle?.length ? <strong>{fiche.tables_salle.join(', ')}</strong> : 'pas encore placée'}
+                {' · '}<Link to="/salle">plan de salle</Link>
+              </p>
+            )}
             <fieldset disabled={fige} className="ligne-champs">
               <Champ libelle="Contact sur place"><input value={f.contact_sur_place} onChange={(e) => maj({ contact_sur_place: e.target.value })} /></Champ>
               <Champ libelle="Téléphone sur place"><input value={f.telephone_sur_place} onChange={(e) => maj({ telephone_sur_place: e.target.value })} /></Champ>

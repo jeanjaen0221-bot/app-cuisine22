@@ -141,7 +141,42 @@ fieldset { border: 0; padding: 0; margin: 0; }
 .etapes li.fait::marker { content: '✓  '; }
 .etapes.simples li { color: var(--texte); }
 
+/* Salle */
+.salle { display: flex; flex-direction: column; height: calc(100vh - 48px); }
+.salle .en-tete { margin-bottom: 10px; }
+.salle .en-tete .onglets { margin: 8px 0 0; }
+.salle-corps { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 14px; flex: 1; min-height: 0; }
+.salle-panneau { overflow-y: auto; background: var(--carte); border: 1px solid var(--bordure); border-radius: var(--rayon); padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.salle-panneau h2 { font-size: 1rem; }
+.salle-panneau details summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.salle-panneau details[open] { display: flex; flex-direction: column; gap: 8px; }
+.salle-canevas { position: relative; border: 1px solid var(--bordure); border-radius: var(--rayon); overflow: hidden; min-height: 420px; }
+.chiffres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; text-align: center; }
+.chiffres div { background: var(--fond); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; }
+.chiffres strong { font-size: 1.3rem; }
+.chiffres span { font-size: 0.75rem; color: var(--muet); }
+.grille-boutons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.grille-boutons button { font-size: 0.85rem; padding: 6px 8px; text-align: left; }
+.point { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+.resas { list-style: none; padding: 0; margin: 0; font-size: 0.85rem; }
+.resas li { display: grid; grid-template-columns: 42px 1fr 38px 60px; gap: 6px; padding: 5px 0; border-bottom: 1px solid #f1f1f4; align-items: center; }
+.resas .tables { font-weight: 700; text-align: right; }
+.reglages { display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; }
+.reglages label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.reglages input { width: 80px; }
+.selection-info { position: absolute; bottom: 12px; right: 12px; background: #1e1b2e; color: #fff; padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; }
+.canevas-outils { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 4px; background: rgba(255,255,255,0.92); border: 1px solid var(--bordure); border-radius: 10px; padding: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.08); }
+.canevas-bouton { width: 36px; height: 36px; padding: 0; font-size: 1.1rem; border: 0; background: transparent; }
+.canevas-bouton:hover, .canevas-bouton.actif { background: var(--accent-clair); }
+.canevas-trait { border-top: 1px solid var(--bordure); margin: 2px 0; }
+.canevas-zoom { font-size: 0.7rem; text-align: center; color: var(--muet); font-family: monospace; }
+.canevas-mode { position: absolute; top: 12px; left: 12px; color: #fff; padding: 6px 14px; border-radius: 8px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+.canevas-legende { position: absolute; bottom: 12px; left: 12px; background: rgba(255,255,255,0.92); border: 1px solid var(--bordure); border-radius: 10px; padding: 8px 12px; font-size: 0.75rem; color: var(--muet); }
+
 @media (max-width: 900px) {
+  .salle { height: auto; }
+  .salle-corps { grid-template-columns: 1fr; }
+  .salle-canevas { height: 70vh; }
   .mise { grid-template-columns: 1fr; }
   .barre { position: static; height: auto; }
   .barre nav { flex-direction: row; flex-wrap: wrap; }

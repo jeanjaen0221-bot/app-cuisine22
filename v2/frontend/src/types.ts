@@ -133,6 +133,7 @@ export type Fiche = {
   telephone_sur_place?: string | null
   motif_annulation?: string | null
   dernier_pdf_le?: string | null
+  tables_salle?: string[]
   devis?: { id: string; numero: string; version: number; statut: string; a_mettre_a_jour: boolean } | null
   bon?: { id: string; numero: string; statut: string } | null
 }
