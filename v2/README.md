@@ -23,7 +23,7 @@ Parcours : **Client → Fiche → Devis TVA comprise → transmis à la compta**
 | Achats | Boissons (stock min/max, colisage), fournisseurs et prix d'achat, réassort → un bon de commande par fournisseur, PDF/CSV, suivi envoyé → reçu ; import d'une carte (texte, CSV, PDF) |
 | ChatGPT | Adresse du connecteur, connexions actives, bouton « Couper » |
 | Journal | Qui a fait quoi, sur le site ou par ChatGPT (admin) |
-| Utilisateurs / Paramètres | Rôles admin / équipe / compta, droits « prix » et « chatgpt » ; coordonnées du restaurant, validité des devis |
+| Utilisateurs / Paramètres | Rôles admin / équipe / compta, droits « prix » et « chatgpt » ; coordonnées du restaurant, validité des devis ; synchronisation Zenchef ; liaison Gmail |
 
 Décisions appliquées : pas de facture dans l'outil, la compta envoie elle-même, **tous les prix TVA comprise**, ni remise ni acompte,
 trois privatisations (Semi-privatisation, Privatisation complète, Privatisation City 600 €), City est un espace à part,
@@ -89,7 +89,7 @@ Tests : `cd v2/backend && python -m pytest` · Vérification du site : `cd v2/fr
 2. Dans ChatGPT, ajouter un connecteur personnalisé (serveur MCP distant) avec l'adresse `https://<votre-domaine>/mcp`,
    authentification OAuth.
 3. ChatGPT ouvre la page de connexion du restaurant : se connecter et cocher les droits accordés
-   (`lecture`, `fiches:ecrire`, `devis:preparer`).
+   (`lecture`, `fiches:ecrire`, `devis:preparer`, `plaintes:preparer`, `achats:preparer`, `gmail:lire`).
 4. Les consignes données à ChatGPT sont dans `backend/albert/mcp/consignes.txt` (envoyées automatiquement par le connecteur).
 
 ChatGPT ne peut **jamais** : valider ou transmettre un devis ou un bon, toucher aux prix ou aux formules, supprimer quoi que ce soit,
@@ -98,5 +98,4 @@ par le serveur, pas seulement par les consignes. Chaque action de ChatGPT appara
 
 ## Pas encore dans la v2
 
-Prévu aux étapes suivantes (voir `docs/REFONTE_ANALYSE.md` §15) : synchronisation Zenchef, lecture Gmail par ChatGPT,
-reprise des données de l'ancienne version. En attendant, ces modules restent dans l'ancienne version.
+La reprise des données de l'ancienne version (clients, fiches, plats, plaintes, boissons…) : prévue juste avant la bascule.

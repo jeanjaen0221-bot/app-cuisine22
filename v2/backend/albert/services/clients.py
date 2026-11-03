@@ -114,10 +114,11 @@ def _valider(donnees: dict[str, Any], partiel: bool) -> dict[str, Any]:
     return v
 
 
-def creer(session: Session, acteur: Acteur, donnees: dict[str, Any]) -> Client:
+def creer(session: Session, acteur: Acteur, donnees: dict[str, Any], exiger_contact: bool = True) -> Client:
+    """exiger_contact=False seulement pour un import (Zenchef, reprise) : le client est complété ensuite."""
     acteur.exiger("fiches")
     v = _valider(donnees, partiel=False)
-    if not (v.get("email") or v.get("telephone")):
+    if exiger_contact and not (v.get("email") or v.get("telephone")):
         raise ErreurMetier("champ_obligatoire", "Indiquer au moins un email ou un téléphone.", champ="email")
     if not donnees.get("confirmer_doublon"):
         proches = _doublons(session, v["nom_cle"], v.get("email"), v.get("tva"), None)

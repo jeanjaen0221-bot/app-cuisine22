@@ -225,3 +225,22 @@ def supprimer_formule(genre: str, formule_id: str, acteur: Acteur = Depends(acte
     session.delete(formule)
     session.commit()
     return {"ok": True}
+
+
+# --------------------------------------------------------------- Zenchef
+
+@router.get("/zenchef")
+def etat_zenchef(acteur: Acteur = Depends(acteur_connecte)):
+    from ..services import zenchef
+
+    acteur.exiger("fiches")
+    return {"configure": zenchef.configure()}
+
+
+@router.post("/zenchef/synchroniser")
+def synchroniser_zenchef(donnees: dict = Body(default={}), acteur: Acteur = Depends(acteur_connecte),
+                         session: Session = Depends(session_db)):
+    from ..services import zenchef
+
+    d = corps(donnees or {})
+    return zenchef.synchroniser(session, acteur, d.get("du"), d.get("au"))

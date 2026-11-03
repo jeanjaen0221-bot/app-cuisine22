@@ -537,3 +537,17 @@ class BonCommandeLigne(Base):
     prix_achat_centimes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     bon: Mapped[BonCommande] = relationship(back_populates="lignes")
+
+
+# ---------------------------------------------------------------- Gmail (lecture seule)
+
+class ConnexionGmail(Base):
+    """Boîte Gmail reliée (une seule). Le jeton de rafraîchissement est chiffré avec SECRET_KEY."""
+
+    __tablename__ = "connexion_gmail"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    email: Mapped[str] = mapped_column(String(320))
+    jeton_chiffre: Mapped[str] = mapped_column(Text)
+    relie_par: Mapped[str] = mapped_column(String(320), default="")
+    relie_le: Mapped[datetime] = _cree()

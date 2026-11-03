@@ -135,6 +135,7 @@ PARAMETRES_DEFAUT: dict[str, Any] = {
     "conditions_paiement_defaut": "Paiement à 30 jours",
     "mentions_devis": "Prix TVA comprise. Devis valable jusqu'à la date indiquée.",
     "heures_proposees": ["12:00", "12:30", "13:00", "13:30", "19:30", "20:00"],
+    "zenchef_seuil_couverts": 10,
 }
 
 
@@ -153,6 +154,10 @@ def ecrire_parametres(session: Session, acteur: Acteur, changements: dict[str, A
                            valeurs_permises=list(PARAMETRES_DEFAUT))
     avant = lire_parametres(session)
     for cle, valeur in changements.items():
+        if cle == "zenchef_seuil_couverts":
+            valeur = int(valeur)
+            if not 0 <= valeur <= 500:
+                raise ErreurMetier("regle_metier", "Seuil Zenchef : entre 0 et 500 couverts.", champ=cle)
         if cle == "validite_devis_jours":
             valeur = int(valeur)
             if not 1 <= valeur <= 365:

@@ -187,3 +187,43 @@ def revoquer_connexion(connexion_id: str, acteur: Acteur = Depends(acteur_connec
     journaliser(session, acteur, "chatgpt.revoquer", "connexion_chatgpt", c.id, f"{c.client_nom} ({c.utilisateur.email})")
     session.commit()
     return {"ok": True}
+
+
+# --------------------------------------------------------------- Gmail (lecture seule, pour ChatGPT)
+
+@router.get("/gmail")
+def etat_gmail(acteur: Acteur = Depends(acteur_connecte), session: Session = Depends(session_db)):
+    from ..services import gmail
+
+    acteur.exiger("lecture")
+    return gmail.etat(session)
+
+
+@router.get("/gmail/relier")
+def relier_gmail(acteur: Acteur = Depends(acteur_connecte), session: Session = Depends(session_db)):
+    from fastapi.responses import RedirectResponse
+
+    from ..services import gmail
+
+    return RedirectResponse(gmail.url_liaison(session, acteur), status_code=302)
+
+
+@router.get("/gmail/retour")
+def retour_gmail(code: str = "", state: str = "", error: str = "", acteur: Acteur = Depends(acteur_connecte),
+                 session: Session = Depends(session_db)):
+    from fastapi.responses import RedirectResponse
+
+    from ..services import gmail
+
+    if error or not code:
+        return RedirectResponse("/parametres?gmail=refuse", status_code=302)
+    gmail.terminer_liaison(session, acteur, code, state)
+    return RedirectResponse("/parametres?gmail=ok", status_code=302)
+
+
+@router.post("/gmail/delier")
+def delier_gmail(acteur: Acteur = Depends(acteur_connecte), session: Session = Depends(session_db)):
+    from ..services import gmail
+
+    gmail.delier(session, acteur)
+    return {"ok": True}
