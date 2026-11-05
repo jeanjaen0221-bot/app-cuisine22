@@ -81,3 +81,15 @@ def test_pdf_keeps_line_breaks_and_bold_text():
     text = PdfReader(generate_reservation_pdf_salle(r, items, None)).pages[0].extract_text()
     assert "VIP\nLigne deux" in text
     assert "**" not in text
+
+
+def test_notes_longer_than_a_page_continue_on_the_next_page():
+    # A one-cell box cannot be split across pages: past ~55 lines the PDF used
+    # to fail with LayoutError and the fiche could not be downloaded at all.
+    r, items = _reservation(("- demande spéciale\n" * 250)[:4000])
+    for path in (
+        generate_reservation_pdf_salle(r, items, None),
+        generate_reservation_pdf_both(r, items, None),
+        generate_day_pdf(r.service_date, [r], {str(r.id): items}),
+    ):
+        assert len(PdfReader(path).pages) > 1
