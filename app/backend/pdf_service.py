@@ -451,7 +451,7 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
     note_para = notes_paragraph(notes, note_style)
     
     # Créer un tableau avec une seule cellule pour le paragraphe formaté
-    note_tbl = Table([[note_para]], colWidths=[doc.width])
+    note_tbl = Table([[note_para]], colWidths=[doc.width], splitInRow=1)
     note_tbl.setStyle(TableStyle([
         ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
         ('INNERGRID', (0,0), (-1,-1), 0.25, colors.HexColor('#bfdbfe')),
@@ -603,7 +603,7 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
         s.append(Paragraph("<b>Notes :</b>", styles['Section']))
         note_style = ParagraphStyle('NoteStyle', parent=styles['Normal'], leading=14, spaceBefore=4, spaceAfter=4)
         note_para = notes_paragraph(notes, note_style)
-        note_tbl = Table([[note_para]], colWidths=[doc.width])
+        note_tbl = Table([[note_para]], colWidths=[doc.width], splitInRow=1)
         note_tbl.setStyle(TableStyle([
             ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
             ('INNERGRID', (0,0), (-1,-1), 0.25, colors.HexColor('#bfdbfe')),
@@ -976,7 +976,7 @@ def generate_reservation_pdf_salle(reservation: Reservation, items: List[Reserva
     story.append(Paragraph("<b>Notes :</b>", styles['Section']))
     note_style = ParagraphStyle('NoteStyle', parent=styles['Normal'], leading=14, spaceBefore=4, spaceAfter=4)
     note_para = notes_paragraph(notes, note_style)
-    note_tbl = Table([[note_para]], colWidths=[doc.width])
+    note_tbl = Table([[note_para]], colWidths=[doc.width], splitInRow=1)
     note_tbl.setStyle(TableStyle([
         ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
         ('INNERGRID', (0,0), (-1,-1), 0.25, colors.HexColor('#bfdbfe')),
@@ -1113,7 +1113,7 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
         story.append(Paragraph("<b>Notes :</b>", styles['Section']))
         note_style = ParagraphStyle('NoteStyle', parent=styles['Normal'], leading=14, spaceBefore=4, spaceAfter=4)
         note_para = notes_paragraph(notes, note_style)
-        note_tbl = Table([[note_para]], colWidths=[doc.width])
+        note_tbl = Table([[note_para]], colWidths=[doc.width], splitInRow=1)
         note_tbl.setStyle(TableStyle([
             ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
             ('INNERGRID', (0,0), (-1,-1), 0.25, colors.HexColor('#bfdbfe')),
