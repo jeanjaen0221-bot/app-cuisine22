@@ -30,7 +30,36 @@ function _filenameFromDisposition(disposition?: string): string | null {
   return null
 }
 
+// Le message d'erreur d'une requête en `responseType: 'blob'` est lui-même un Blob :
+// le relire pour afficher le vrai motif (detail JSON du serveur).
+async function _downloadErrorMessage(error: any): Promise<string> {
+  const status = error?.response?.status
+  let detail: any = error?.response?.data
+  if (detail instanceof Blob) {
+    try {
+      const text = await detail.text()
+      try { detail = JSON.parse(text)?.detail ?? text } catch { detail = text }
+    } catch { detail = null }
+  } else {
+    detail = detail?.detail ?? null
+  }
+  const msg = typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : (error?.message || 'Erreur inconnue')
+  return status ? `${msg} (erreur ${status})` : msg
+}
+
+// Les boutons appellent fileDownload sans attendre le résultat : un échec doit
+// donc toujours être signalé ici, sinon le clic semble ne rien faire.
 export async function fileDownload(data: Blob | string, filename?: string) {
+  try {
+    await _fileDownload(data, filename)
+  } catch (error) {
+    const msg = await _downloadErrorMessage(error)
+    console.error('Téléchargement impossible', data, error)
+    alert(`Téléchargement impossible : ${msg}`)
+  }
+}
+
+async function _fileDownload(data: Blob | string, filename?: string) {
   const link = document.createElement('a')
   if (data instanceof Blob) {
     link.href = URL.createObjectURL(data)
@@ -54,7 +83,9 @@ export async function fileDownload(data: Blob | string, filename?: string) {
   link.click()
   document.body.removeChild(link)
   if (data instanceof Blob || typeof data === 'string') {
-    setTimeout(() => URL.revokeObjectURL(link.href), 100)
+    // Safari et Firefox lisent le fichier après le clic : le libérer trop tôt
+    // annulait le téléchargement sans aucun message.
+    setTimeout(() => URL.revokeObjectURL(link.href), 60_000)
   }
 }
 
