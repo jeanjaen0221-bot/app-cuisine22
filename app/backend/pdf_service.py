@@ -1,13 +1,7 @@
 from __future__ import annotations
-def _reservation_filename_variant(reservation: Reservation, variant: str) -> str:
-    safe_client = str(reservation.client_name).replace(" ", "_")
-    v = (variant or "").lower()
-    if v not in ("cuisine", "salle", "both"):
-        v = "cuisine"
-    return os.path.join(PDF_DIR, f"fiche_{v}_{reservation.service_date}_{safe_client}_{reservation.id}.pdf")
-
 import os
 import re
+import unicodedata
 from datetime import date
 from typing import List, Optional
 
@@ -37,8 +31,27 @@ except Exception:
         pass
 
 
+def _safe_name(text) -> str:
+    """Client name as a file-name part. A "/" in the name ("Deloitte / Marie Dupont",
+    "Fête 30/10") pointed into a missing folder and a long name went past the
+    255-byte file-name limit: either way the PDF failed with an error 500. The
+    reservation id stays in every file name, so names never collide."""
+    s = unicodedata.normalize("NFKD", str(text or ""))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"[^A-Za-z0-9-]+", "_", s).strip("_")
+    return s[:60].rstrip("_") or "client"
+
+
+def _reservation_filename_variant(reservation: Reservation, variant: str) -> str:
+    safe_client = _safe_name(reservation.client_name)
+    v = (variant or "").lower()
+    if v not in ("cuisine", "salle", "both"):
+        v = "cuisine"
+    return os.path.join(PDF_DIR, f"fiche_{v}_{reservation.service_date}_{safe_client}_{reservation.id}.pdf")
+
+
 def _reservation_filename(reservation: Reservation) -> str:
-    safe_client = str(reservation.client_name).replace(" ", "_")
+    safe_client = _safe_name(reservation.client_name)
     return os.path.join(PDF_DIR, f"fiche_{reservation.service_date}_{safe_client}_{reservation.id}.pdf")
 
 
@@ -47,17 +60,17 @@ def _day_filename(d: date) -> str:
 
 
 def _invoice_filename(reservation: Reservation) -> str:
-    safe_client = str(reservation.client_name).replace(" ", "_")
+    safe_client = _safe_name(reservation.client_name)
     return os.path.join(PDF_DIR, f"facture_{reservation.service_date}_{safe_client}_{reservation.id}.pdf")
 
 
 def _reservation_with_invoice_filename(reservation: Reservation) -> str:
-    safe_client = str(reservation.client_name).replace(" ", "_")
+    safe_client = _safe_name(reservation.client_name)
     return os.path.join(PDF_DIR, f"fiche_facture_{reservation.service_date}_{safe_client}_{reservation.id}.pdf")
 
 
 def _incident_filename(incident: IncidentReport) -> str:
-    safe_client = str(getattr(incident, "client", "") or "client").replace(" ", "_")
+    safe_client = _safe_name(getattr(incident, "client", ""))
     return os.path.join(PDF_DIR, f"incident_{incident.date}_{safe_client}_{incident.id}.pdf")
 
 
