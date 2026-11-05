@@ -1,5 +1,6 @@
 import os
 import re
+import traceback
 import time
 import uuid
 from pathlib import Path
@@ -245,6 +246,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     print(f"Unhandled exception at {request.url.path}: {exc}")
+    # Full traceback in the server logs: the message alone does not say where it broke.
+    traceback.print_exception(exc)
     return JSONResponse(status_code=500, content={"detail": "Une erreur inattendue est survenue. Veuillez réessayer."})
 
 

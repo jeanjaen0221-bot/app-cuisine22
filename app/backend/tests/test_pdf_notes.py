@@ -93,3 +93,18 @@ def test_notes_longer_than_a_page_continue_on_the_next_page():
         generate_day_pdf(r.service_date, [r], {str(r.id): items}),
     ):
         assert len(PdfReader(path).pages) > 1
+
+
+@pytest.mark.parametrize("name", ["Deloitte / Marie Dupont", "Fête 30/10", "Société Générale Électricité " * 7, "..", ""])
+def test_any_client_name_gives_a_downloadable_pdf(name):
+    # The client name went into the file name as is: a "/" or a long name made
+    # every PDF of that fiche fail with an error 500.
+    r, items = _reservation("")
+    r.client_name = name[:200]
+    for path in (
+        generate_reservation_pdf_salle(r, items, None),
+        generate_reservation_pdf_cuisine(r, items),
+        generate_reservation_pdf_both(r, items, None),
+    ):
+        assert os.path.isfile(path)
+        assert len(os.path.basename(path).encode()) < 255
