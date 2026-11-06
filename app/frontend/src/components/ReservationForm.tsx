@@ -93,6 +93,25 @@ type Props = {
   navActions?: React.ReactNode
 }
 
+// Types stockés tels que saisis ailleurs (ChatGPT, anciennes fiches : "entree",
+// "Plat"…) : sans normalisation, la ligne n'apparaissait dans aucun onglet.
+const DISH_TYPES = ['entrée', 'plat', 'dessert'] as const
+type DishType = typeof DISH_TYPES[number]
+function canonItemType(t: string): string {
+  const k = (t || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  if (k.startsWith('entree')) return 'entrée'
+  if (k === 'plat' || k === 'plats') return 'plat'
+  if (k === 'dessert' || k === 'desserts') return 'dessert'
+  if (k.startsWith('supplement')) return 'supplément'
+  return t
+}
+const normalizeItems = (list?: ReservationItem[]) =>
+  (list || []).map(it => ({ ...it, type: canonItemType(it.type) }))
+const firstDishTab = (list?: ReservationItem[]): DishType =>
+  DISH_TYPES.find(t => normalizeItems(list).some(it => it.type === t && (it.quantity || 0) > 0)) || 'entrée'
+const itemsKey = (list: ReservationItem[]) =>
+  JSON.stringify(list.map(it => [it.type, (it.name || '').trim(), Number(it.quantity || 0), (it.comment || '').trim()]))
+
 export default function ReservationForm({ initial, onSubmit, formId, onOpenBilling, navActions }: Props) {
   const [client_name, setClient] = useState(initial?.client_name || '')
   const [service_date, setDate] = useState(initial?.service_date || '')
@@ -105,7 +124,7 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
   const [finalVersion, setFinalVersion] = useState<boolean>(Boolean(initial?.final_version))
   const [onInvoice, setOnInvoice] = useState<boolean>(Boolean((initial as any)?.on_invoice))
   const [allergens, setAllergens] = useState<string[]>(initial?.allergens ? String(initial.allergens).split(',').map(s=>s.trim()).filter(Boolean) : [])
-  const [items, setItems] = useState<ReservationItem[]>(initial?.items || [])
+  const [items, setItems] = useState<ReservationItem[]>(() => normalizeItems(initial?.items))
   const [openRow, setOpenRow] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -125,7 +144,7 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
   const [allergenOptions, setAllergenOptions] = useState<AllergenOption[]>(DEFAULT_ALLERGENS)
   const [allergenQuery, setAllergenQuery] = useState('')
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
-  const [dishTab, setDishTab] = useState<'entrée' | 'plat' | 'dessert'>('entrée')
+  const [dishTab, setDishTab] = useState<DishType>(() => firstDishTab(initial?.items))
   const [notesOpen, setNotesOpen] = useState(Boolean(initial?.notes))
   const [showAllAllergens, setShowAllAllergens] = useState(false)
 
@@ -202,8 +221,9 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     if (onInvoice !== Boolean((initial as any).on_invoice)) return true
     const initAllergens = initial.allergens ? String(initial.allergens).split(',').map(s => s.trim()).filter(Boolean) : []
     if (allergens.slice().sort().join(',') !== initAllergens.slice().sort().join(',')) return true
+    if (itemsKey(items) !== itemsKey(normalizeItems(initial.items))) return true
     return false
-  }, [client_name, service_date, arrival_time, pax, drink_formula, menu_formula, notes, status, finalVersion, onInvoice, allergens, initial])
+  }, [client_name, service_date, arrival_time, pax, drink_formula, menu_formula, notes, status, finalVersion, onInvoice, allergens, items, initial])
 
   // Fonction pour formater le texte sélectionné
   const formatText = (prefix: string, suffix: string, title: string, showColorPicker = false) => {
@@ -315,7 +335,8 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
     setMenuFormula(initial.menu_formula || '');
     setNotes(initial.notes || '');
     setStatus(initial.status || 'draft');
-    setItems(initial.items || []);
+    setItems(normalizeItems(initial.items));
+    setDishTab(firstDishTab(initial.items));
     setFinalVersion(Boolean(initial.final_version));
     setOnInvoice(Boolean((initial as any).on_invoice));
     setAllergens(initial.allergens ? String(initial.allergens).split(',').map(s=>s.trim()).filter(Boolean) : []);
@@ -885,6 +906,54 @@ export default function ReservationForm({ initial, onSubmit, formId, onOpenBilli
                 {itemsError && (
                   <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{itemsError}</div>
                 )}
+
+                {/* ── Lignes de la fiche : toujours visibles, quel que soit l'onglet ── */}
+                <div className="fiche-lines">
+                  <p className="fiche-lines-title">Lignes de la fiche</p>
+                  {DISH_TYPES.every(t => !items.some(it => it.type === t)) ? (
+                    <p className="fiche-lines-empty">Aucun plat pour l'instant : choisissez-les ci-dessous.</p>
+                  ) : DISH_TYPES.map(t => {
+                    const rows = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.type === t)
+                    if (rows.length === 0) return null
+                    const label = t === 'entrée' ? 'Entrées' : t === 'plat' ? 'Plats' : 'Desserts'
+                    const total = rows.reduce((n, { it }) => n + Number(it.quantity || 0), 0)
+                    return (
+                      <div key={t} className="fiche-lines-group">
+                        <button type="button" className={`fiche-lines-head is-${t === 'entrée' ? 'entree' : t}`} onClick={() => setDishTab(t)}>
+                          <span>{label}</span>
+                          <span className={`fiche-lines-count ${total > pax ? 'is-over' : ''}`}>{total}/{pax}</span>
+                        </button>
+                        {rows.map(({ it, idx }) => {
+                          const inCatalogue = catalogueSet.has(`${it.type}::${(it.name || '').trim().toLowerCase()}`)
+                          return (
+                            <div key={idx} className="fiche-line">
+                              <div className="fiche-line-qty">
+                                <button type="button" aria-label="Moins" onClick={() => it.quantity > 1 ? updateItem(idx, { quantity: it.quantity - 1 }) : setItems(prev => prev.filter((_, i) => i !== idx))}><Minus className="w-3 h-3" /></button>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={it.quantity}
+                                  onChange={e => updateItem(idx, { quantity: Math.max(0, parseInt(e.target.value || '0', 10) || 0) })}
+                                />
+                                <button type="button" aria-label="Plus" onClick={() => updateItem(idx, { quantity: (it.quantity || 0) + 1 })}><Plus className="w-3 h-3" /></button>
+                              </div>
+                              <div className="fiche-line-body">
+                                <span className="fiche-line-name">{it.name || <em>Sans nom</em>}</span>
+                                {it.comment && <span className="fiche-line-comment">{it.comment}</span>}
+                              </div>
+                              <span className={`fiche-line-badge ${inCatalogue ? 'is-catalogue' : 'is-custom'}`}>
+                                {inCatalogue ? 'Catalogue' : 'Hors catalogue'}
+                              </span>
+                              <button type="button" className="fiche-line-remove" aria-label="Retirer" title="Retirer cette ligne" onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
+                </div>
 
                 {/* ── Onglets Entrées / Plats / Desserts ── */}
                 <div className="dishes-tabs">
