@@ -156,6 +156,36 @@ def notes_paragraph(text: str | None, style) -> Paragraph:
         return Paragraph(_html.escape(text or "-", quote=False).replace('\n', '<br/>'), style)
 
 
+# A printed fiche keeps the dish lines readable at a glance: the comment is cut
+# to one short line and stripped of the filler that says nothing to the kitchen
+# ("Préparation standard.", "À valider par la cuisine."). The site keeps it whole.
+PRINT_COMMENT_MAX = 90
+_FILLER_SENTENCE = re.compile(
+    r"^((pr[ée]paration|dessert|plat|entr[ée]e|recette)\s+)?standard\.?$"
+    r"|^(adaptation\s+|alternative\s+)?[àa]\s+(valider|d[ée]finir|confirmer)(\s+par\s+(la\s+)?(cuisine|chef))?\.?$",
+    re.IGNORECASE,
+)
+
+
+def print_comment(comment: str | None) -> str:
+    sentences = re.split(r"(?<=[.!?])\s+", str(comment or "").strip())
+    text = " ".join(x for x in sentences if x and not _FILLER_SENTENCE.match(x.strip())).strip()
+    if len(text) > PRINT_COMMENT_MAX:
+        text = text[: PRINT_COMMENT_MAX - 1].rstrip(" ,;:.") + "…"
+    return text
+
+
+def _item_desc(it) -> str:
+    """Name (and short comment) of a dish line as reportlab markup, escaped: a "&"
+    or "<" typed in a name or comment must not break the PDF."""
+    import html as _html
+    desc = _html.escape(str(it.name or ""), quote=False)
+    comment = print_comment(getattr(it, 'comment', None))
+    if comment:
+        desc += f"<br/><font size=9 color='#6b7280'>{_html.escape(comment, quote=False)}</font>"
+    return desc
+
+
 def _split_items(items: List[ReservationItem]):
     def norm(s: str) -> str:
         return s.lower().strip().replace("é", "e")
@@ -342,10 +372,7 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
             data.append(["-", "-"])
         else:
             for it in collection:
-                desc = it.name
-                if getattr(it, 'comment', None):
-                    safe_c = str(it.comment)
-                    desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
+                desc = _item_desc(it)
                 data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
         tbl = Table(data, colWidths=[40, None])
         tbl.setStyle(TableStyle([
@@ -532,10 +559,7 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
                 data.append(["-", "-"])
             else:
                 for it in collection:
-                    desc = it.name
-                    if getattr(it, 'comment', None):
-                        safe_c = str(it.comment)
-                        desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
+                    desc = _item_desc(it)
                     data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
             tbl = Table(data, colWidths=[40, None])
             tbl.setStyle(TableStyle([
@@ -662,10 +686,7 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
                 data.append(["-", "-"])
             else:
                 for it in collection:
-                    desc = it.name
-                    if getattr(it, 'comment', None):
-                        safe_c = str(it.comment)
-                        desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
+                    desc = _item_desc(it)
                     data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
             tbl = Table(data, colWidths=[40, None])
             tbl.setStyle(TableStyle([
@@ -791,10 +812,7 @@ def generate_reservation_pdf_cuisine(reservation: Reservation, items: List[Reser
                 data.append(["-", "-"])
             else:
                 for it in collection:
-                    desc = it.name
-                    if getattr(it, 'comment', None):
-                        safe_c = str(it.comment)
-                        desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
+                    desc = _item_desc(it)
                     data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
             tbl = Table(data, colWidths=[40, None])
             tbl.setStyle(TableStyle([
@@ -909,10 +927,7 @@ def generate_reservation_pdf_salle(reservation: Reservation, items: List[Reserva
             data.append(["-", "-"])
         else:
             for it in collection:
-                desc = it.name
-                if getattr(it, 'comment', None):
-                    safe_c = str(it.comment)
-                    desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
+                desc = _item_desc(it)
                 data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
         tbl = Table(data, colWidths=[40, None])
         tbl.setStyle(TableStyle([
@@ -1024,10 +1039,7 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
             data.append(["-", "-"])
         else:
             for it in collection:
-                desc = it.name
-                if getattr(it, 'comment', None):
-                    safe_c = str(it.comment)
-                    desc = f"{it.name}<br/><font size=9 color='#6b7280'>{safe_c}</font>"
+                desc = _item_desc(it)
                 data.append([str(it.quantity), Paragraph(desc, styles['Meta'])])
         tbl = Table(data, colWidths=[40, None])
         tbl.setStyle(TableStyle([

@@ -69,8 +69,10 @@ commentaire (« 37 convives dont 6 végétariens… »).
 - Une alternative pas encore choisie : « Alternative <régime> (à valider) » (ex.
   « Alternative végétarienne (à valider) »).
 - Les quantités d'un même type s'additionnent et ne dépassent pas les couverts.
-- comment : une précision courte sur CETTE ligne seulement (ex. « sans sauce »,
-  « + sans lactose »), jamais de chiffres de répartition.
+- comment : seulement si la ligne a une précision que son nom ne dit pas (ex.
+  « sans sauce », « sans champignons ») ; sinon aucun commentaire. 80 caractères
+  max. Jamais « préparation standard », « à valider par la cuisine » (le nom le
+  dit déjà), ni de chiffres de répartition.
 Exemple, 37 couverts dont 6 végétariens et 3 sans gluten parmi les autres :
   28 × Poule faisane à la brabançonne
   3 × Poule faisane à la brabançonne — sans gluten
@@ -91,6 +93,11 @@ Une ligne par information, dans cet ordre, en omettant les lignes sans informati
 Mise en forme du site uniquement : **gras**, _italique_, lignes « - ». Pas de titres
 (#), pas de tableaux, pas d'emoji. Pour modifier les notes, repartir du texte actuel
 de la fiche et ne changer que la ligne concernée (l'envoi remplace tout le texte).
+Les notes sont imprimées sur la fiche : 600 caractères max, uniquement ce qui sert
+à l'équipe le jour du service. Jamais : la source (fil ou identifiant Gmail, date
+de l'e-mail), l'historique des échanges ou des demandes abandonnées, les prix et
+conditions (facturation), les explications ou calculs, ni ce que la fiche montre
+déjà (date, heure, couverts, plats et quantités, formule boissons, allergènes).
 
 ## Deux statuts à ne jamais confondre
 - Réservation confirmée (status « confirmed ») : uniquement avec une preuve issue de

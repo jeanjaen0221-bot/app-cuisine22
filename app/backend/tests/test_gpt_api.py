@@ -414,3 +414,17 @@ def test_split_told_in_a_comment_is_refused(client):
     assert "sa propre ligne" in r.text
     r = client.post(f"/fiches/{fid}/items", json={"type": "plat", "name": "Filet de bar", "quantity": 31, "comment": "sans sauce"}, headers=AUTH)
     assert r.status_code == 200
+
+
+def test_notes_written_by_gpt_stay_short(client):
+    dossier = "Source : fil Gmail 19f6ae83afcd0922, dernier email du 05/11. " * 12
+    r = client.post("/fiches", json=fiche(notes=dossier), headers=AUTH)
+    assert r.status_code == 422
+    assert "imprimées sur la fiche" in r.text
+    assert client.post("/fiches", json=fiche(notes="**Société :** Conseil de l'UE\n**Demandes :**\n- végétariens : sans champignons si possible"), headers=AUTH).status_code == 201
+
+
+def test_filler_comment_is_refused_when_too_long(client):
+    fid = create(client, menu_formula="")["id"]
+    r = client.post(f"/fiches/{fid}/items", json={"type": "plat", "name": "Filet de bar", "quantity": 2, "comment": "x" * 81}, headers=AUTH)
+    assert r.status_code == 422

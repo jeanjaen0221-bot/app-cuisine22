@@ -443,7 +443,7 @@ ClientName = Annotated[str, Field(max_length=200, description="Nom de classement
 Pax = Annotated[int, Field(ge=1, le=500, description="Nombre de couverts.")]
 ServiceDate = Annotated[str, Field(description="Date du service, AAAA-MM-JJ. Ne jamais deviner.")]
 ArrivalTime = Annotated[str, Field(description="Heure d'arrivée, HH:MM (24 h). Ne jamais deviner.")]
-Notes = Annotated[str, Field(max_length=4000, description=_NOTES_DESC)]
+Notes = Annotated[str, Field(description=_NOTES_DESC)]
 Allergens = Annotated[list[str], Field(description=_ALLERGENS_DESC)]
 OnInvoice = Annotated[bool, Field(description="Case « Sur facture » : true seulement si le client paie sur facture.")]
 Status = Annotated[FicheStatus, Field(description=_STATUS_DESC)]
@@ -543,7 +543,7 @@ def fiche_modifier(
     arrival_time: Optional[ArrivalTime] = None,
     drink_formula: Optional[DrinkField] = None,
     menu_formula: Optional[MenuField] = None,
-    notes: Optional[Annotated[str, Field(max_length=4000, description=_NOTES_DESC + " Remplace tout le texte : repartir des notes actuelles.")]] = None,
+    notes: Optional[Annotated[str, Field(description=_NOTES_DESC + " Remplace tout le texte : repartir des notes actuelles.")]] = None,
     allergens: Optional[Annotated[list[str], Field(description=_ALLERGENS_DESC + " Remplace la liste existante.")]] = None,
     on_invoice: Optional[OnInvoice] = None,
     status: Optional[Status] = None,
@@ -594,7 +594,7 @@ def fiche_item_ajouter(
     type: Annotated[ItemType, Field(description="entrée, plat, dessert, ou supplément (extras : Champagne, Planche apéro, Privatisation…).")],
     name: Annotated[str, Field(min_length=1, max_length=200, description="Nom exact du plat du catalogue (menu_rechercher). Variante : « <nom exact> — <ajustement> » ; alternative non choisie : « Alternative <régime> (à valider) ».")],
     quantity: Annotated[int, Field(ge=1, le=500, description="Nombre de portions.")],
-    comment: Annotated[Optional[str], Field(description="Précision courte sur CETTE ligne (ex. « sans sauce »). Une variante avec sa propre quantité = un item séparé, jamais une répartition dans le commentaire.")] = None,
+    comment: Annotated[Optional[str], Field(description="Seulement une précision que le nom ne dit pas (ex. « sans sauce »), 80 caractères max ; sinon rien. Jamais « standard » ni « à valider par la cuisine ». Une variante avec sa propre quantité = un item séparé, jamais une répartition dans le commentaire.")] = None,
 ) -> Any:
     """Ajouter un plat/supplément ou modifier sa quantité sans remplacer les autres items."""
     def _run():

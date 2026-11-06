@@ -108,3 +108,40 @@ def test_any_client_name_gives_a_downloadable_pdf(name):
     ):
         assert os.path.isfile(path)
         assert len(os.path.basename(path).encode()) < 255
+
+
+@pytest.mark.parametrize("comment, printed", [
+    ("Préparation standard.", ""),
+    ("Adaptation à valider par la cuisine.", ""),
+    ("Sans viande ni poisson, si possible sans champignons. À valider par la cuisine.",
+     "Sans viande ni poisson, si possible sans champignons."),
+    ("sans sauce", "sans sauce"),
+])
+def test_printed_comment_drops_filler(comment, printed):
+    from app.backend.pdf_service import print_comment
+    assert print_comment(comment) == printed
+
+
+def test_printed_comment_is_one_short_line():
+    from app.backend.pdf_service import PRINT_COMMENT_MAX, print_comment
+    out = print_comment("Cuisson saignante, sauce à part, servir en premier car la personne part tôt et a un train à prendre")
+    assert len(out) <= PRINT_COMMENT_MAX and out.endswith("…")
+
+
+def test_cuisine_copy_with_comments_fits_one_page():
+    # The lines of a real fiche (7 dishes, each with a comment) used to push the
+    # allergens onto a page of their own: 2 copies took 4 pages.
+    r, _ = _reservation("")
+    r.pax = 37
+    lines = [
+        ("plat", "Poule faisane à la brabançonne", 28, "Préparation standard."),
+        ("plat", "Poule faisane à la brabançonne – adaptation sans gluten", 3, "Adaptation à valider par la cuisine."),
+        ("plat", "Plat végétarien – à définir", 5, "Sans viande ni poisson, si possible sans champignons. À valider par la cuisine."),
+        ("plat", "Plat végétarien sans gluten et sans lactose – à définir", 1, "Sans viande ni poisson, si possible sans champignons. À valider par la cuisine."),
+        ("dessert", "Le grand retour du apfelstrudel et sa crème montée", 33, "Dessert standard."),
+        ("dessert", "Dessert sans gluten – à définir", 3, "À valider par la cuisine."),
+        ("dessert", "Dessert sans gluten et sans lactose – à définir", 1, "Pour la même personne que le plat végétarien sans gluten et sans lactose. À valider par la cuisine."),
+    ]
+    items = [ReservationItem(type=t, name=n, quantity=q, comment=c, reservation_id=r.id) for t, n, q, c in lines]
+    # Two copies (desserts present), one page each.
+    assert len(PdfReader(generate_reservation_pdf_cuisine(r, items)).pages) == 2
