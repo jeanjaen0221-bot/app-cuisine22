@@ -145,3 +145,18 @@ def test_cuisine_copy_with_comments_fits_one_page():
     items = [ReservationItem(type=t, name=n, quantity=q, comment=c, reservation_id=r.id) for t, n, q, c in lines]
     # Two copies (desserts present), one page each.
     assert len(PdfReader(generate_reservation_pdf_cuisine(r, items)).pages) == 2
+
+
+@pytest.mark.parametrize("name, expected", [
+    ("Chef’s choice, sharingdishes", True),
+    ("Chef's choice", True),
+    ("Choix du chef", True),
+    ("Poule faisane à la brabançonne", False),
+])
+def test_chefs_choice_line_leaves_room_to_write_the_choice(name, expected):
+    from app.backend.pdf_service import is_chefs_choice
+    assert is_chefs_choice(name) is expected
+    r, _ = _reservation("")
+    items = [ReservationItem(type="entrée", name=name, quantity=4, reservation_id=r.id)]
+    text = PdfReader(generate_reservation_pdf_cuisine(r, items)).pages[0].extract_text()
+    assert ("Choix du chef :" in text) is expected
