@@ -175,6 +175,16 @@ def print_comment(comment: str | None) -> str:
     return text
 
 
+# "Chef's choice": the chef picks the dishes later and writes them on the
+# printed fiche, so the line keeps an empty space to write on.
+_CHEFS_CHOICE = re.compile(r"chef\W{0,2}s?\s+choice|choix\s+du\s+chef", re.IGNORECASE)
+CHEFS_CHOICE_WRITE_LINE = "Choix du chef : " + "_" * 62
+
+
+def is_chefs_choice(name: str | None) -> bool:
+    return bool(_CHEFS_CHOICE.search(str(name or "").replace("’", "'")))
+
+
 def _item_desc(it) -> str:
     """Name (and short comment) of a dish line as reportlab markup, escaped: a "&"
     or "<" typed in a name or comment must not break the PDF."""
@@ -183,6 +193,8 @@ def _item_desc(it) -> str:
     comment = print_comment(getattr(it, 'comment', None))
     if comment:
         desc += f"<br/><font size=9 color='#6b7280'>{_html.escape(comment, quote=False)}</font>"
+    if is_chefs_choice(it.name):
+        desc += f"<br/><br/><font color='#9ca3af'>{CHEFS_CHOICE_WRITE_LINE}</font><br/>"
     return desc
 
 
