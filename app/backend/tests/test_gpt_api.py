@@ -395,3 +395,22 @@ def test_delete_requires_the_fiche_name(client):
     assert client.delete(f"/fiches/{fid}", headers=AUTH).status_code == 422
     assert client.delete(f"/fiches/{fid}?confirm_client_name=Martin", headers=AUTH).status_code == 409
     assert client.delete(f"/fiches/{fid}?confirm_client_name=dupont", headers=AUTH).status_code == 200
+
+
+def test_each_dish_variant_is_its_own_line(client):
+    fid = create(client, pax=37, menu_formula="", items=[{"type": "plat", "name": "Filet de bar", "quantity": 37}])["id"]
+    for name, qty in (("Filet de bar", 28), ("Filet de bar — sans gluten", 3), ("Alternative végétarienne (à valider)", 6)):
+        r = client.post(f"/fiches/{fid}/items", json={"type": "plat", "name": name, "quantity": qty}, headers=AUTH)
+        assert r.status_code == 200, r.text
+    plats = {i["name"]: i["quantity"] for i in r.json()["items"]}
+    assert plats == {"Filet de bar": 28, "Filet de bar — sans gluten": 3, "Alternative végétarienne (à valider)": 6}
+
+
+def test_split_told_in_a_comment_is_refused(client):
+    fid = create(client, pax=37, menu_formula="")["id"]
+    long = "37 convives dont 6 végétariens : alternatives végétariennes encore à valider. Parmi les 31 non-végétariens, 3 sans gluten."
+    r = client.post(f"/fiches/{fid}/items", json={"type": "plat", "name": "Filet de bar", "quantity": 31, "comment": long}, headers=AUTH)
+    assert r.status_code == 422
+    assert "sa propre ligne" in r.text
+    r = client.post(f"/fiches/{fid}/items", json={"type": "plat", "name": "Filet de bar", "quantity": 31, "comment": "sans sauce"}, headers=AUTH)
+    assert r.status_code == 200
