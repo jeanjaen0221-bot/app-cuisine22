@@ -198,6 +198,19 @@ def _item_desc(it) -> str:
     return desc
 
 
+def notes_box(text: str | None, base_style) -> Paragraph:
+    """The framed notes. A one-cell table cannot end its frame where the text ends:
+    when the notes reached the bottom of the page, only the frame's bottom padding
+    moved to the next page and printed a sheet with nothing on it. A bordered
+    paragraph splits between lines and draws its frame around each part."""
+    style = ParagraphStyle(
+        'NotesBox', parent=base_style, leading=14,
+        borderWidth=0.5, borderColor=colors.HexColor('#60a5fa'), borderPadding=(6, 10, 6, 10),
+        leftIndent=10, rightIndent=10, spaceBefore=8, spaceAfter=8,
+    )
+    return notes_paragraph(text, style)
+
+
 def _split_items(items: List[ReservationItem]):
     def norm(s: str) -> str:
         return s.lower().strip().replace("é", "e")
@@ -489,31 +502,7 @@ def generate_reservation_pdf(reservation: Reservation, items: List[ReservationIt
 
     notes = reservation.notes or ""
     story.append(Paragraph("<b>Notes :</b>", styles['Section']))
-    
-    
-    # Créer un style pour les notes avec support du HTML
-    note_style = ParagraphStyle(
-        'NoteStyle',
-        parent=styles['Normal'],
-        leading=14,
-        spaceBefore=4,
-        spaceAfter=4
-    )
-    
-    note_para = notes_paragraph(notes, note_style)
-    
-    # Créer un tableau avec une seule cellule pour le paragraphe formaté
-    note_tbl = Table([[note_para]], colWidths=[doc.width], splitInRow=1)
-    note_tbl.setStyle(TableStyle([
-        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
-        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.HexColor('#bfdbfe')),
-        ('LEFTPADDING', (0,0), (-1,-1), 10),
-        ('RIGHTPADDING', (0,0), (-1,-1), 10),
-        ('TOPPADDING', (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-    ]))
-    story.append(note_tbl)
+    story.append(notes_box(notes, styles['Normal']))
 
     # Build with onLaterPages to add stamp if needed by drawing after flowables
     def on_page(canvas_obj, doc_obj):
@@ -650,19 +639,7 @@ def generate_reservation_pdf_both(reservation: Reservation, items: List[Reservat
         # Notes (présent pour salle)
         notes = reservation.notes or ""
         s.append(Paragraph("<b>Notes :</b>", styles['Section']))
-        note_style = ParagraphStyle('NoteStyle', parent=styles['Normal'], leading=14, spaceBefore=4, spaceAfter=4)
-        note_para = notes_paragraph(notes, note_style)
-        note_tbl = Table([[note_para]], colWidths=[doc.width], splitInRow=1)
-        note_tbl.setStyle(TableStyle([
-            ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
-            ('INNERGRID', (0,0), (-1,-1), 0.25, colors.HexColor('#bfdbfe')),
-            ('LEFTPADDING', (0,0), (-1,-1), 10),
-            ('RIGHTPADDING', (0,0), (-1,-1), 10),
-            ('TOPPADDING', (0,0), (-1,-1), 8),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-            ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ]))
-        s.append(note_tbl)
+        s.append(notes_box(notes, styles['Normal']))
         return s
 
     def cuisine_page_story():
@@ -1014,19 +991,7 @@ def generate_reservation_pdf_salle(reservation: Reservation, items: List[Reserva
     # Notes block (present in salle)
     notes = reservation.notes or ""
     story.append(Paragraph("<b>Notes :</b>", styles['Section']))
-    note_style = ParagraphStyle('NoteStyle', parent=styles['Normal'], leading=14, spaceBefore=4, spaceAfter=4)
-    note_para = notes_paragraph(notes, note_style)
-    note_tbl = Table([[note_para]], colWidths=[doc.width], splitInRow=1)
-    note_tbl.setStyle(TableStyle([
-        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
-        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.HexColor('#bfdbfe')),
-        ('LEFTPADDING', (0,0), (-1,-1), 10),
-        ('RIGHTPADDING', (0,0), (-1,-1), 10),
-        ('TOPPADDING', (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-    ]))
-    story.append(note_tbl)
+    story.append(notes_box(notes, styles['Normal']))
 
     def on_page(canvas_obj, doc_obj):
         if getattr(reservation, 'final_version', False):
@@ -1148,19 +1113,7 @@ def generate_day_pdf(d: date, reservations: List[Reservation], items_by_res: dic
         # Notes (bloc style salle)
         notes = res.notes or ""
         story.append(Paragraph("<b>Notes :</b>", styles['Section']))
-        note_style = ParagraphStyle('NoteStyle', parent=styles['Normal'], leading=14, spaceBefore=4, spaceAfter=4)
-        note_para = notes_paragraph(notes, note_style)
-        note_tbl = Table([[note_para]], colWidths=[doc.width], splitInRow=1)
-        note_tbl.setStyle(TableStyle([
-            ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#60a5fa')),
-            ('INNERGRID', (0,0), (-1,-1), 0.25, colors.HexColor('#bfdbfe')),
-            ('LEFTPADDING', (0,0), (-1,-1), 10),
-            ('RIGHTPADDING', (0,0), (-1,-1), 10),
-            ('TOPPADDING', (0,0), (-1,-1), 8),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-            ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ]))
-        story.append(note_tbl)
+        story.append(notes_box(notes, styles['Normal']))
 
         # Saut de page entre les réservations
         if idx < len(reservations) - 1:
