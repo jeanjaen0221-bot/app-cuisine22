@@ -218,7 +218,9 @@ _NOTES_DESC = (
     "ordre, omettre les lignes vides) : '**Société :** …', '**Contact :** Prénom Nom – "
     "téléphone – e-mail', '**Occasion :** …', '**Demandes :**' suivi d'une ligne '- …' "
     "par demande spéciale. Mise en forme du site uniquement (**gras**, _italique_, "
-    "lignes '- ') : pas de titres, tableaux ni emoji."
+    "lignes '- ') : pas de titres, tableaux ni emoji. 600 caractères max, seulement ce qui "
+    "sert le jour du service : jamais la source Gmail, l'historique, les prix, des "
+    "explications, ni ce que la fiche montre déjà (plats, boissons, allergènes)."
 )
 _ALLERGENS_DESC = (
     "Liste de clés d'allergènes : gluten, crustaces, oeufs, poisson, arachides, soja, "
@@ -244,14 +246,15 @@ _FINAL_DESC = (
 )
 
 
-COMMENT_MAX = 120
+COMMENT_MAX = 80
+GPT_NOTES_MAX = 600
 
 
 class GptItem(BaseModel):
     type: ItemType = Field(description="entrée, plat, dessert, ou supplément (extras : Champagne, Planche apéro, Privatisation…).")
     name: str = Field(min_length=1, max_length=200, description="Nom exact du plat du catalogue (voir /menu-items/search).")
     quantity: int = Field(ge=1, le=500, description="Nombre de portions.")
-    comment: Optional[str] = Field(default=None, description="Précision courte sur CETTE ligne (ex. « sans sauce »). Une variante avec sa propre quantité = un item séparé, jamais une répartition dans le commentaire.")
+    comment: Optional[str] = Field(default=None, description="Seulement une précision que le nom ne dit pas (ex. « sans sauce »), 80 caractères max ; sinon rien. Jamais « standard » ni « à valider par la cuisine ». Une variante avec sa propre quantité = un item séparé, jamais une répartition dans le commentaire.")
 
     @field_validator("type", mode="before")
     @classmethod
@@ -317,7 +320,18 @@ class _FicheFields(BaseModel):
     @field_validator("notes", mode="before", check_fields=False)
     @classmethod
     def _notes(cls, v: Any) -> Any:
-        return _clean_notes(v)
+        v = _clean_notes(v)
+        if isinstance(v, str) and len(v) > GPT_NOTES_MAX:
+            # Notes are printed on the fiche: a whole case file (Gmail source,
+            # prices, history, reasoning) pushed the fiche onto extra pages.
+            raise ValueError(
+                f"Notes trop longues ({len(v)} caractères, max {GPT_NOTES_MAX}) : elles sont "
+                "imprimées sur la fiche. Garder uniquement ce qui sert le jour du service, "
+                "selon le modèle (Société, Contact, Occasion, Demandes). Retirer la source "
+                "Gmail, l'historique, les prix, les explications et ce que la fiche montre déjà "
+                "(plats, quantités, boissons, allergènes)."
+            )
+        return v
 
     @field_validator("allergens", mode="before", check_fields=False)
     @classmethod
@@ -336,7 +350,7 @@ class GptFicheCreate(_FicheFields):
     arrival_time: str = Field(description="Heure d'arrivée, HH:MM (obligatoire, ne jamais deviner).")
     drink_formula: DrinkFormula = Field(default="sans alcool", description="Formule boissons (défaut du site : 'sans alcool').")
     menu_formula: MenuFormula = Field(default="", description=_MENU_DESC)
-    notes: Optional[str] = Field(default=None, max_length=4000, description=_NOTES_DESC)
+    notes: Optional[str] = Field(default=None, description=_NOTES_DESC)
     allergens: List[str] = Field(default_factory=list, description=_ALLERGENS_DESC)
     on_invoice: bool = Field(default=False, description="Case 'Sur facture'.")
     status: FicheStatus = Field(default="draft", description=_STATUS_DESC)
@@ -353,7 +367,7 @@ class GptFichePatch(_FicheFields):
     arrival_time: Optional[str] = Field(default=None, description="HH:MM")
     drink_formula: Optional[DrinkFormula] = None
     menu_formula: Optional[MenuFormula] = Field(default=None, description=_MENU_DESC)
-    notes: Optional[str] = Field(default=None, max_length=4000, description=_NOTES_DESC + " Remplace les notes existantes : repartir du texte actuel.")
+    notes: Optional[str] = Field(default=None, description=_NOTES_DESC + " Remplace les notes existantes : repartir du texte actuel.")
     allergens: Optional[List[str]] = Field(default=None, description=_ALLERGENS_DESC + " Remplace la liste existante.")
     on_invoice: Optional[bool] = None
     status: Optional[FicheStatus] = Field(default=None, description=_STATUS_DESC)
