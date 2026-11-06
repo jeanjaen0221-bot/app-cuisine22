@@ -244,11 +244,14 @@ _FINAL_DESC = (
 )
 
 
+COMMENT_MAX = 120
+
+
 class GptItem(BaseModel):
     type: ItemType = Field(description="entrée, plat, dessert, ou supplément (extras : Champagne, Planche apéro, Privatisation…).")
     name: str = Field(min_length=1, max_length=200, description="Nom exact du plat du catalogue (voir /menu-items/search).")
     quantity: int = Field(ge=1, le=500, description="Nombre de portions.")
-    comment: Optional[str] = Field(default=None, max_length=500)
+    comment: Optional[str] = Field(default=None, description="Précision courte sur CETTE ligne (ex. « sans sauce »). Une variante avec sa propre quantité = un item séparé, jamais une répartition dans le commentaire.")
 
     @field_validator("type", mode="before")
     @classmethod
@@ -261,6 +264,21 @@ class GptItem(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("Le nom du plat est vide.")
+        return v
+
+    @field_validator("comment")
+    @classmethod
+    def _short_comment(cls, v: Optional[str]) -> Optional[str]:
+        v = (v or "").strip() or None
+        if v and (len(v) > COMMENT_MAX or "\n" in v):
+            # The kitchen reads one line per dish: a split told in a comment
+            # ("37 convives dont 6 végétariens…") ended up on a single line.
+            raise ValueError(
+                f"Commentaire trop long ({len(v)} caractères, max {COMMENT_MAX}, une seule ligne). "
+                "Chaque variante va sur sa propre ligne avec sa quantité : "
+                "« <nom exact du plat> — <ajustement> » ou « Alternative <régime> (à valider) ». "
+                "Le commentaire ne garde qu'une précision courte sur cette ligne."
+            )
         return v
 
 

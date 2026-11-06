@@ -592,9 +592,9 @@ def fiche_modifier(
 def fiche_item_ajouter(
     reservation_id: ReservationId,
     type: Annotated[ItemType, Field(description="entrée, plat, dessert, ou supplément (extras : Champagne, Planche apéro, Privatisation…).")],
-    name: Annotated[str, Field(min_length=1, max_length=200, description="Nom exact du plat du catalogue (menu_rechercher).")],
+    name: Annotated[str, Field(min_length=1, max_length=200, description="Nom exact du plat du catalogue (menu_rechercher). Variante : « <nom exact> — <ajustement> » ; alternative non choisie : « Alternative <régime> (à valider) ».")],
     quantity: Annotated[int, Field(ge=1, le=500, description="Nombre de portions.")],
-    comment: Annotated[Optional[str], Field(max_length=500)] = None,
+    comment: Annotated[Optional[str], Field(description="Précision courte sur CETTE ligne (ex. « sans sauce »). Une variante avec sa propre quantité = un item séparé, jamais une répartition dans le commentaire.")] = None,
 ) -> Any:
     """Ajouter un plat/supplément ou modifier sa quantité sans remplacer les autres items."""
     def _run():
