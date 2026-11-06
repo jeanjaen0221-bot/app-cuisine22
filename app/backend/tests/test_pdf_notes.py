@@ -160,3 +160,32 @@ def test_chefs_choice_line_leaves_room_to_write_the_choice(name, expected):
     items = [ReservationItem(type="entrée", name=name, quantity=4, reservation_id=r.id)]
     text = PdfReader(generate_reservation_pdf_cuisine(r, items)).pages[0].extract_text()
     assert ("Choix du chef :" in text) is expected
+
+
+def test_notes_never_leave_a_page_with_only_the_frame():
+    # A real fiche: its notes ended at the bottom of the salle page, and only the
+    # frame's bottom padding moved on to a new, otherwise empty, sheet.
+    r, _ = _reservation(
+        "**Société :** Conseil de l’Union européenne\n"
+        "**Contact :** Isabelle Schaerlaken – isabelle.schaerlaken@consilium.europa.eu / "
+        "Silja Scholtes – silja.scholtes@consilium.europa.eu\n"
+        "**Occasion :** Teambuilding au Palais du Coudenberg\n"
+        "**Demandes :**\n"
+        "- Vin et bière à la pièce, sur une seule addition.\n"
+        "- Servir l’alternative végétarienne sans gluten et sans lactose et le dessert sans "
+        "gluten et sans lactose à la même personne."
+    )
+    r.pax, r.allergens = 37, "gluten"
+    lines = [
+        ("plat", "Poule faisane à la brabançonne", 28, None),
+        ("plat", "Poule faisane à la brabançonne — sans gluten", 3, None),
+        ("plat", "Alternative végétarienne (à valider)", 5, "Éviter les champignons si possible."),
+        ("plat", "Alternative végétarienne sans gluten et sans lactose (à valider)", 1, "Éviter les champignons si possible."),
+        ("dessert", "Le grand retour du apfelstrudel et sa crème montée", 33, None),
+        ("dessert", "Alternative sans gluten (à valider)", 3, None),
+        ("dessert", "Alternative sans gluten et sans lactose (à valider)", 1, None),
+    ]
+    items = [ReservationItem(type=t, name=n, quantity=q, comment=c, reservation_id=r.id) for t, n, q, c in lines]
+    pages = PdfReader(generate_reservation_pdf_both(r, items, None)).pages
+    assert all(p.extract_text().strip() for p in pages)
+    assert len(pages) == 3  # salle + 2 cuisine copies
